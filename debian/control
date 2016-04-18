@@ -1,0 +1,17 @@
+Source: hdepanel
+Maintainer: Haydar Alkaduhimi <haydar@hosting4all.com>
+Section: misc
+Priority: optional
+Standards-Version: 3.9.2
+Build-Depends: debhelper (>= 9)
+
+Package: hdepanel
+Architecture: any
+Depends: libqt5gui5, libqt5widgets5, libqt5core5a, ${shlibs:Depends}, ${misc:Depends}
+Description: Qt5 based panel based on QtPanel
+ Very light Beautiful look.
+ Multiple panels.
+ Multple screen support.
+ Xdg compatible.
+ Per panel configuration dialog.
+ Support for plugins.

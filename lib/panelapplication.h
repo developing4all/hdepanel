@@ -100,7 +100,6 @@ public:
 	}
 
 public slots:
-	void showConfigurationDialog();
     void addPanel(int standard = 0);
     void removePanel(const QString panel_id);
     void deletePanels();

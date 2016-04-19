@@ -32,7 +32,7 @@ QSettings *Settings::s_settings = 0;
 Settings::Settings()
 {
     Settings::s_settings = new QSettings();
-    qDebug() << "Settings file: " << s_settings->fileName();
+    //qDebug() << "Settings file: " << s_settings->fileName();
 }
 
 void Settings::setGroup(const QString &group)

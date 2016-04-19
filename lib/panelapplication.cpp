@@ -39,12 +39,10 @@ PanelApplication::PanelApplication(int& argc, char** argv)
 
 	m_defaultIconThemeName = QIcon::themeName();
 
-    setOrganizationName("dev4all");
+    setOrganizationName("developing4all");
     setApplicationName("hde/panel");
 
     Settings *settings = new Settings();
-
-    //QAction::setIconVisibleInMenu(true);
 
 	m_iconLoader = new IconLoader();
 	m_x11support = new X11Support();
@@ -69,13 +67,7 @@ PanelApplication::~PanelApplication()
 void PanelApplication::deletePanels()
 {
     qDebug() << "Deleting Panels";
-    /*
-    for(int i = 0; i < m_panelWindows.size(); i++)
-    {
-        delete m_panelWindows[i];
-    }
-    m_panelWindows.clear();
-    */
+
     while(!m_panelWindows.isEmpty())
     {
         delete m_panelWindows.takeLast();
@@ -90,28 +82,6 @@ bool PanelApplication::x11EventFilter(XEvent* event)
 {
     m_x11support->onX11Event(event);
 	return false;
-}
-
-void PanelApplication::showConfigurationDialog()
-{
-    /*
-	QDialog dialog;
-	Ui::PanelApplicationSettings settingsUi;
-	settingsUi.setupUi(&dialog);
-	settingsUi.fontName->setText(m_fontName);
-	settingsUi.iconThemeName->setText(m_iconThemeName);
-	settingsUi.verticalPosition->setCurrentIndex(m_verticalAnchor == PanelWindow::Max ? 1 : 0);
-	if(dialog.exec() == QDialog::Accepted)
-	{
-		QSettings settings;
-		settings.setValue("fontName", settingsUi.fontName->text());
-		settings.setValue("iconThemeName", settingsUi.iconThemeName->text());
-		settings.setValue("verticalPosition", settingsUi.verticalPosition->currentText());
-
-		// Don't want to delete objects right now (because we're called from those objects), schedule it for later.
-		QTimer::singleShot(1, this, SLOT(reinit()));
-	}
-    */
 }
 
 void PanelApplication::addPanel(int standard)
@@ -161,7 +131,7 @@ void PanelApplication::init()
     }
     else
     {
-        qDebug() << "panels: " << panels;
+        //qDebug() << "panels: " << panels;
     }
 
     foreach (const QString &panel_id, panels) {

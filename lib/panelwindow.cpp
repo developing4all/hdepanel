@@ -42,6 +42,9 @@
 //#include <QtGui/QMenu>
 #endif
 #include <QPluginLoader>
+
+#include <QStandardPaths>
+
 #include <QDir>
 
 #include "hpopupmenu.h"
@@ -178,24 +181,21 @@ void PanelWindow::setApplets(QStringList applets)
 {
     qDebug() << applets;
 
-    /*
-    ApApplicationsMenuAppletplicationsMenuApplet *menuApplet = new ApplicationsMenuApplet(this);
-    menuApplet->startPlugin();
-    m_applets.append(menuApplet);
-    m_applets.append(new DockApplet(this));
-    m_applets.append(new TrayApplet(this));
-    m_applets.append(new ClockApplet(this));
-    */
-
-
     QDir plugDir = QDir(qApp->applicationDirPath()); // Comme avant, on crée un QDir.
     plugDir.cd("./plugins"); // On se déplace encore.
+
+    //qDebug() << QStandardPaths::writableLocation(QStandardPaths::DataLocation) << "/plugins";
+    // DataLocation
+    if(!plugDir.exists() && QDir("/usr/share/hde/panel/plugins").exists());
+    {
+        plugDir.cd("/usr/share/hde/panel/plugins");
+    }
 
     foreach(QString applet_name, applets)
     {
         QString applet_path = plugDir.absolutePath() + "/lib" + applet_name.toLower() + ".so";
-        qDebug() << "file: " << "/home/haydar/Projects/Qt5/hde/build/hdepanel-Desktop-Debug/plugins/libtestapplet.so";
-        qDebug() << "applet_path: " << applet_path;
+        //qDebug() << "file: " << "/home/haydar/Projects/Qt5/hde/build/hdepanel-Desktop-Debug/plugins/libtestapplet.so";
+        //qDebug() << "applet_path: " << applet_path;
         if(QLibrary::isLibrary(applet_path))
         {
             QPluginLoader loader(applet_path, this);
@@ -206,9 +206,9 @@ void PanelWindow::setApplets(QStringList applets)
             if (appletplugin)
             {
 
-                qDebug() << "creating applet";
+                //qDebug() << "creating applet";
                 Applet *applet = appletplugin->createApplet(this);
-                qDebug() << "applet created";
+                //qDebug() << "applet created";
                 if(applet)
                 {
 
@@ -224,11 +224,11 @@ void PanelWindow::setApplets(QStringList applets)
             }
             else
             {
-                qDebug() << "";
-                qDebug() << "BAD";
+                //qDebug() << "";
+                //qDebug() << "BAD";
                 qDebug() << loader.errorString();
-                qDebug() << "BAD";
-                qDebug() << "";
+                //qDebug() << "BAD";
+                //qDebug() << "";
             }
             //loader.unload();
         }
@@ -240,14 +240,6 @@ void PanelWindow::removeApplets()
     qDebug() << "removing apllets";
     while(!m_applets.isEmpty())
     {
-        /*
-        qDebug() << m_applets[m_applets.size() - 1]->objectName();
-        m_applets[m_applets.size() - 1]->close();
-        delete m_applets[m_applets.size() - 1];
-        qDebug() << "CLOSED";
-        //m_applets.resize(m_applets.size() - 1);
-        //qDebug() << m_applets[m_applets.size() - 1]->objectName() << " Removed";
-        */
         delete m_applets.takeLast();
     }
 }
@@ -604,14 +596,14 @@ void PanelWindow::showPanelContextMenu(const QPoint& point)
 
 void PanelWindow::showConfigurationDialog()
 {
-    qDebug() << "configure";
+    //qDebug() << "configure";
     PanelSettings *panelSettings = new PanelSettings(m_id);
     panelSettings->setPanelWindow(this);
     if(panelSettings->exec())
     {
 
     }
-    qDebug() << "Finished settings";
+    //qDebug() << "Finished settings";
     delete panelSettings;
 }
 

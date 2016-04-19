@@ -133,7 +133,7 @@ void PanelSettings::on_theme_activated(const QString &theme)
 
 void PanelSettings::on_verticalPosition_activated(const QString &verticalPosition)
 {
-    qDebug() << verticalPosition;
+//    qDebug() << verticalPosition;
 
     PanelWindow::Anchor m_verticalAnchor;
 
@@ -148,7 +148,7 @@ void PanelSettings::on_verticalPosition_activated(const QString &verticalPositio
 
 void PanelSettings::on_screen_activated(const QString &screen)
 {
-    qDebug() << screen;
+//    qDebug() << screen;
     m_panel->setScreen(screen.toInt());
     Settings::setValue(m_panel_id, "screen", screen);
 }
@@ -165,7 +165,7 @@ void PanelSettings::on_fontSize_valueChanged(int size)
 
 void PanelSettings::fontChanged(const QString font)
 {
-    qDebug() << font;
+//    qDebug() << font;
     m_panel->setFontName(font);
     Settings::setValue(m_panel_id, "fontName", font);
 }

@@ -38,6 +38,8 @@
 
 #include "panelapplication.h"
 
+#include "appletslistdialog.h"
+
 static QStringList listIconThemes() {
     QStringList themes;
 
@@ -208,12 +210,26 @@ void PanelSettings::applyAppletList()
 
 void PanelSettings::on_appletAdd_clicked()
 {
+    AppletsListDialog dialog(this);
 
+    if(dialog.exec())
+    {
+        QString applet = dialog.currentApplet();
+        if(!applet.isEmpty())
+        {
+            ui->appletsList->addItem(applet);
+            applyAppletList();
+        }
+    }
 }
 
 void PanelSettings::on_appletRemove_clicked()
 {
-
+    if(!ui->appletsList->selectedItems().isEmpty())
+    {
+        qDeleteAll(ui->appletsList->selectedItems());
+        applyAppletList();
+    }
 }
 
 void PanelSettings::on_appletSettings_clicked()

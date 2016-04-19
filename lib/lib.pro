@@ -24,10 +24,12 @@ HEADERS += animationutils.h \
            x11support.h \
     panelsettings.h \
     settings.h \
-    hpopupmenu.h
+    hpopupmenu.h \
+    appletslistdialog.h
 
 FORMS += \
-    panelsettings.ui
+    panelsettings.ui \
+    appletslistdialog.ui
 
 SOURCES += applet.cpp \
            desktopapplications.cpp \
@@ -39,6 +41,7 @@ SOURCES += applet.cpp \
            x11support.cpp \
     panelsettings.cpp \
     settings.cpp \
-    hpopupmenu.cpp
+    hpopupmenu.cpp \
+    appletslistdialog.cpp
 
 LIBS += -lX11 -lGL -lXdamage -lXcomposite

@@ -181,11 +181,10 @@ void PanelWindow::setApplets(QStringList applets)
 {
     qDebug() << applets;
 
-    QDir plugDir = QDir(qApp->applicationDirPath()); // Comme avant, on crée un QDir.
-    plugDir.cd("./plugins"); // On se déplace encore.
+    QDir plugDir = QDir(qApp->applicationDirPath());
+    plugDir.cd("./plugins");
 
-    //qDebug() << QStandardPaths::writableLocation(QStandardPaths::DataLocation) << "/plugins";
-    // DataLocation
+    // If does not exists check the standard plugin directory
     if(!plugDir.exists() && QDir("/usr/share/hde/panel/plugins").exists());
     {
         plugDir.cd("/usr/share/hde/panel/plugins");
@@ -194,21 +193,15 @@ void PanelWindow::setApplets(QStringList applets)
     foreach(QString applet_name, applets)
     {
         QString applet_path = plugDir.absolutePath() + "/lib" + applet_name.toLower() + ".so";
-        //qDebug() << "file: " << "/home/haydar/Projects/Qt5/hde/build/hdepanel-Desktop-Debug/plugins/libtestapplet.so";
         //qDebug() << "applet_path: " << applet_path;
         if(QLibrary::isLibrary(applet_path))
         {
             QPluginLoader loader(applet_path, this);
-            //loader.load();
-            //QObject *plugin = loader.instance();
-            //if(plugin)
             AppletPlugin *appletplugin = qobject_cast<AppletPlugin *>(loader.instance());
             if (appletplugin)
             {
 
-                //qDebug() << "creating applet";
                 Applet *applet = appletplugin->createApplet(this);
-                //qDebug() << "applet created";
                 if(applet)
                 {
 
@@ -218,7 +211,7 @@ void PanelWindow::setApplets(QStringList applets)
                 }
                 else
                 {
-                    qDebug() << "applet not loaded";
+                    qDebug() << "applet '" << applet_name << "' not loaded";
                 }
 
             }

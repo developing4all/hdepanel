@@ -20,6 +20,14 @@ StartApplet::StartApplet(PanelWindow* panelWindow)
     m_start = new StartWindow;
 }
 
+StartApplet::~StartApplet()
+{
+    if(m_start != NULL)
+    {
+        delete m_start;
+    }
+}
+
 void StartApplet::setPanelWindow(PanelWindow *panelWindow)
 {
     Applet::setPanelWindow(panelWindow);
@@ -86,6 +94,8 @@ void StartApplet::clicked()
     m_start->move(x,y);
 
     m_start->show();
+    m_start->setFocused();
+//    m_start->grabKeyboard();
 }
 
 void StartApplet::layoutChanged()

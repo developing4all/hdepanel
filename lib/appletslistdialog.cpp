@@ -11,13 +11,12 @@ AppletsListDialog::AppletsListDialog(QWidget *parent) :
 {
     ui->setupUi(this);
 
-    QDir plugDir = QDir(qApp->applicationDirPath());
-    plugDir.cd("./plugins");
+    QDir plugDir = QDir(qApp->applicationDirPath() + "/plugins");
 
     // If does not exists check the standard plugin directory
-    if(!plugDir.exists() && QDir("/usr/share/hde/panel/plugins").exists())
+    if((!plugDir.exists()) && QDir("/usr/lib/hde/panel/plugins").exists())
     {
-        plugDir.cd("/usr/share/hde/panel/plugins");
+        plugDir.cd("/usr/lib/hde/panel/plugins");
     }
 
     QStringList plugins = plugDir.entryList(QStringList("lib*applet.so"),QDir::Files | QDir::NoSymLinks);

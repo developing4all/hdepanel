@@ -9,6 +9,9 @@
 #include <QMap>
 #include <QAction>
 
+#include <QFile>
+#include <QSettings>
+
 #include <QDebug>
 
 #if QT_VERSION < 0x050000
@@ -49,9 +52,7 @@ StartWindow::StartWindow(QWidget *parent) :
 {
     ui->setupUi(this);
     setWindowFlags(Qt::Widget | Qt::FramelessWindowHint | Qt::X11BypassWindowManagerHint);
-
-    // To be removed
-    QIcon::setThemeName("oxygen");
+    setFocusPolicy(Qt::StrongFocus);
 
     // Remove backgroud color from lists
     ui->menuList->viewport()->setAutoFillBackground( false );
@@ -69,6 +70,8 @@ StartWindow::StartWindow(QWidget *parent) :
     setContextMenuPolicy(Qt::CustomContextMenu);
     connect(this, SIGNAL(customContextMenuRequested(const QPoint &)),
              SLOT(showContextMenuForWidget(const QPoint &)));
+
+    setProfileImage();
 }
 
 void StartWindow::showContextMenuForWidget(const QPoint &pos)
@@ -76,6 +79,45 @@ void StartWindow::showContextMenuForWidget(const QPoint &pos)
     QMenu contextMenu(tr("Context menu"), this);
     contextMenu.addAction( QIcon::fromTheme("emblem-favorite"), tr("Add to favorite"), this, SLOT(addToFavorite()));
     contextMenu.exec(mapToGlobal(pos));
+}
+
+void StartWindow::setProfileImage()
+{
+    QString name = qgetenv("USER");
+    if (name.isEmpty())
+        name = qgetenv("USERNAME");
+    qDebug() << name;
+
+    // /var/lib/AccountsService/icons/[user name]
+    QFile imageFile("/var/lib/AccountsService/icons/" + name);
+    if(imageFile.exists())
+    {
+        m_profileImage.load(imageFile.fileName());
+    }
+
+    // If not succeed try to load gnome3 profile image
+    if(m_profileImage.isNull())
+    {
+        // /var/lib/AccountsService/user
+        // [User]
+        // Icon=
+        QSettings setting("/var/lib/AccountsService/users/" + name, QSettings::IniFormat);
+        setting.beginGroup("User");
+        m_profileImage.load(setting.value("Icon").toString());
+        qDebug() << "Icon: " << setting.value("Icon").toString();
+    }
+
+    // If not succeed try to load KDE profile image
+    if(m_profileImage.isNull())
+    {
+        // $ENV{ HOME }/.face.png
+        m_profileImage.load(qgetenv("USER") + "/.face.png");
+    }
+
+    if(!m_profileImage.isNull())
+    {
+        ui->profilePicture->setPixmap(m_profileImage);
+    }
 }
 
 void StartWindow::addToFavorite()
@@ -354,4 +396,18 @@ void StartWindow::on_searchEdit_textChanged(const QString &arg1)
             searchItem->setData(Qt::UserRole, action->data());
         }
     }
+}
+
+void StartWindow::setFocused()
+{
+    //ui->searchEdit->setFocus();
+    ui->searchEdit->grabKeyboard();
+    setFocus();
+}
+
+
+void StartWindow::focusOutEvent(QFocusEvent *event)
+{
+    //QWidget::focusOutEvent(event);
+    hide();
 }

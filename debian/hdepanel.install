@@ -1,3 +1,3 @@
 hdepanel usr/bin
 libhdepanel* usr/lib
-plugins/lib*.so usr/share/hde/panel/plugins
+plugins/lib*.so usr/lib/hde/panel/plugins

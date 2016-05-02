@@ -30,7 +30,7 @@ class StartApplet: public Applet
     Q_OBJECT
 public:
     StartApplet(PanelWindow* panelWindow = 0);
-    ~StartApplet(){}
+    ~StartApplet();
     bool init();
     void close(){}
     virtual void setPanelWindow(PanelWindow* panelWindow);

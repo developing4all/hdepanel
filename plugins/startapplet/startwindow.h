@@ -61,6 +61,7 @@ public:
 protected:
     void layoutChanged();
     bool isHighlighted();
+    void focusOutEvent(QFocusEvent *event);
 
 private slots:
     void actionTriggered();
@@ -81,10 +82,13 @@ private slots:
 
 public slots:
     void fontChanged(){}
+    void setFocused();
 
 private:
     void addMenuItems();
     void updateMenuList();
+    void setProfileImage();
+
     QMenu *getSubMenu(const QString &category);
     Ui::StartWindow *ui;
 
@@ -93,6 +97,7 @@ private:
     QMap<QString, QAction*> m_actions;
     bool m_busy = false;
     bool m_stop_other = false;
+    QPixmap m_profileImage;
 };
 
 #endif // STARTWINDOW_H

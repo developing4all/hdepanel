@@ -185,7 +185,7 @@ void PanelWindow::setApplets(QStringList applets)
     plugDir.cd("./plugins");
 
     // If does not exists check the standard plugin directory
-    if(!plugDir.exists() && QDir("/usr/share/hde/panel/plugins").exists());
+    if((!plugDir.exists()) && QDir("/usr/share/hde/panel/plugins").exists())
     {
         plugDir.cd("/usr/share/hde/panel/plugins");
     }

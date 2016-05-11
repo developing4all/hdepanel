@@ -12,6 +12,7 @@
 #include <QFile>
 #include <QSettings>
 
+#include <QFocusEvent>
 #include <QDebug>
 
 #if QT_VERSION < 0x050000
@@ -62,6 +63,12 @@ StartWindow::StartWindow(QWidget *parent) :
     ui->settingsButton->setIcon(QIcon::fromTheme("preferences-system"));
 
     ui->profilePicture->setPixmap(QIcon::fromTheme("system-users").pixmap(64,64));
+
+    ui->exitButton->setFocusProxy(this);
+    ui->itemsList->setFocusProxy(this);
+    ui->menuList->setFocusProxy(this);
+    ui->profilePicture->setFocusProxy(this);
+    ui->searchEdit->setFocusProxy(this);
 
     connect(ui->exitButton, SIGNAL(clicked()), qApp, SLOT(quit()));
 
@@ -355,6 +362,7 @@ void StartWindow::on_itemsList_itemActivated(QListWidgetItem *item)
     if(!item->data(Qt::UserRole).isNull())
     {
         DesktopApplications::instance()->launch(item->data(Qt::UserRole).toString());
+        hide();
     }
 }
 
@@ -409,5 +417,7 @@ void StartWindow::setFocused()
 void StartWindow::focusOutEvent(QFocusEvent *event)
 {
     //QWidget::focusOutEvent(event);
+    //if(event->)
+
     hide();
 }

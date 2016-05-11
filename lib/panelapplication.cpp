@@ -96,7 +96,7 @@ void PanelApplication::addPanel(int standard)
     {
         // Add Standard items to the panel
         QStringList applets;
-        applets <<"ApplicationsMenuApplet" << "DockApplet" << "TrayApplet" << "ClockApplet";
+        applets << "StartApplet" << "DockApplet" << "TrayApplet" << "ClockApplet";
         Settings::setValue(panel_id, "applets", applets );
     }
     showPanel(panel_id);

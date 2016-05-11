@@ -1,3 +1,12 @@
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: hdepanel
+Source: https://github.com/developing4all/hdepanel
+
 Files: *
-Copyright: 2015-2016 Haydar Alkaduhimi
+Copyright: 2015-2016 Haydar Alkaduhimi <haydar@hosting4all.com>
 License: GPL-2+
+
+License: GPL-2+
+ The full text of the GPL version 2 is distributed in
+ /usr/share/common-licenses/GPL-2 on Debian systems.
+

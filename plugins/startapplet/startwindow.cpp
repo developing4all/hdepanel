@@ -14,6 +14,7 @@
 
 #include <QFocusEvent>
 #include <QDebug>
+#include <QSettings>
 
 #if QT_VERSION < 0x050000
 int ApplicationsMenuStyle::pixelMetric(PixelMetric metric, const QStyleOption* option, const QWidget* widget) const
@@ -55,6 +56,8 @@ StartWindow::StartWindow(QWidget *parent) :
     setWindowFlags(Qt::Widget | Qt::FramelessWindowHint | Qt::X11BypassWindowManagerHint);
     setFocusPolicy(Qt::StrongFocus);
 
+    m_favorites  = new QMenu();
+
     // Remove backgroud color from lists
     ui->menuList->viewport()->setAutoFillBackground( false );
     ui->itemsList->viewport()->setAutoFillBackground( false );
@@ -67,6 +70,9 @@ StartWindow::StartWindow(QWidget *parent) :
     ui->exitButton->setFocusProxy(this);
     ui->itemsList->setFocusProxy(this);
     ui->menuList->setFocusProxy(this);
+    //ui->menuList->setSpacing(3);
+    ui->itemsList->setSpacing(3);
+
     ui->profilePicture->setFocusProxy(this);
     ui->searchEdit->setFocusProxy(this);
 
@@ -74,18 +80,44 @@ StartWindow::StartWindow(QWidget *parent) :
 
     addMenuItems();
 
-    setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(this, SIGNAL(customContextMenuRequested(const QPoint &)),
-             SLOT(showContextMenuForWidget(const QPoint &)));
-
     setProfileImage();
+}
+
+void StartWindow::readFavorites()
+{
+    m_favorites->clear();
+
+    QSettings setting(this);
+    QStringList favorites = setting.value("favorites", QStringList()).toStringList();
+
+    foreach (QString appfile, favorites) {
+        if(m_actions[appfile] != 0)
+        {
+            qDebug() << m_actions[appfile]->text();
+            m_favorites->addAction(m_actions[appfile]);
+        }
+    }
 }
 
 void StartWindow::showContextMenuForWidget(const QPoint &pos)
 {
-    QMenu contextMenu(tr("Context menu"), this);
-    contextMenu.addAction( QIcon::fromTheme("emblem-favorite"), tr("Add to favorite"), this, SLOT(addToFavorite()));
-    contextMenu.exec(mapToGlobal(pos));
+    m_contextMenu->clear();
+
+    if(ui->itemsList->count() == 0)
+    {
+        return;
+    }
+
+    if((ui->menuList->currentItem() != 0) && (ui->menuList->currentItem()->text() == tr("Favorites")))
+    {
+        m_contextMenu->addAction( QIcon::fromTheme("emblem-favorite"), tr("Remove from favorite"), this, SLOT(removeFromFavorite()));
+    }
+    else
+    {
+        m_contextMenu->addAction( QIcon::fromTheme("emblem-favorite"), tr("Add to favorite"), this, SLOT(addToFavorite()));
+    }
+
+    m_contextMenu->exec( ui->itemsList->mapToGlobal(pos));
 }
 
 void StartWindow::setProfileImage()
@@ -93,7 +125,6 @@ void StartWindow::setProfileImage()
     QString name = qgetenv("USER");
     if (name.isEmpty())
         name = qgetenv("USERNAME");
-    qDebug() << name;
 
     // /var/lib/AccountsService/icons/[user name]
     QFile imageFile("/var/lib/AccountsService/icons/" + name);
@@ -115,7 +146,7 @@ void StartWindow::setProfileImage()
     }
 
     // If not succeed try to load KDE profile image
-    if(m_profileImage.isNull())
+    if(name.isEmpty() || m_profileImage.isNull())
     {
         // $ENV{ HOME }/.face.png
         m_profileImage.load(qgetenv("USER") + "/.face.png");
@@ -130,8 +161,37 @@ void StartWindow::setProfileImage()
 void StartWindow::addToFavorite()
 {
     QListWidgetItem *item = ui->itemsList->currentItem();
+    QSettings setting(this);
+    QStringList favorites = setting.value("favorites", QStringList()).toStringList();
+    qDebug() << "favorites: " << favorites;
+    QString itemsfile = item->data(Qt::UserRole).toString();
+    if(!favorites.contains(itemsfile))
+    {
+        favorites << itemsfile;
+        setting.setValue("favorites", favorites);
+        readFavorites();
+    }
 
-    qDebug() << item->data(Qt::UserRole).toString();
+    qDebug() << itemsfile;
+}
+
+void StartWindow::removeFromFavorite()
+{
+    QListWidgetItem *item = ui->itemsList->currentItem();
+    QSettings setting(this);
+    QStringList favorites = setting.value("favorites", QStringList()).toStringList();
+    qDebug() << "favorites: " << favorites;
+    QString itemsfile = item->data(Qt::UserRole).toString();
+    if(favorites.contains(itemsfile))
+    {
+        favorites.removeAll(itemsfile);
+        setting.setValue("favorites", favorites);
+        readFavorites();
+        qDebug() << "Removed: " << itemsfile;
+        on_menuList_itemActivated(ui->menuList->currentItem());
+    }
+
+
 }
 
 StartWindow::~StartWindow()
@@ -141,7 +201,6 @@ StartWindow::~StartWindow()
         delete action;
     }
 
-    //delete m_textItem;
     delete m_menu;
 
     delete ui;
@@ -152,22 +211,22 @@ void StartWindow::updateMenuList()
     //qDeleteAll(ui->menuList->items());
     ui->menuList->clear();
 
-    new QListWidgetItem(QIcon::fromTheme("emblem-favorite"), "Favorites", ui->menuList );
-    new QListWidgetItem(QIcon::fromTheme("document-open-recent"), "Recently Used", ui->menuList );
-    new QListWidgetItem(QIcon::fromTheme("start-here"), "All", ui->menuList );
+    QListWidgetItem *favoriteItem = new QListWidgetItem(QIcon::fromTheme("emblem-favorite"), "Favorites", ui->menuList );
+    favoriteItem->setSizeHint(QSize(favoriteItem->sizeHint().width(), 30));
 
-    //new QListWidgetItem("    --------------    ",ui->menuList);
+    QListWidgetItem *recentItem = new QListWidgetItem(QIcon::fromTheme("document-open-recent"), "Recently Used", ui->menuList );
+    recentItem->setSizeHint(QSize(recentItem->sizeHint().width(), 30));
 
+    QListWidgetItem *allItem = new QListWidgetItem(QIcon::fromTheme("start-here"), "All", ui->menuList );
+    allItem->setSizeHint(QSize(allItem->sizeHint().width(), 30));
 
-    //foreach(QAction *action, m_menu->actions())
     foreach(SubMenu submenu, m_subMenus)
     {
-        qDebug() << submenu.category();
+        //qDebug() << submenu.category();
         QListWidgetItem *newItem = new QListWidgetItem(submenu.menu()->icon(), submenu.menu()->title(), ui->menuList );
-        //newItem->setIcon(QIcon::fromTheme("applications-accessories"));
         newItem->setToolTip( submenu.menu()->toolTip() );
         newItem->setData(Qt::UserRole, submenu.category());
-        //newItem->setFlags();
+        newItem->setSizeHint(QSize(newItem->sizeHint().width(), 28));
     }
 }
 
@@ -200,13 +259,11 @@ void StartWindow::addMenuItems()
     m_subMenus.append(SubMenu(m_menu, "System", "System", "preferences-system"));
     m_subMenus.append(SubMenu(m_menu, "Settings", "Settings", "preferences-desktop"));
     m_subMenus.append(SubMenu(m_menu, "Other", "Other", "applications-other"));
-
 }
+
 
 bool StartWindow::init()
 {
-    //setInteractive(true);
-
     connect(DesktopApplications::instance(), SIGNAL(applicationUpdated(DesktopApplication)), this, SLOT(applicationUpdated(DesktopApplication)));
     connect(DesktopApplications::instance(), SIGNAL(applicationRemoved(QString)), this, SLOT(applicationRemoved(QString)));
 
@@ -217,8 +274,12 @@ bool StartWindow::init()
     }
     updateMenuList();
 
-    //m_menu->addSeparator();
-    //m_menu->addAction(QIcon::fromTheme("application-exit"), "Quit", qApp, SLOT(quit()));
+    // Context menu
+    m_contextMenu = new QMenu(tr("Context menu"), ui->itemsList);
+    ui->itemsList->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(ui->itemsList, SIGNAL(customContextMenuRequested(const QPoint &)),
+             SLOT(showContextMenuForWidget(const QPoint &)));
+
 
     return true;
 }
@@ -239,11 +300,6 @@ void StartWindow::applicationUpdated(const DesktopApplication& app)
 
     if(action->icon().isNull())
     {
-        /*
-        QPixmap emptyPix = QPixmap(QSize(22,22));
-        emptyPix.fill(Qt::transparent);
-        action->setIcon(QIcon(emptyPix));
-        */
         action->setIcon(QIcon::fromTheme("unknown"));
     }
     if(action->icon().isNull())
@@ -252,8 +308,6 @@ void StartWindow::applicationUpdated(const DesktopApplication& app)
         emptyPix.fill(Qt::transparent);
         action->setIcon(QIcon(emptyPix));
     }
-
-    //connect(action, SIGNAL(triggered()), this, SLOT(actionTriggered()));
 
     // Add to relevant menu.
     int subMenuIndex = m_subMenus.size() - 1; // By default put it in "Other".
@@ -346,6 +400,13 @@ void StartWindow::on_menuList_itemActivated(QListWidgetItem *item)
         }
     }else if(item->text() == "Favorites")
     {
+        readFavorites();
+
+        foreach (QAction *action, m_favorites->actions()) {
+            QListWidgetItem *newItem = new QListWidgetItem(action->icon(), action->text(), ui->itemsList );
+            newItem->setToolTip( action->toolTip() );
+            newItem->setData(Qt::UserRole, action->data());
+        }
 
     }
     else if(item->text() == "Recently Used")
@@ -411,13 +472,17 @@ void StartWindow::setFocused()
     //ui->searchEdit->setFocus();
     ui->searchEdit->grabKeyboard();
     setFocus();
+
+    ui->searchEdit->clear();
+    ui->menuList->setCurrentRow(0);
+    on_menuList_itemActivated(ui->menuList->currentItem());
 }
 
 
-void StartWindow::focusOutEvent(QFocusEvent *event)
+void StartWindow::focusOutEvent(QFocusEvent *)
 {
-    //QWidget::focusOutEvent(event);
-    //if(event->)
+    if(m_contextMenu->isVisible())
+        return;
 
     hide();
 }

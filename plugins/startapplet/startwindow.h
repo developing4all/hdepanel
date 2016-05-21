@@ -10,7 +10,7 @@
 #include <QtGui/QAction>
 #include <QtGui/QPlastiqueStyle>
 #endif
-//#include "../../lib/applet.h"
+
 #include <QWidget>
 
 class QMenu;
@@ -61,7 +61,7 @@ public:
 protected:
     void layoutChanged();
     bool isHighlighted();
-    void focusOutEvent(QFocusEvent *event);
+    void focusOutEvent(QFocusEvent *);
 
 private slots:
     void actionTriggered();
@@ -69,6 +69,7 @@ private slots:
     void applicationRemoved(const QString& path);
     void showContextMenuForWidget(const QPoint &pos);
     void addToFavorite();
+    void removeFromFavorite();
 
     void on_menuList_itemActivated(QListWidgetItem *item);
 
@@ -88,11 +89,15 @@ private:
     void addMenuItems();
     void updateMenuList();
     void setProfileImage();
+    void readFavorites();
 
     QMenu *getSubMenu(const QString &category);
     Ui::StartWindow *ui;
 
     QMenu* m_menu;
+    QMenu *m_contextMenu;
+    QMenu *m_favorites;
+
     QList<SubMenu> m_subMenus;
     QMap<QString, QAction*> m_actions;
     bool m_busy = false;

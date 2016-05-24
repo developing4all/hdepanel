@@ -72,6 +72,9 @@ QRectF TextGraphicsItem::boundingRect() const
 
 void TextGraphicsItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
 {
+    Q_UNUSED(option)
+    Q_UNUSED(widget)
+
 	if (m_image.isNull()) {
         painter->setFont(m_font);
 	    painter->setPen(QPen(Qt::black));

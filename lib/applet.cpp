@@ -39,8 +39,10 @@
 #include "animationutils.h"
 
 Applet::Applet(PanelWindow* panelWindow)
-    : m_highlightIntensity(0.0), m_interactive(false)
 {
+    m_highlightIntensity = 0.0;
+    m_interactive = false;
+
 	setZValue(-1.0);
 	setAcceptedMouseButtons(Qt::RightButton);
     if(panelWindow != 0)
@@ -108,6 +110,9 @@ QRectF Applet::boundingRect() const
 
 void Applet::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
 {
+    Q_UNUSED(option)
+    Q_UNUSED(widget)
+
 	if(m_size.width() < 32)
 		return; // Too small to draw a background (don't want to deal with weird corner cases).
 
@@ -158,16 +163,21 @@ bool Applet::isHighlighted()
 
 void Applet::hoverEnterEvent(QGraphicsSceneHoverEvent* event)
 {
+    Q_UNUSED(event)
+
 	animateHighlight();
 }
 
 void Applet::hoverLeaveEvent(QGraphicsSceneHoverEvent* event)
 {
-	animateHighlight();
+    Q_UNUSED(event)
+
+    animateHighlight();
 }
 
 void Applet::mousePressEvent(QGraphicsSceneMouseEvent* event)
 {
+    Q_UNUSED(event)
 }
 
 void Applet::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)

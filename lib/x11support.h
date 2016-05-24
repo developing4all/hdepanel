@@ -115,6 +115,9 @@ signals:
 	void windowPropertyChanged(unsigned long window, unsigned long atom);
     void clientMessageReceived(unsigned long window, unsigned long atom, void* data);
 
+protected:
+    bool eventFilter(QObject *obj, QEvent *event);
+
 private:
 	static unsigned long systemTrayAtom();
 

@@ -55,7 +55,7 @@ public:
 
 	void launch() const;
 
-    const bool isNoDisplay() const { return m_isNoDisplay; }
+    bool isNoDisplay() const { return m_isNoDisplay; }
 	const QString& path() const { return m_path; }
 	const QString& name() const { return m_name; }
 	const QString& iconName() const { return m_iconName; }

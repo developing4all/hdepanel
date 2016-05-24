@@ -22,58 +22,36 @@
  *
  * END_COMMON_COPYRIGHT_HEADER */
 
-#ifndef PANELSETTINGS_H
-#define PANELSETTINGS_H
+#ifndef KEYBOARDLAYOUTDIALOG_H
+#define KEYBOARDLAYOUTDIALOG_H
 
 #include <QDialog>
 
-class PanelWindow;
-
 namespace Ui {
-class PanelSettings;
+class KeyboardLayoutDialog;
 }
 
-class PanelSettings : public QDialog
+/**
+ * @brief The Keyboard Layout Dialog class
+ */
+class KeyboardLayoutDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit PanelSettings(QString panel_id, QWidget *parent = 0);
-    ~PanelSettings();
-
-    void setPanelWindow(PanelWindow *panel);
+    explicit KeyboardLayoutDialog(QWidget *parent = 0);
+    ~KeyboardLayoutDialog();
 
 private slots:
-    void on_resetButton_clicked();
+    void on_addButton_clicked();
 
-    void on_theme_activated(const QString &theme);
+    void on_removeButton_clicked();
 
-    void on_verticalPosition_activated(const QString &verticalPosition);
-
-    void on_screen_activated(const QString &screen);
-
-    void on_font_activated(const QString &font_name);
-
-    void on_fontSize_valueChanged(int size);
-
-    void on_appletUp_clicked();
-
-    void on_appletDown_clicked();
-
-    void on_appletAdd_clicked();
-
-    void on_appletRemove_clicked();
-
-    void on_appletSettings_clicked();
+    void on_buttonBox_accepted();
 
 private:
-    void readSettings();
-    void fontChanged(const QString font);
-    void applyAppletList();
-
-    Ui::PanelSettings *ui;
-    QString m_panel_id;
-    PanelWindow *m_panel;
+    Ui::KeyboardLayoutDialog *ui;
+    void load();
 };
 
-#endif // PANELSETTINGS_H
+#endif // KEYBOARDLAYOUTDIALOG_H

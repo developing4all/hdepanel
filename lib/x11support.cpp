@@ -66,6 +66,10 @@ void X11Support::onX11Event(xcb_generic_event_t *event)
     switch (event->response_type & ~0x80) {
     // FIXME: there is no XDamageNotify in xcb?
     // case XCB_DAMAGE_NOTIFY: break;
+    case XCB_KEYMAP_NOTIFY: {
+        qDebug() << "keymap";
+        break;
+    }
     case XCB_DESTROY_NOTIFY: {
         xcb_destroy_notify_event_t *destroy = reinterpret_cast<xcb_destroy_notify_event_t *>(event);
         emit windowClosed(destroy->window);
@@ -144,17 +148,8 @@ void X11Support::setStrut(Window _wid,
                        int bottomStartX, int bottomEndX
                        )
 {
-    //qDebug() << "XfitMan: Trying to set STRUT_PARTIAL for panel!";
     unsigned long desstrut[12];
     memset(desstrut,0,sizeof(desstrut));
-    //prepare the array
-    //it has format:
-    /*
-     * left, right, top, bottom, left_start_y, left_end_y,
-     * right_start_y, right_end_y, top_start_x, top_end_x, bottom_start_x,
-     * bottom_end_x
-     *
-     */
 
     //so we take our panelsize from the bottom up
     desstrut[0] = left; desstrut[1] = right;
@@ -210,6 +205,21 @@ unsigned long X11Support::getWindowPropertyCardinal(unsigned long window, const 
 	value = data[0];
 	XFree(data);
 	return value;
+}
+bool X11Support::eventFilter(QObject *obj, QEvent *event)
+{
+    switch (event->type()) {
+
+    case QEvent::KeyboardLayoutChange :
+        qDebug() << "KeyboardLayoutChange";
+        //QTimer::singleShot(10,this,SLOT(keyChanged()));
+        break;
+
+
+    default:
+        break;
+    }
+    return QObject::eventFilter(obj, event);
 }
 
 // FIXME: it failed to get activateWindow for Qt5
@@ -464,57 +474,13 @@ QPixmap X11Support::getWindowPixmap(unsigned long window)
         Pixmap pix = XCompositeNameWindowPixmap(QX11Info::display(), window);
         XImage *ximage = XGetImage(QX11Info::display(), pix, 0, 0, attr.width, attr.height, AllPlanes, ZPixmap);
         XFreePixmap(QX11Info::display(), pix);
-        // We actually check if we get the image from X11 since clientWinId can be any arbiter window (with crazy XWindowAttribute and the pixmap associated is bad)
-        //if (!ximage)
-        //    return;
+
         // This is safe to do since we only composite ARGB32 windows, and PictStandardARGB32
         // matches QImage::Format_ARGB32_Premultiplied.
         QImage image((const uchar*)ximage->data, ximage->width, ximage->height, ximage->bytes_per_line,
                      QImage::Format_ARGB32_Premultiplied);
         pixmap = QPixmap::fromImage(image);
     }
-    /*
-    int left_x, right_x, y;
-    unsigned long pixelvalue1, pixelvalue2;
-
-    Pixmap pix = XCompositeNameWindowPixmap(QX11Info::display(), window);
-    XWindowAttributes attr;
-    XGetWindowAttributes(QX11Info::display(), window, &attr);
-
-    XImage* img;
-    img = XGetImage(QX11Info::display(), pix, 0, 0, attr.width, attr.height, AllPlanes, ZPixmap);
-*/
-    /*
-    for(left_x=0; left_x < attr.width/2; left_x++)
-    {
-        for (y=0; y < attr.height; y++)
-        {
-            pixelvalue1 = XGetPixel(img, left_x, y);
-            right_x = attr.width - left_x;
-            if(left_x != right_x)
-            {
-                pixelvalue2 = XGetPixel(img, right_x, y);
-                XPutPixel(img, right_x, y, pixelvalue1);
-            }
-            XPutPixel(img, right_x, y, pixelvalue1);
-        }
-    }
-    XFreePixmap(QX11Info::display(), pix);
-    */
-
-    /*
-   // XWriteBitmapFile(QX11Info::display(), "/home/haydar/test.xpm", pix, attr.width, attr.height, 0, 0);
-qDebug() << "img: " << img->format;
-    qDebug() << img->data;
-    */
-
-//    pixmap.scaled(img->width, img->height);
-    /*
-    qDebug() << pixmap.rect();
-    qDebug() << attr.width;
-    qDebug() << attr.height;
-    */
-
     return pixmap;
 #else
     return QPixmap::fromX11Pixmap(XCompositeNameWindowPixmap(QX11Info::display(), window));

@@ -100,8 +100,6 @@ private:
 
     QList<SubMenu> m_subMenus;
     QMap<QString, QAction*> m_actions;
-    bool m_busy = false;
-    bool m_stop_other = false;
     QPixmap m_profileImage;
 };
 

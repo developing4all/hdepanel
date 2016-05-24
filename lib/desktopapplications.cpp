@@ -249,6 +249,8 @@ void DesktopApplications::run()
 
 void DesktopApplications::directoryChanged(const QString& path)
 {
+    Q_UNUSED(path)
+
 	m_updateTimer->stop();
 	m_updateTimer->start();
 }

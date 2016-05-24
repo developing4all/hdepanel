@@ -6,4 +6,5 @@ SUBDIRS     = testapplet  \
 	      dockapplet \
 	      trayapplet \
 	      clockapplet \
-              startapplet
+              startapplet \
+	      keyboardapplet

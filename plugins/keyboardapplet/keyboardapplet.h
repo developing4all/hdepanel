@@ -22,9 +22,8 @@
  *
  * END_COMMON_COPYRIGHT_HEADER */
 
-#ifndef TESTAPPLET_H
-#define TESTAPPLET_H
-
+#ifndef KEYBOARDAPPLET_H
+#define KEYBOARDAPPLET_H
 #include "../../lib/applet.h"
 #include <QtCore>
 #include <QtDebug>
@@ -32,52 +31,101 @@
 class TextGraphicsItem;
 class TestApplet;
 class PanelWindow;
+class KeyboardApplet;
+class Keyboard;
 
 /**
- * The plugin class for the TestApplet
+ * The plugin class for the KeyboardApplet
  */
-
-class TestAppletPlugin: public QObject, public AppletPlugin
+class KeyboardAppletPlugin: public QObject, public AppletPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "hde.panel.appletplugin")
     Q_INTERFACES(AppletPlugin)
 
 public:
-    TestAppletPlugin(){}
-    ~TestAppletPlugin(){}
+    KeyboardAppletPlugin(){}
+    ~KeyboardAppletPlugin(){}
 
     Applet* createApplet(PanelWindow* panelWindow) Q_DECL_OVERRIDE;
 };
 
 /**
- * @brief A Test Applet that can be used as a base for new applets
+ * @brief The KeyboardApplet class
  */
-class TestApplet: public Applet
+class KeyboardApplet: public Applet
 {
     Q_OBJECT
 public:
-    TestApplet(PanelWindow* panelWindow = 0);
-    ~TestApplet(){}
+    /**
+     * @brief Constructor
+     * @param panelWindow
+     */
+    KeyboardApplet(PanelWindow* panelWindow = 0);
+    ~KeyboardApplet();
+
     void close(){}
     virtual void setPanelWindow(PanelWindow* panelWindow);
 
-    bool init(){return true;}
-    //void startPlugin();
+    bool init();
 
     QSize desiredSize();
 
 public slots:
-    void clicked(){}
+    /**
+     * @brief change keyboard layout whenever clicked
+     */
+    void clicked();
+
+    /**
+     * @brief change the keyboard layout forward
+     */
+    void changeForward();
+
+    /**
+     * @brief change the keyboard layout backward
+     */
+    void changeBackword();
+
+    /**
+     * @brief set current keyboard layout to the given layout
+     * @param layout
+     */
+    void setCurrentLayout(QString layout);
+
     void fontChanged(){}
 
+    /**
+     * @brief show keyboard layout configuration dialog
+     */
+    void showConfigurationDialog();
+
 protected:
+    /**
+     * @brief panel layout changed
+     */
     void layoutChanged();
+
     bool isHighlighted(){ return false;}
 
+    /**
+     * @brief show a custom context menu
+     * @param event
+     */
+    void contextMenuEvent(QGraphicsSceneContextMenuEvent *event);
+
 private:
+    /**
+     * @brief draw the current layout inside an image
+     * @param layout
+     */
+    void drawCurrentLayout(QString layout = QString());
+
+    QString m_current_layout;
+    QStringList m_supported_layouts;
+
     TextGraphicsItem* m_textItem;
 
 };
 
-#endif // TESTAPPLET_H
+#endif // KEYBOARDAPPLET_H

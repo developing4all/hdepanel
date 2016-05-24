@@ -158,6 +158,7 @@ public slots:
 
 private:
     void removeApplets();
+
 	bool m_dockMode;
 	int m_screen;
     QString m_id;

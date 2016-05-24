@@ -49,9 +49,12 @@
 #include "dpisupport.h"
 
 DockItem::DockItem(DockApplet* dockApplet)
-  : m_dragging(false), m_highlightIntensity(0.0), 
-    m_urgencyHighlightIntensity(0.0), m_isMinimized(false) 
 {
+    m_dragging = false;
+    m_highlightIntensity =0.0;
+    m_urgencyHighlightIntensity = 0.0;
+    m_isMinimized = false;
+
 	m_dockApplet = dockApplet;
 
 	m_animationTimer = new QTimer();
@@ -449,7 +452,7 @@ void Client::updateUrgency()
 DockApplet::DockApplet(PanelWindow* panelWindow)
 	: Applet(panelWindow), m_dragging(false)
 {
-    setObjectName("Clock");
+    setObjectName("Dock");
     // Register for notifications about window property changes.
 	connect(X11Support::instance(), SIGNAL(windowPropertyChanged(ulong,ulong)), this, SLOT(windowPropertyChanged(ulong,ulong)));
 }

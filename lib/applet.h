@@ -44,7 +44,6 @@ class AppletPlugin
 public:
     AppletPlugin(){}
     virtual ~AppletPlugin(){}
-
     virtual Applet* createApplet(PanelWindow* panelWindow) = 0;
 };
 
@@ -56,6 +55,7 @@ class Applet: public QObject, public QGraphicsItem
 {
 	Q_OBJECT
 	Q_INTERFACES(QGraphicsItem)
+
 public:
     Applet(PanelWindow* panelWindow = 0);
 	~Applet();

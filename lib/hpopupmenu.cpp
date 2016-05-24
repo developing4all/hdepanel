@@ -35,9 +35,6 @@
 
 static const char POPUPMENU_TITLE[] = "POPUP_MENU_TITLE_OBJECT_NAME";
 
-/************************************************
-
- ************************************************/
 QAction* HPopupMenu::addTitle(const QIcon &icon, const QString &text)
 {
     QAction *buttonAction = new QAction(this);
@@ -62,18 +59,12 @@ QAction* HPopupMenu::addTitle(const QIcon &icon, const QString &text)
 }
 
 
-/************************************************
-
- ************************************************/
 QAction* HPopupMenu::addTitle(const QString &text)
 {
     return addTitle(QIcon(), text);
 }
 
 
-/************************************************
-
- ************************************************/
 bool HPopupMenu::eventFilter(QObject *object, QEvent *event)
 {
     Q_UNUSED(object);
@@ -91,9 +82,6 @@ bool HPopupMenu::eventFilter(QObject *object, QEvent *event)
 }
 
 
-/************************************************
-
- ************************************************/
 void HPopupMenu::keyPressEvent(QKeyEvent* e)
 {
     if (e->key() == Qt::Key_Up || e->key() == Qt::Key_Down)

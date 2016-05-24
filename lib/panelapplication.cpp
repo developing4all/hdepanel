@@ -43,12 +43,15 @@ PanelApplication::PanelApplication(int& argc, char** argv)
     setApplicationName("hde/panel");
 
     Settings *settings = new Settings();
+    Q_UNUSED(settings)
 
 	m_iconLoader = new IconLoader();
 	m_x11support = new X11Support();
 #if QT_VERSION >= 0x050000
 	myXEv.setX11Support(m_x11support);
+    installNativeEventFilter(&myXEv);
 #endif
+    installEventFilter(m_x11support);
     m_desktopApplications = new DesktopApplications();
 
     //QObject::connect(this, SIGNAL(aboutToQuit()), this, SLOT(deletePanels()) );
@@ -151,7 +154,6 @@ void PanelApplication::showPanel(const QString& panel_id)
     m_panelWindows.append(panelWindow);
     //QObject::connect(this, SIGNAL(aboutToQuit()), panelWindow, SLOT(deleteLater()) );
 }
-
 
 void PanelApplication::setIconThemeName(const QString& iconThemeName)
 {

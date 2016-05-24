@@ -57,8 +57,11 @@ class MyXcbEventFilter : public QAbstractNativeEventFilter
 public:                   
     MyXcbEventFilter() :m_x11support(NULL) {}
 
-    virtual bool nativeEventFilter(const QByteArray &/*eventType*/, void *message, long *) Q_DECL_OVERRIDE
-    {                                                                              
+    virtual bool nativeEventFilter(const QByteArray &eventType, void *message, long *) Q_DECL_OVERRIDE
+    {
+        if(eventType != "xcb_generic_event_t")
+            qDebug() << eventType;
+
         xcb_generic_event_t *ev = static_cast<xcb_generic_event_t *>(message);
         if (m_x11support) m_x11support->onX11Event(ev); 
         return false;                                                              
@@ -90,7 +93,6 @@ public:
 	bool x11EventFilter(XEvent* event);
 
 	void init();
-
 	void setFontName(const QString& fontName);
 	void setIconThemeName(const QString& iconThemeName);
 

@@ -85,7 +85,10 @@ QRectF TrayItem::boundingRect() const
 
 void TrayItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
 {
-	// Background.
+    Q_UNUSED(option)
+    Q_UNUSED(widget)
+
+    // Background.
 	painter->setPen(Qt::NoPen);
 	QPointF center(m_size.width()/2.0, m_size.height()/2.0);
 	QRadialGradient gradient(center, m_size.width()/2.0, center);
@@ -173,6 +176,8 @@ void TrayApplet::layoutChanged()
 
 void TrayApplet::clientMessageReceived(unsigned long window, unsigned long atom, void* data)
 {
+    Q_UNUSED(window)
+
     if(atom == X11Support::atom("_NET_SYSTEM_TRAY_OPCODE"))
     {
         //qDebug()<< "tray";
@@ -207,6 +212,11 @@ void TrayApplet::windowClosed(unsigned long window)
 
 void TrayApplet::windowReconfigured(unsigned long window, int x, int y, int width, int height)
 {
+    Q_UNUSED(x)
+    Q_UNUSED(y)
+    Q_UNUSED(width)
+    Q_UNUSED(height)
+
 	for(int i = 0; i < m_trayItems.size(); i++)
 	{
 		if(m_trayItems[i]->window() == window)

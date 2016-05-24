@@ -81,10 +81,10 @@ static QStringList listIconThemes() {
 
 
 PanelSettings::PanelSettings(QString panel_id, QWidget *parent) :
-    m_panel_id(panel_id),
     QDialog(parent),
     ui(new Ui::PanelSettings)
 {
+    m_panel_id = panel_id;
     ui->setupUi(this);
 
     readSettings();

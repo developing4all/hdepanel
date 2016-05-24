@@ -78,6 +78,9 @@ QRectF PanelWindowGraphicsItem::boundingRect() const
 
 void PanelWindowGraphicsItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
 {
+    Q_UNUSED(option)
+    Q_UNUSED(widget)
+
 	painter->setPen(Qt::NoPen);
 	painter->setBrush(QColor(0, 0, 0, 128));
 	painter->drawRect(boundingRect());
@@ -105,6 +108,7 @@ void PanelWindowGraphicsItem::paint(QPainter* painter, const QStyleOptionGraphic
 
 void PanelWindowGraphicsItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
 {
+    Q_UNUSED(event)
 }
 
 void PanelWindowGraphicsItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
@@ -116,15 +120,16 @@ void PanelWindowGraphicsItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 }
 
 PanelWindow::PanelWindow(QString id)
-    : m_id(id),
-      m_dockMode(false),
-      m_screen(0),
-      m_horizontalAnchor(Center),
-      m_verticalAnchor(Min),
-      m_orientation(Horizontal),
-      m_layoutPolicy(Normal)
 {
-	setStyleSheet("background-color: transparent");
+    m_id = id;
+    m_dockMode = false;
+    m_screen = 0;
+    m_horizontalAnchor = Center;
+    m_verticalAnchor = Min;
+    m_orientation = Horizontal;
+    m_layoutPolicy = Normal;
+
+    setStyleSheet("background-color: transparent");
 	setAttribute(Qt::WA_TranslucentBackground);
 
 	m_scene = new QGraphicsScene();
@@ -255,6 +260,7 @@ bool PanelWindow::init()
 		else
 			i++;
 	}
+    return true;
 }
 
 void PanelWindow::setDockMode(bool dockMode)
@@ -316,9 +322,18 @@ void PanelWindow::updatePosition()
 {
     QRect screenGeometry = QApplication::desktop()->screenGeometry(m_screen);
 
-    int left, right, top, buttom = 0;
-    int leftStartY, leftEndY, rightStartY, rightEndY = 0;
-    int topStartX, topEndX, bottomStartX, bottomEndX= 0;
+    int left = 0;
+    int right = 0;
+    int top = 0;
+    int buttom = 0;
+    int leftStartY = 0;
+    int leftEndY = 0;
+    int rightStartY = 0;
+    int rightEndY = 0;
+    int topStartX = 0;
+    int topEndX = 0;
+    int bottomStartX = 0;
+    int bottomEndX= 0;
 
     //top = screenGeometry.top() + height()-1;
     //topEndX = screenGeometry.x() + width()-1;
@@ -463,13 +478,6 @@ void PanelWindow::updatePosition()
     X11Support::setWindowPropertyCardinalArray(winId(), "_KDE_NET_WM_BLUR_BEHIND_REGION", values);
 }
 
-/*
-const QFont& PanelWindow::font() const
-{
-	return PanelApplication::instance()->panelFont();
-}
-*/
-
 int PanelWindow::textBaseLine()
 {
 	QFontMetrics metrics(font());
@@ -567,37 +575,27 @@ void PanelWindow::showPanelContextMenu(const QPoint& point)
     /*
      * -= Panel =-
      * Configure panel
-     * Manage Widgets
      * Add Panel
      * Remove Panel
      */
-    /*
-	menu.addAction(QIcon::fromTheme("preferences-desktop"), "Configure...", PanelApplication::instance(), SLOT(showConfigurationDialog()));
-	menu.addAction(QIcon::fromTheme("application-exit"), "Quit panel", QApplication::instance(), SLOT(quit()));
-    */
-
     menu.addTitle("Panel");
     menu.addAction(QIcon::fromTheme("preferences-desktop"), "Configure Panel", this, SLOT(showConfigurationDialog()));
 
     menu.addAction(QIcon::fromTheme("list-add"), "Add Panel", QApplication::instance(), SLOT(addPanel()));
     menu.addAction(QIcon::fromTheme("list-remove"), "Remove Panel", this, SLOT(removePanel()));
 
-    //menu.addTitle("HDE Panel");
-    //menu.addAction(QIcon::fromTheme("application-exit"), "Quit HDE Panel", QApplication::instance(), SLOT(quit()));
     menu.exec(pos() + point);
 }
 
 
 void PanelWindow::showConfigurationDialog()
 {
-    //qDebug() << "configure";
     PanelSettings *panelSettings = new PanelSettings(m_id);
     panelSettings->setPanelWindow(this);
     if(panelSettings->exec())
     {
 
     }
-    //qDebug() << "Finished settings";
     delete panelSettings;
 }
 

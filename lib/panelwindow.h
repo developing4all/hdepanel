@@ -41,6 +41,7 @@ class QGraphicsScene;
 class QGraphicsView;
 class Applet;
 class PanelWindow;
+class QDir;
 
 class PanelWindowGraphicsItem: public QGraphicsItem
 {
@@ -158,6 +159,7 @@ public slots:
 
 private:
     void removeApplets();
+    void loadApplet(QString applet_name, QDir &plugDir);
 
 	bool m_dockMode;
 	int m_screen;

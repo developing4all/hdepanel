@@ -34,6 +34,12 @@
 #include <QPainter>
 #include <QGraphicsSceneContextMenuEvent>
 
+/*
+#include <qxt/QxtCore/qxtglobal.h>
+#include <qxt/QxtGui/qxtglobalshortcut.h>
+*/
+#include <qxtglobal.h>
+#include <qxtglobalshortcut.h>
 
 KeyboardApplet::KeyboardApplet(PanelWindow *panelWindow)
     : Applet(panelWindow)
@@ -47,6 +53,15 @@ KeyboardApplet::KeyboardApplet(PanelWindow *panelWindow)
     QSettings setting(this);
     m_supported_layouts = setting.value("layouts", QStringList() << "us").toStringList();
     m_current_layout = m_supported_layouts.first();
+
+
+    forwardShortcut = new QxtGlobalShortcut(this);
+    forwardShortcut->setShortcut(QKeySequence(setting.value("layoutsForward", "Meta+Space").toString()));
+    connect(forwardShortcut, SIGNAL(activated()), this, SLOT(changeForward()));
+
+    backwardShortcut = new QxtGlobalShortcut(this);
+    backwardShortcut->setShortcut(QKeySequence(setting.value("layoutsBackward", "Ctrl+Meta+Space").toString()));
+    connect(backwardShortcut, SIGNAL(activated()), this, SLOT(changeBackword()));
 }
 
 KeyboardApplet::~KeyboardApplet()
@@ -124,6 +139,8 @@ void KeyboardApplet::showConfigurationDialog()
         QSettings setting(this);
         m_supported_layouts = setting.value("layouts", QStringList() << "us").toStringList();
         m_current_layout = m_supported_layouts.first();
+        forwardShortcut->setShortcut(QKeySequence(setting.value("layoutsForward", "Meta+Space").toString()));
+        backwardShortcut->setShortcut(QKeySequence(setting.value("layoutsBackward", "Ctrl+Meta+Space").toString()));
     }
 }
 
@@ -192,7 +209,6 @@ void KeyboardApplet::changeBackword()
 
 void KeyboardApplet::setCurrentLayout(QString layout)
 {
-    //qDebug() << "setting current layout to: " << layout;
     Keyboard::setLayout(layout);
     drawCurrentLayout(layout);
 }

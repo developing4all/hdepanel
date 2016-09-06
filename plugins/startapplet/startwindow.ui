@@ -71,7 +71,7 @@
       </widget>
      </item>
      <item>
-      <widget class="QListWidget" name="itemsList">
+      <widget class="HItemList" name="itemsList">
        <property name="focusPolicy">
         <enum>Qt::TabFocus</enum>
        </property>
@@ -80,6 +80,18 @@
        </property>
        <property name="sizeAdjustPolicy">
         <enum>QAbstractScrollArea::AdjustToContents</enum>
+       </property>
+       <property name="dragEnabled">
+        <bool>true</bool>
+       </property>
+       <property name="dragDropOverwriteMode">
+        <bool>true</bool>
+       </property>
+       <property name="dragDropMode">
+        <enum>QAbstractItemView::DragOnly</enum>
+       </property>
+       <property name="defaultDropAction">
+        <enum>Qt::CopyAction</enum>
        </property>
       </widget>
      </item>
@@ -162,6 +174,13 @@
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>HItemList</class>
+   <extends>QListWidget</extends>
+   <header>hitemlist.h</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

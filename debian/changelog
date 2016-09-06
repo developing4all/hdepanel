@@ -1,3 +1,11 @@
+hdepanel (1.0.4-1) UNRELEASED; urgency=medium
+
+  * Enable dragging from startapplet into desktop.
+  * Searching startapplet highlights "all" menu group.
+  * Added shorcuts to change keyboard layout (Super+Space) and (Ctrl+Super+Space)
+
+ -- Haydar Alkaduhimi <haydar@hosting4all.com>  Wed, 31 Aug 2016 16:30:16 +0200
+
 hdepanel (1.0.3-1) UNRELEASED; urgency=medium
 
   * Added KeyboardApplet in plugins.

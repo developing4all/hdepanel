@@ -198,40 +198,46 @@ void PanelWindow::setApplets(QStringList applets)
 
     foreach(QString applet_name, applets)
     {
-        QString applet_path = plugDir.absolutePath() + "/lib" + applet_name.toLower() + ".so";
-        //qDebug() << "applet_path: " << applet_path;
-        if(QLibrary::isLibrary(applet_path))
+        loadApplet(applet_name, plugDir);
+    }
+}
+
+void PanelWindow::loadApplet(QString applet_name, QDir &plugDir)
+{
+    QString applet_path = plugDir.absolutePath() + "/lib" + applet_name.toLower() + ".so";
+    //qDebug() << "applet_path: " << applet_path;
+    if(QLibrary::isLibrary(applet_path))
+    {
+        QPluginLoader loader(applet_path, this);
+        AppletPlugin *appletplugin = qobject_cast<AppletPlugin *>(loader.instance());
+        if (appletplugin)
         {
-            QPluginLoader loader(applet_path, this);
-            AppletPlugin *appletplugin = qobject_cast<AppletPlugin *>(loader.instance());
-            if (appletplugin)
+
+            Applet *applet = appletplugin->createApplet(this);
+            if(applet)
             {
 
-                Applet *applet = appletplugin->createApplet(this);
-                if(applet)
-                {
-
-                    m_applets.append(applet);
-                    //qDebug() << applet->objectName();
-
-                }
-                else
-                {
-                    qDebug() << "applet '" << applet_name << "' not loaded";
-                }
+                m_applets.append(applet);
+                //qDebug() << applet->objectName();
 
             }
             else
             {
-                //qDebug() << "";
-                //qDebug() << "BAD";
-                qDebug() << loader.errorString();
-                //qDebug() << "BAD";
-                //qDebug() << "";
+                qDebug() << "applet '" << applet_name << "' not loaded";
             }
-            //loader.unload();
+
         }
+        else
+        {
+            //qDebug() << "";
+            //qDebug() << "BAD";
+            qDebug() << loader.errorString();
+            //qDebug() << "BAD";
+            //qDebug() << "";
+        }
+        //loader.unload();
     }
+
 }
 
 void PanelWindow::removeApplets()

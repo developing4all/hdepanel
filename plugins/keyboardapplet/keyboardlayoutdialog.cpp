@@ -56,6 +56,9 @@ void KeyboardLayoutDialog::load()
 
     ui->allLayouts->addItems(allLayouts);
     ui->currentLayouts->addItems(layouts);
+
+    ui->nextSequence->setKeySequence(QKeySequence(setting.value("layoutsForward", "Meta+Space").toString()));
+    ui->previousSequence->setKeySequence(QKeySequence(setting.value("layoutsBackward", "Ctrl+Meta+Space").toString()));
 }
 
 
@@ -90,4 +93,6 @@ void KeyboardLayoutDialog::on_buttonBox_accepted()
 
     QSettings setting(this);
     setting.setValue("layouts", stringList);
+    setting.setValue("layoutsForward", ui->nextSequence->keySequence().toString());
+    setting.setValue("layoutsBackward", ui->previousSequence->keySequence().toString());
 }

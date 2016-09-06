@@ -55,19 +55,6 @@ QSize StartApplet::desiredSize()
 bool StartApplet::init()
 {
     setInteractive(true);
-/*
-    connect(DesktopApplications::instance(), SIGNAL(applicationUpdated(DesktopApplication)), this, SLOT(applicationUpdated(DesktopApplication)));
-    connect(DesktopApplications::instance(), SIGNAL(applicationRemoved(QString)), this, SLOT(applicationRemoved(QString)));
-
-    QList<DesktopApplication> apps = DesktopApplications::instance()->applications();
-    foreach(const DesktopApplication& app, apps)
-    {
-        applicationUpdated(app);
-    }
-
-    m_menu->addSeparator();
-    m_menu->addAction(QIcon::fromTheme("application-exit"), "Quit", qApp, SLOT(quit()));
-*/
     return m_start->init();
 }
 
@@ -77,16 +64,6 @@ void StartApplet::clicked()
     int x = localToScreen(QPoint(0, m_size.height())).x();
     int y = localToScreen(QPoint(0, m_size.height())).y();
 
-    /*
-    qDebug() << "m_panelWindow->pos(): " << m_panelWindow->pos();
-    qDebug() << "m_position: " << m_position;
-    qDebug() << "m_size: " << m_size;
-//    m_start->move(localToScreen(QPoint(0, m_size.height() - m_start->height())));
-
-    qDebug() << "x: " << x;
-    qDebug() << "y: " << y;
-    */
-
     if(y >= QApplication::desktop()->screenGeometry(m_panelWindow->screen()).height() )
     {
         y = y - m_start->height() - m_size.height();
@@ -95,7 +72,6 @@ void StartApplet::clicked()
 
     m_start->show();
     m_start->setFocused();
-//    m_start->grabKeyboard();
 }
 
 void StartApplet::layoutChanged()

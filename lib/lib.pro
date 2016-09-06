@@ -10,7 +10,7 @@ INCLUDEPATH += .
 
 QT += widgets x11extras
 
-VERSION = 1.0.3
+VERSION = 1.0.4
 
 # Input
 HEADERS += animationutils.h \
@@ -45,3 +45,4 @@ SOURCES += applet.cpp \
     appletslistdialog.cpp
 
 LIBS += -lX11 -lGL -lXdamage -lXcomposite
+#LIBS += -lQxtCore -lQxtGui

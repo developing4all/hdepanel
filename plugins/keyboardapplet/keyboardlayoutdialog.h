@@ -31,6 +31,8 @@ namespace Ui {
 class KeyboardLayoutDialog;
 }
 
+class QKeySequence;
+
 /**
  * @brief The Keyboard Layout Dialog class
  */
@@ -41,6 +43,8 @@ class KeyboardLayoutDialog : public QDialog
 public:
     explicit KeyboardLayoutDialog(QWidget *parent = 0);
     ~KeyboardLayoutDialog();
+//    QKeySequence forwardKey;
+//    QKeySequence backwardKey;
 
 private slots:
     void on_addButton_clicked();

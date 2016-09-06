@@ -55,6 +55,7 @@ StartWindow::StartWindow(QWidget *parent) :
     ui->setupUi(this);
     setWindowFlags(Qt::Widget | Qt::FramelessWindowHint | Qt::X11BypassWindowManagerHint);
     setFocusPolicy(Qt::StrongFocus);
+    setMouseTracking(true);
 
     m_favorites  = new QMenu();
 
@@ -456,6 +457,7 @@ QMenu *StartWindow::getSubMenu(const QString &category)
 
 void StartWindow::on_searchEdit_textChanged(const QString &arg1)
 {
+    ui->menuList->setCurrentRow(2);
     ui->itemsList->clear();
     foreach (QAction *action, m_actions) {
         if(action->text().contains(arg1, Qt::CaseInsensitive) || action->data().toString().contains(arg1, Qt::CaseInsensitive))

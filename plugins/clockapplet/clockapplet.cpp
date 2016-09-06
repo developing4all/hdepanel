@@ -110,3 +110,7 @@ void ClockApplet::scheduleUpdate()
 	m_timer->start();
 }
 
+void ClockApplet::clicked()
+{
+    // Show calender widget
+}

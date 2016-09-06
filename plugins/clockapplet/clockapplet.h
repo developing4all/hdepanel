@@ -49,6 +49,7 @@ public:
 
 public slots:
     void fontChanged();
+    void clicked();
 
 protected:
 	void layoutChanged();

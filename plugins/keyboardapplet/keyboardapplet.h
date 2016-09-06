@@ -33,6 +33,7 @@ class TestApplet;
 class PanelWindow;
 class KeyboardApplet;
 class Keyboard;
+class QxtGlobalShortcut;
 
 /**
  * The plugin class for the KeyboardApplet
@@ -123,6 +124,9 @@ private:
 
     QString m_current_layout;
     QStringList m_supported_layouts;
+
+    QxtGlobalShortcut *backwardShortcut;
+    QxtGlobalShortcut *forwardShortcut;
 
     TextGraphicsItem* m_textItem;
 

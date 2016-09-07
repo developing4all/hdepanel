@@ -48,6 +48,8 @@
 #include "animationutils.h"
 #include "dpisupport.h"
 
+#include "../../lib/hpopupmenu.h"
+
 DockItem::DockItem(DockApplet* dockApplet)
 {
     m_dragging = false;
@@ -297,11 +299,19 @@ void DockItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 		}
 
 		if (event->button() == Qt::RightButton && !m_dragging) {
-			// TODO: it can be added "Add to Dock" ... sort of items
-            QMenu menu;
-			menu.addAction(QIcon::fromTheme("window-close"), "Close", this, SLOT(close()));
-			menu.exec(event->screenPos());
-		}
+            HPopupMenu menu;
+
+            menu.addTitle("Dock Applet");
+            menu.addAction(QIcon::fromTheme("window-close"), "Close", this, SLOT(close()));
+
+            menu.addTitle("Panel");
+            menu.addAction(QIcon::fromTheme("preferences-desktop"), "Configure Panel", m_dockApplet->panelWindow(), SLOT(showConfigurationDialog()));
+
+            menu.addAction(QIcon::fromTheme("list-add"), "Add Panel", QApplication::instance(), SLOT(addPanel()));
+            menu.addAction(QIcon::fromTheme("list-remove"), "Remove Panel", m_dockApplet->panelWindow(), SLOT(removePanel()));
+
+            menu.exec(event->screenPos());
+        }
 	}
 }
 

@@ -1,3 +1,9 @@
+hdepanel (1.0.5-1) UNRELEASED; urgency=medium
+
+  * Added general menu to dockapplet.
+
+ -- Haydar Alkaduhimi <haydar@hosting4all.com>  Tue, 07 Sep 08:52:52 +0200
+
 hdepanel (1.0.4-1) UNRELEASED; urgency=medium
 
   * Enable dragging from startapplet into desktop.

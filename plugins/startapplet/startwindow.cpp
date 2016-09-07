@@ -94,7 +94,7 @@ void StartWindow::readFavorites()
     foreach (QString appfile, favorites) {
         if(m_actions[appfile] != 0)
         {
-            qDebug() << m_actions[appfile]->text();
+            //qDebug() << m_actions[appfile]->text();
             m_favorites->addAction(m_actions[appfile]);
         }
     }
@@ -164,7 +164,7 @@ void StartWindow::addToFavorite()
     QListWidgetItem *item = ui->itemsList->currentItem();
     QSettings setting(this);
     QStringList favorites = setting.value("favorites", QStringList()).toStringList();
-    qDebug() << "favorites: " << favorites;
+    //qDebug() << "favorites: " << favorites;
     QString itemsfile = item->data(Qt::UserRole).toString();
     if(!favorites.contains(itemsfile))
     {
@@ -173,7 +173,7 @@ void StartWindow::addToFavorite()
         readFavorites();
     }
 
-    qDebug() << itemsfile;
+    //qDebug() << itemsfile;
 }
 
 void StartWindow::removeFromFavorite()
@@ -181,14 +181,14 @@ void StartWindow::removeFromFavorite()
     QListWidgetItem *item = ui->itemsList->currentItem();
     QSettings setting(this);
     QStringList favorites = setting.value("favorites", QStringList()).toStringList();
-    qDebug() << "favorites: " << favorites;
+    //qDebug() << "favorites: " << favorites;
     QString itemsfile = item->data(Qt::UserRole).toString();
     if(favorites.contains(itemsfile))
     {
         favorites.removeAll(itemsfile);
         setting.setValue("favorites", favorites);
         readFavorites();
-        qDebug() << "Removed: " << itemsfile;
+        //qDebug() << "Removed: " << itemsfile;
         on_menuList_itemActivated(ui->menuList->currentItem());
     }
 

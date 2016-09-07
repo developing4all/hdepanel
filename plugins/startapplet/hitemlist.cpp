@@ -53,6 +53,7 @@ void HItemList::mouseMoveEvent(QMouseEvent *event)
     drag->setHotSpot(QPoint(drag->pixmap().width()/2, drag->pixmap().height()));
 
     Qt::DropAction dropAction = drag->exec(Qt::CopyAction | Qt::MoveAction, Qt::CopyAction);
+    Q_UNUSED(dropAction)
 
     QListWidget::mouseMoveEvent(event);
 }

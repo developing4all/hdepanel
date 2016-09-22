@@ -190,7 +190,7 @@ void Applet::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 			// For some weird reason, if clicked() function is called directly, and menu is opened,
 			// this item will receive hover enter event on menu close. But it shouldn't (mouse is outside).
 			// Probably somehow related to taking a mouse grab when one is already active.
-			QTimer::singleShot(1, this, SLOT(clicked()));
+            QTimer::singleShot(1, this, SLOT(clicked()));
 		}
 		if(event->button() == Qt::RightButton)
 		{

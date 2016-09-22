@@ -68,6 +68,16 @@ void StartApplet::clicked()
     {
         y = y - m_start->height() - m_size.height();
     }
+/*
+    qDebug() << "Current desktop width: " << QApplication::desktop()->screenGeometry(m_panelWindow->screen()).width();
+    qDebug() << "Start width: " << m_start->width();
+    qDebug() << "m_size.width(): " << m_size.width();
+    qDebug() << "X: " << x;
+*/
+    if((x - m_start->width() + m_size.width()) >= QApplication::desktop()->screenGeometry(m_panelWindow->screen()).width())
+    {
+        x = localToScreen(QPoint(0, m_size.height())).x() - m_start->width() + m_size.width();
+    }
     m_start->move(x,y);
 
     m_start->show();

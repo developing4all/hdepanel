@@ -32,6 +32,7 @@
 
 class QTimer;
 class TextGraphicsItem;
+class Calendar;
 
 class ClockApplet: public Applet
 {
@@ -53,6 +54,7 @@ public slots:
 
 protected:
 	void layoutChanged();
+    bool isHighlighted(){ return isUnderMouse();}
 
 private slots:
 	void updateContent();
@@ -63,6 +65,7 @@ private:
 	QTimer* m_timer;
 	QString m_text;
 	TextGraphicsItem* m_textItem;
+    Calendar *m_calendar;
 };
 
 

@@ -184,7 +184,7 @@ void PanelWindow::resetApplets()
 }
 void PanelWindow::setApplets(QStringList applets)
 {
-    qDebug() << applets;
+    //qDebug() << applets;
 
     QDir plugDir = QDir(qApp->applicationDirPath() + "/plugins");
 
@@ -344,17 +344,7 @@ void PanelWindow::updatePosition()
     //top = screenGeometry.top() + height()-1;
     //topEndX = screenGeometry.x() + width()-1;
 
-    //qDebug() << "screen: " << m_screen << " geometry: " << screenGeometry;
-
-    X11Support::setStrut(winId(), // winid
-                         left, right, top, buttom, // int left, int right, int top,  int bottom,
-                         leftStartY, leftEndY,    // int leftStartY,   int leftEndY,
-                         rightStartY, rightEndY,    // rightStartY,  int rightEndY,
-                         topStartX, topEndX, // topStartX,    int topEndX,
-                         bottomStartX, bottomEndX // bottomStartX, int bottomEndX
-                     );
-
-    if(!m_dockMode)
+     if(!m_dockMode)
         return;
 
 
@@ -363,7 +353,7 @@ void PanelWindow::updatePosition()
     switch(m_horizontalAnchor)
 	{
 	case Min:
-		x = screenGeometry.left();
+        x = screenGeometry.left();
         break;
 	case Center:
 		x = (screenGeometry.left() + screenGeometry.right() + 1 - width())/2;
@@ -372,16 +362,15 @@ void PanelWindow::updatePosition()
 		x = screenGeometry.right() - width() + 1;
         break;
 	default:
-		Q_ASSERT(false);
+        Q_ASSERT(false);
 		break;
 	}
 
 	int y;
-
 	switch(m_verticalAnchor)
 	{
 	case Min:
-		y = screenGeometry.top();
+        y = screenGeometry.top();
 		break;
 	case Center:
 		y = (screenGeometry.top() + screenGeometry.bottom() + 1 - height())/2;
@@ -395,8 +384,20 @@ void PanelWindow::updatePosition()
 	}
 
 	move(x, y);
+
+    //qDebug() << "screen: " << m_screen << " geometry: " << screenGeometry;
+
+    X11Support::setStrut(winId(), // winid
+                         left, right, top, buttom, // int left, int right, int top,  int bottom,
+                         leftStartY, leftEndY,    // int leftStartY,   int leftEndY,
+                         rightStartY, rightEndY,    // rightStartY,  int rightEndY,
+                         topStartX, topEndX, // topStartX,    int topEndX,
+                         bottomStartX, bottomEndX // bottomStartX, int bottomEndX
+                     );
+
+
     //setScreen(m_screen);
-    qDebug() << "screen: " << screen() << " m_screen: " << m_screen;
+    //qDebug() << "screen: " << screen() << " m_screen: " << m_screen;
 
     // @ToDo: More tests on multiple screens, it works with tow horizontal aligned screens has the same geometries.
 	// Update reserved space.

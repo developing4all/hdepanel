@@ -44,5 +44,15 @@ SOURCES += applet.cpp \
     hpopupmenu.cpp \
     appletslistdialog.cpp
 
+HEADERS += \
+    3rdparty/qxt/qxtglobal.h \
+    3rdparty/qxt/qxtglobalshortcut.h \
+    3rdparty/qxt/qxtglobalshortcut_p.h \
+
+SOURCES += \
+    3rdparty/qxt/qxtglobalshortcut.cpp \
+    3rdparty/qxt/qxtglobalshortcut_x11.cpp \
+
+
 LIBS += -lX11 -lGL -lXdamage -lXcomposite
 #LIBS += -lQxtCore -lQxtGui

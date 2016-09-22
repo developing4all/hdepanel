@@ -38,6 +38,11 @@
 #include "panelwindow.h"
 #include <QDebug>
 
+#include <QApplication>
+#include <QDesktopWidget>
+
+#include "calendar.h"
+
 ClockApplet::ClockApplet(PanelWindow* panelWindow)
 	: Applet(panelWindow)
 {
@@ -46,6 +51,8 @@ ClockApplet::ClockApplet(PanelWindow* panelWindow)
     {
         setPanelWindow(panelWindow);
     }
+
+    m_calendar = new Calendar;
 }
 
 void ClockApplet::setPanelWindow(PanelWindow *panelWindow)
@@ -69,20 +76,22 @@ void ClockApplet::close()
 {
     delete m_textItem;
     delete m_timer;
+    if(m_calendar != NULL)
+    {
+        delete m_calendar;
+    }
 }
 
 void ClockApplet::fontChanged()
 {
     m_textItem->setFont(m_panelWindow->font());
-    qDebug() << "FONT CHANGED";
 }
 
 bool ClockApplet::init()
 {
-	updateContent();
-
-	setInteractive(true);
-	return true;
+    setInteractive(true);
+    updateContent();
+    return true;
 }
 
 void ClockApplet::layoutChanged()
@@ -113,4 +122,22 @@ void ClockApplet::scheduleUpdate()
 void ClockApplet::clicked()
 {
     // Show calender widget
+    //int x = localToScreen(QPoint(0, m_size.height())).x();
+    int x = localToScreen(QPoint(0, m_size.height())).x() - m_calendar->width() + m_size.width();
+    int y = localToScreen(QPoint(0, m_size.height())).y();
+
+    //qDebug() << "orig x: " << x;
+    if(y >= QApplication::desktop()->screenGeometry(m_panelWindow->screen()).height() )
+    {
+        y = y - m_calendar->height() - m_size.height();
+    }
+
+    if((x) < QApplication::desktop()->screenGeometry(m_panelWindow->screen()).x())
+    {
+        //qDebug() << "SIZE Error";
+        x = QApplication::desktop()->screenGeometry(m_panelWindow->screen()).x() + m_position.x() ;
+    }
+    m_calendar->move(x,y);
+    m_calendar->show();
+    m_calendar->setFocused();
 }

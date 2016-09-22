@@ -189,9 +189,14 @@ public slots:
 
 protected:
 	void layoutChanged();
+    void mouseReleaseEvent(QGraphicsSceneMouseEvent* event);
 
 private slots:
 	void windowPropertyChanged(unsigned long window, unsigned long atom);
+    /**
+     * @brief show keyboard layout configuration dialog
+     */
+    void showConfigurationDialog();
 
 private:
 	void updateClientList();

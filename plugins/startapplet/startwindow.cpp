@@ -53,7 +53,7 @@ StartWindow::StartWindow(QWidget *parent) :
     ui(new Ui::StartWindow)
 {
     ui->setupUi(this);
-    setWindowFlags(Qt::Widget | Qt::FramelessWindowHint | Qt::X11BypassWindowManagerHint);
+    setWindowFlags(Qt::Widget | Qt::FramelessWindowHint);
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
 

@@ -1,6 +1,7 @@
 hdepanel (1.0.5-1) UNRELEASED; urgency=medium
 
   * Added general menu to dockapplet.
+  * Added global shortcut to keyboard layout
   * Added Calendar widget to ClockApplet
 
  -- Haydar Alkaduhimi <haydar@hosting4all.com>  Tue, 07 Sep 08:52:52 +0200

@@ -1,10 +1,10 @@
-hdepanel (1.0.5-1) UNRELEASED; urgency=medium
+hdepanel (1.0.5-1.1) UNRELEASED; urgency=medium
 
   * Added general menu to dockapplet.
   * Added global shortcut to keyboard layout
   * Added Calendar widget to ClockApplet
 
- -- Haydar Alkaduhimi <haydar@hosting4all.com>  Tue, 07 Sep 08:52:52 +0200
+ -- Haydar Alkaduhimi <haydar@Office0.Hosting4All.com>  Thu, 22 Sep 2016 09:24:21 +0200
 
 hdepanel (1.0.4-1) UNRELEASED; urgency=medium
 

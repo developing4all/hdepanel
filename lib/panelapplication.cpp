@@ -38,6 +38,10 @@ PanelApplication::PanelApplication(int& argc, char** argv)
 	m_instance = this;
 
 	m_defaultIconThemeName = QIcon::themeName();
+    if(m_defaultIconThemeName.isEmpty())
+    {
+        m_defaultIconThemeName = "oxygen";
+    }
 
     setOrganizationName("developing4all");
     setApplicationName("hde/panel");
@@ -89,17 +93,20 @@ bool PanelApplication::x11EventFilter(XEvent* event)
 
 void PanelApplication::addPanel(int standard)
 {
-    QStringList panels = Settings::value("General", "panels", QStringList() ).toStringList();
+    QStringList panels = Settings::value( "panels", QStringList() ).toStringList();
     QString panel_id = "panel_" + QString::number(QDateTime::currentMSecsSinceEpoch());
     panels << panel_id;
 
-    Settings::setValue("General", "panels", panels );
+    Settings::setValue( "panels", panels );
 
     if(standard > 0)
     {
         // Add Standard items to the panel
         QStringList applets;
-        applets << "StartApplet" << "DockApplet" << "TrayApplet" << "ClockApplet";
+        applets << "StartApplet_" + QString::number(QDateTime::currentMSecsSinceEpoch())
+                << "DockApplet_"  + QString::number(QDateTime::currentMSecsSinceEpoch())
+                << "TrayApplet_" + QString::number(QDateTime::currentMSecsSinceEpoch())
+                << "ClockApplet_" + QString::number(QDateTime::currentMSecsSinceEpoch());
         Settings::setValue(panel_id, "applets", applets );
     }
     showPanel(panel_id);
@@ -123,9 +130,9 @@ void PanelApplication::init()
     installNativeEventFilter(&myXEv);
 #endif
     // This should be changed in any panel
-    setIconThemeName(Settings::value("General", "iconThemeName", "default").toString());
+    setIconThemeName(Settings::value("iconThemeName", QVariant("default")).toString());
 
-    QStringList panels = Settings::value("General", "panels", QStringList() ).toStringList();
+    QStringList panels = Settings::value("panels", QStringList() ).toStringList();
 
     if(panels.empty())
     {

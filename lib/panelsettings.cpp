@@ -105,7 +105,19 @@ void PanelSettings::setPanelWindow(PanelWindow *panel)
     ui->font->setCurrentText(m_panel->font().family());
     ui->fontSize->setValue(m_panel->font().pointSize());
 
-    ui->appletsList->addItems(Settings::value(m_panel_id, "applets", QStringList()).toStringList());
+    // applets
+    QStringList applets = m_panel->getApplets();
+    foreach(QString applet_id, applets)
+    {
+        int index = applet_id.lastIndexOf("_");
+        QString applet_name = applet_id.left(index);
+        QListWidgetItem *item = new QListWidgetItem(applet_name);
+        item->setData(Qt::UserRole, applet_id);
+        ui->appletsList->addItem(item);
+    }
+
+    //ui->appletsList->addItems(applets);
+    //ui->appletsList->addItems(Settings::value(m_panel_id, "applets", QStringList()).toStringList());
 }
 
 void PanelSettings::on_resetButton_clicked()
@@ -201,7 +213,7 @@ void PanelSettings::applyAppletList()
     QStringList applets;
     for (int i = 0; i < ui->appletsList->count() ; ++i)
     {
-        applets << ui->appletsList->item(i)->text();
+        applets << ui->appletsList->item(i)->data(Qt::UserRole).toString();
     }
 
     Settings::setValue(m_panel_id, "applets", applets );
@@ -214,10 +226,14 @@ void PanelSettings::on_appletAdd_clicked()
 
     if(dialog.exec())
     {
-        QString applet = dialog.currentApplet();
-        if(!applet.isEmpty())
+        QString applet_id = dialog.currentApplet();
+        if(!applet_id.isEmpty())
         {
-            ui->appletsList->addItem(applet);
+            int index = applet_id.lastIndexOf("_");
+            QString applet_name = applet_id.left(index);
+            QListWidgetItem *item = new QListWidgetItem(applet_name);
+            item->setData(Qt::UserRole, applet_id);
+            ui->appletsList->addItem(item);
             applyAppletList();
         }
     }

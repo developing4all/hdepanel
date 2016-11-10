@@ -164,25 +164,25 @@ void PanelWindow::readSettings()
 
     setVerticalAnchor(m_verticalAnchor);
 
-    QStringList applets = Settings::value(m_id, "applets", QStringList() ).toStringList();
+    m_appletnames = Settings::value(m_id, "applets", QStringList() ).toStringList();
 
-    setApplets(applets);
+    setApplets();
 }
 
 void PanelWindow::resetApplets()
 {
     removeApplets();
 
-    QStringList applets = Settings::value(m_id, "applets", QStringList() ).toStringList();
+    m_appletnames = Settings::value(m_id, "applets", QStringList() ).toStringList();
 
-    setApplets(applets);
+    setApplets();
     init();
     //repaint();
     updateLayout();
     updatePosition();
 
 }
-void PanelWindow::setApplets(QStringList applets)
+void PanelWindow::setApplets()
 {
     //qDebug() << applets;
 
@@ -196,14 +196,17 @@ void PanelWindow::setApplets(QStringList applets)
 
     //qDebug() << "Plugins directoy: " << plugDir.absolutePath();
 
-    foreach(QString applet_name, applets)
+    foreach(QString applet_id, m_appletnames)
     {
-        loadApplet(applet_name, plugDir);
+        loadApplet(applet_id, plugDir);
     }
 }
 
-void PanelWindow::loadApplet(QString applet_name, QDir &plugDir)
+void PanelWindow::loadApplet(QString applet_id, QDir &plugDir)
 {
+    int index = applet_id.lastIndexOf("_");
+    QString applet_name = applet_id.left(index);
+
     QString applet_path = plugDir.absolutePath() + "/lib" + applet_name.toLower() + ".so";
     //qDebug() << "applet_path: " << applet_path;
     if(QLibrary::isLibrary(applet_path))
@@ -216,7 +219,7 @@ void PanelWindow::loadApplet(QString applet_name, QDir &plugDir)
             Applet *applet = appletplugin->createApplet(this);
             if(applet)
             {
-
+                applet->setId(applet_id);
                 m_applets.append(applet);
                 //qDebug() << applet->objectName();
 

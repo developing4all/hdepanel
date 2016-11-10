@@ -64,6 +64,7 @@ public:
 
     virtual bool init();
 
+    void setId(QString id){ m_id = id;}
 	void setPosition(const QPoint& position);
 	void setSize(const QSize& size);
 
@@ -102,6 +103,7 @@ protected:
 	void mouseReleaseEvent(QGraphicsSceneMouseEvent* event);
 
 	PanelWindow* m_panelWindow;
+    QString m_id;
 	QPoint m_position;
 	QSize m_size;
 	bool m_interactive;

@@ -10,7 +10,7 @@ INCLUDEPATH += .
 
 QT += widgets x11extras
 
-VERSION = 1.0.5
+VERSION = 1.0.6
 
 # Input
 HEADERS += animationutils.h \

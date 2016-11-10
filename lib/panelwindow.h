@@ -150,19 +150,21 @@ public:
     void setFontName(const QString& fontName);
 
     void readSettings();
+    QStringList getApplets() { return m_appletnames;}
 
 public slots:
     void showConfigurationDialog();
     void removePanel();
     void resetApplets();
-    void setApplets(QStringList applets);
+    void setApplets();
 
 private:
     void removeApplets();
-    void loadApplet(QString applet_name, QDir &plugDir);
+    void loadApplet(QString applet_id, QDir &plugDir);
 
 	bool m_dockMode;
 	int m_screen;
+    QStringList m_appletnames;
     QString m_id;
 	Anchor m_horizontalAnchor;
 	Anchor m_verticalAnchor;

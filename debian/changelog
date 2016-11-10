@@ -1,3 +1,9 @@
+hdepanel (1.0.6-1.1) UNRELEASED; urgency=medium
+
+  * Added an id for every applet to be able to configure every indevidual applet.
+
+ -- Haydar Alkaduhimi <haydar@hosting4all.com>  Thu, 10 Nov 2016 09:26:08 +0200
+
 hdepanel (1.0.5-1.1) UNRELEASED; urgency=medium
 
   * Added general menu to dockapplet.

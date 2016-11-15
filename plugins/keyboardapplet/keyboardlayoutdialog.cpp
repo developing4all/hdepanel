@@ -61,7 +61,6 @@ void KeyboardLayoutDialog::load()
     ui->previousSequence->setKeySequence(QKeySequence(setting.value("layoutsBackward", "Ctrl+Meta+Space").toString()));
 }
 
-
 void KeyboardLayoutDialog::on_addButton_clicked()
 {
     if (ui->allLayouts->currentItem()) {

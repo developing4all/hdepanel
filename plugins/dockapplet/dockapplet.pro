@@ -10,12 +10,17 @@ INCLUDEPATH    += ../../lib/
 
 HEADERS += \
     dockapplet.h \
-    ../../lib/applet.h
+    ../../lib/applet.h \
+    dockconfigurationdialog.h
 
 
 SOURCES += \
-    dockapplet.cpp
+    dockapplet.cpp \
+    dockconfigurationdialog.cpp
 
 
 
 LIBS += -L../../ -lhdepanel
+
+FORMS += \
+    dockconfigurationdialog.ui

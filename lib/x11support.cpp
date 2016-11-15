@@ -297,6 +297,33 @@ QString X11Support::getWindowName(unsigned long window)
 	return result;
 }
 
+bool X11Support::getWindowMinimizedState(unsigned long window)
+{
+    Atom wmState = X11Support::atom("_NET_WM_STATE");
+    Atom wmHidden = X11Support::atom("_NET_WM_STATE_HIDDEN");
+    Atom *atoms;
+    atoms=NULL;
+    Atom actual_type;
+    int actual_format;
+    unsigned long i, num_items, bytes_after;
+
+    XGetWindowProperty(QX11Info::display(), window, wmState, 0, 1024, False, XA_ATOM, &actual_type, &actual_format, &num_items, &bytes_after, (unsigned char**)&atoms);
+    //usleep(1000000);
+    //qDebug() << "itemmmmmm=" <<nItem;
+    for(i=0; i<num_items; ++i)
+    {
+        if(atoms[i] == wmHidden)
+        {
+            XFree(atoms);
+            atoms=NULL;
+            return true;
+        }
+    }
+    XFree(atoms);
+    atoms=NULL;
+    return false;
+}
+
 QIcon X11Support::getWindowIcon(unsigned long window)
 {
 	int numItems;
@@ -340,6 +367,11 @@ bool X11Support::getWindowUrgency(unsigned long window)
 void X11Support::registerForWindowPropertyChanges(unsigned long window)
 {
 	XSelectInput(QX11Info::display(), window, PropertyChangeMask);
+}
+
+void X11Support::registerForWindowStructureNotify(unsigned long window)
+{
+    XSelectInput(QX11Info::display(), window, StructureNotifyMask);
 }
 
 void X11Support::registerForTrayIconUpdates(unsigned long window)
@@ -485,6 +517,23 @@ QPixmap X11Support::getWindowPixmap(unsigned long window)
 #else
     return QPixmap::fromX11Pixmap(XCompositeNameWindowPixmap(QX11Info::display(), window));
 #endif
+}
+
+
+QRect X11Support::getWindowWindowsGeometry(unsigned long window)
+{
+    XWindowAttributes attr;
+    QRect windowGeometry(0,0,0,0);
+
+    if(XGetWindowAttributes(QX11Info::display(), window, &attr) != 0)
+    {
+        windowGeometry.setX(attr.x);
+        windowGeometry.setY(attr.y);
+        windowGeometry.setWidth(attr.width);
+        windowGeometry.setHeight(attr.height);
+    }
+    //XFree(&attr);
+    return windowGeometry;
 }
 
 void X11Support::resizeWindow(unsigned long window, int width, int height)

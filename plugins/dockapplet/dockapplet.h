@@ -43,6 +43,7 @@ class QGraphicsPixmapItem;
 class TextGraphicsItem;
 class DockApplet;
 class Client;
+class DockConfigurationDialog;
 
 // Represents a single item in a dock.
 // There isn't one to one relationship between window (client) and dock item, that's why
@@ -193,19 +194,25 @@ protected:
 
 private slots:
 	void windowPropertyChanged(unsigned long window, unsigned long atom);
+    void windowReconfigured(unsigned long window, int x, int y, int width, int height);
     /**
      * @brief show keyboard layout configuration dialog
      */
     void showConfigurationDialog();
 
 private:
-	void updateClientList();
-	void updateActiveWindow();
+    void updateClientList();
+    void updateActiveWindow();
+    void readSettings();
 
 	QMap<unsigned long, Client*> m_clients;
+    QList <Client*> m_in_loop;
 	QVector<DockItem*> m_dockItems;
 	unsigned long m_activeWindow;
 	bool m_dragging;
+    bool m_only_minimized;
+    bool m_only_current_screen;
+    bool m_only_current_desktop;
 };
 
 

@@ -78,8 +78,10 @@ public:
 	static QString getWindowPropertyLatin1String(unsigned long window, const QString& name);
 	static QString getWindowName(unsigned long window);
 	static QIcon getWindowIcon(unsigned long window);
+    static bool getWindowMinimizedState(unsigned long window);
 	static bool getWindowUrgency(unsigned long window);
 	static void registerForWindowPropertyChanges(unsigned long window);
+    static void registerForWindowStructureNotify(unsigned long window);
 	static void registerForTrayIconUpdates(unsigned long window);
 	static void activateWindow(unsigned long window);
 	static void minimizeWindow(unsigned long window);
@@ -92,6 +94,7 @@ public:
 	static void redirectWindow(unsigned long window);
 	static void unredirectWindow(unsigned long window);
 	static QPixmap getWindowPixmap(unsigned long window);
+    static QRect getWindowWindowsGeometry(unsigned long window);
 	static void resizeWindow(unsigned long window, int width, int height);
 	static void moveWindow(unsigned long window, int x, int y);
 	static void mapWindow(unsigned long window);

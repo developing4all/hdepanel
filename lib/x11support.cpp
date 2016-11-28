@@ -366,7 +366,7 @@ bool X11Support::getWindowUrgency(unsigned long window)
 
 void X11Support::registerForWindowPropertyChanges(unsigned long window)
 {
-	XSelectInput(QX11Info::display(), window, PropertyChangeMask);
+    XSelectInput(QX11Info::display(), window, PropertyChangeMask);
 }
 
 void X11Support::registerForWindowStructureNotify(unsigned long window)

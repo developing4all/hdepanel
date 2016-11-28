@@ -379,8 +379,7 @@ Client::Client(DockApplet* dockApplet, unsigned long handle)
 	m_dockApplet = dockApplet;
 	m_handle = handle;
 
-	X11Support::registerForWindowPropertyChanges(m_handle);
-    X11Support::registerForWindowStructureNotify(m_handle);
+    XSelectInput(QX11Info::display(), m_handle, PropertyChangeMask | StructureNotifyMask);
 
 	updateVisibility();
 	updateName();
@@ -398,23 +397,19 @@ Client::~Client()
 
 void Client::windowPropertyChanged(unsigned long atom)
 {
-//    m_dockApplet->updateClientList();
-    // _NET_WM_DESKTOP
-    // _NET_WM_STATE
-
     if(atom == X11Support::atom("_NET_WM_WINDOW_TYPE") || atom == X11Support::atom("_NET_WM_STATE"))
 	{
-		updateVisibility();
+        updateVisibility();
     }
 
 	if(atom == X11Support::atom("_NET_WM_VISIBLE_NAME") || atom == X11Support::atom("_NET_WM_NAME") || atom == X11Support::atom("WM_NAME"))
-	{
+    {
 		updateName();
 	}
 
 	if(atom == X11Support::atom("_NET_WM_ICON"))
 	{
-		updateIcon();
+        updateIcon();
 	}
 
 	if(atom == X11Support::atom("WM_HINTS"))
@@ -618,12 +613,6 @@ DockItem* DockApplet::dockItemForClient(Client* client)
 
 void DockApplet::readSettings()
 {
-    /*
-    m_only_current_screen = false;
-    m_only_current_desktop = false;
-    m_only_minimized = false;
-    */
-
     m_only_current_screen = Settings::value(m_id, "only_current_screen", false).toBool();
     m_only_current_desktop = Settings::value(m_id, "only_current_desktop", true).toBool();
     m_only_minimized = Settings::value(m_id, "only_minimized", false).toBool();
@@ -700,10 +689,10 @@ void DockApplet::updateClientList()
                 if(!m_in_loop.contains(client))
                     m_in_loop.append(client);
                 delete m_clients[handle];
-				m_clients.remove(handle);
-				clientRemoved = true;
-				break;
-			}
+                m_clients.remove(handle);
+                clientRemoved = true;
+                break;
+            }
         }
         if (!clientRemoved) break;
 	}
@@ -743,7 +732,7 @@ void DockApplet::windowPropertyChanged(unsigned long window, unsigned long atom)
 
 		return;
 	}
-	
+
     if (m_clients.contains(window))
 		m_clients[window]->windowPropertyChanged(atom);
 }

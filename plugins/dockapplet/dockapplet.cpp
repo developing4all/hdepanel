@@ -397,6 +397,7 @@ Client::~Client()
 
 void Client::windowPropertyChanged(unsigned long atom)
 {
+
     if(atom == X11Support::atom("_NET_WM_WINDOW_TYPE") || atom == X11Support::atom("_NET_WM_STATE"))
 	{
         updateVisibility();
@@ -626,8 +627,18 @@ void DockApplet::updateClientList()
 	QVector<unsigned long> windows = X11Support::getWindowPropertyWindowsArray(
         X11Support::rootWindow(), "_NET_CLIENT_LIST");
 
+    unsigned long CurrentDesktop = X11Support::getWindowPropertyCardinal(X11Support::rootWindow(),"_NET_CURRENT_DESKTOP");
+    unsigned long WindowDesktop;
+
 	// Handle new clients.
 	for (int i = 0; i < windows.size(); i++) {
+
+        // If Window isn't in current desktop , skip
+        WindowDesktop = X11Support::getWindowPropertyCardinal(windows[i],"_NET_WM_DESKTOP");
+        if (WindowDesktop != CurrentDesktop)
+          continue;
+
+
 		if (!m_clients.contains(windows[i])) {
 			// Skip our own windows.
 			if (QWidget::find(windows[i]) != NULL) 
@@ -723,6 +734,17 @@ void DockApplet::windowReconfigured(unsigned long window, int x, int y, int widt
 
 void DockApplet::windowPropertyChanged(unsigned long window, unsigned long atom)
 {
+    // If Desktop is changed, clear windows list
+    if (atom == X11Support::atom("_NET_WM_DESKTOP")){
+        foreach(Client* client, m_clients) {
+            int handle = client->handle();
+            delete m_clients[handle];
+            m_clients.remove(handle);
+        }
+        //And update with news window
+       updateClientList();
+    }
+
     if (window == X11Support::rootWindow()) {
         if (atom == X11Support::atom("_NET_CLIENT_LIST"))
             updateClientList();

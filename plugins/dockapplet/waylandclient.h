@@ -73,6 +73,11 @@ public:
 		return m_isUrgent;
 	}
 
+	DockItem* dockItem() const
+	{
+		return m_dockItem;
+	}
+
 	void updateFromWindow(const WaylandWindow& window);
 
 private:

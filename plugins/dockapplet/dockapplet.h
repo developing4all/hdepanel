@@ -71,6 +71,9 @@ public:
 	
 	// Public accessor for WaylandSupport
 	WaylandSupport* waylandSupport() const { return m_waylandSupport; }
+	
+	// Check if applet is being destroyed
+	bool isDestroying() const { return m_destroying; }
 
 public slots:
     void fontChanged();

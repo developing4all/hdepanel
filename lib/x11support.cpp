@@ -332,15 +332,6 @@ void X11Support::setStrut(Window _wid,
     desstrut[8] = topStartX;     desstrut[9] = topEndX;
     desstrut[10] = bottomStartX; desstrut[11] = bottomEndX;
 
-    // Debug output
-    qDebug() << "X11Support::setStrut - Window:" << _wid;
-    qDebug() << "  Basic struts: left=" << left << "right=" << right << "top=" << top << "bottom=" << bottom;
-    qDebug() << "  Left range: startY=" << leftStartY << "endY=" << leftEndY;
-    qDebug() << "  Right range: startY=" << rightStartY << "endY=" << rightEndY;
-    qDebug() << "  Top range: startX=" << topStartX << "endX=" << topEndX;
-    qDebug() << "  Bottom range: startX=" << bottomStartX << "endX=" << bottomEndX;
-    qDebug() << "  Display:" << x11DisplayCompat();
-
     //now we can change that property right
     Display* display = x11DisplayCompat();
     if (!display) {
@@ -367,7 +358,6 @@ void X11Support::setStrut(Window _wid,
         usleep(10000); // 10ms
         if (XGetWindowAttributes(display, _wid, &attrs) != 0) {
             if (attrs.map_state == IsViewable) {
-                qDebug() << "X11Support::setStrut - Window successfully mapped";
             } else {
                 qWarning() << "X11Support::setStrut - Window still not mapped after attempt";
             }
@@ -377,17 +367,11 @@ void X11Support::setStrut(Window _wid,
     Atom strutPartialAtom = X11Support::atom("_NET_WM_STRUT_PARTIAL");
     Atom strutAtom = X11Support::atom("_NET_WM_STRUT");
     
-    qDebug() << "X11Support::setStrut - Setting _NET_WM_STRUT_PARTIAL atom:" << strutPartialAtom;
-    qDebug() << "X11Support::setStrut - Setting _NET_WM_STRUT atom:" << strutAtom;
-    
     int result1 = XChangeProperty(display, _wid, strutPartialAtom,
                     XA_CARDINAL, 32, PropModeReplace, (unsigned char *) desstrut, 12);
-    qDebug() << "X11Support::setStrut - XChangeProperty _NET_WM_STRUT_PARTIAL result:" << result1;
-
     int result2 = XChangeProperty(display, _wid, strutAtom,
                     XA_CARDINAL, 32, PropModeReplace, (unsigned char*) desstrut, 4);
-    qDebug() << "X11Support::setStrut - XChangeProperty _NET_WM_STRUT result:" << result2;
-    
+
     // Flush to ensure the properties are sent to the X server
     XFlush(display);
 }

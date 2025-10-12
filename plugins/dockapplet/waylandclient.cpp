@@ -30,6 +30,8 @@
 #include "dockitem.h"
 #include "waylandsupport.h"
 #include <QtCore/QDebug>
+#include <QtCore/QTimer>
+#include <QGraphicsScene>
 
 // WaylandClient implementation
 WaylandClient::WaylandClient(DockApplet* dockApplet, const WaylandWindow& window)
@@ -42,17 +44,43 @@ WaylandClient::WaylandClient(DockApplet* dockApplet, const WaylandWindow& window
     updateFromWindow(window);
     
     // Create a dock item for this Wayland client
-    m_dockItem = new DockItem(dockApplet);
-    m_dockItem->setWaylandClient(this);
-    dockApplet->registerDockItem(m_dockItem);
+    try {
+        m_dockItem = new DockItem(dockApplet);
+        if (m_dockItem) {
+            m_dockItem->setWaylandClient(this);
+            dockApplet->registerDockItem(m_dockItem);
+        }
+    } catch (...) {
+        qDebug() << "Failed to create or register DockItem for" << window.appId;
+        if (m_dockItem) {
+            delete m_dockItem;
+            m_dockItem = nullptr;
+        }
+        throw; // Re-throw to notify caller
+    }
 }
 
 WaylandClient::~WaylandClient()
 {
     if (m_dockItem) {
-        m_dockItem->removeClient(nullptr); // Remove from dock item
-        delete m_dockItem; // Delete the dock item
+        DockItem* item = m_dockItem;
         m_dockItem = nullptr;
+        
+        // Check if applet is being destroyed
+        if (m_dockApplet && m_dockApplet->isDestroying()) {
+            // Direct deletion during shutdown - scene removal handled by DockApplet::close()
+            delete item;
+        } else {
+            // Normal operation: remove from scene before deletion
+            if (item->scene()) {
+                item->scene()->removeItem(item);
+            }
+            
+            // Use deferred deletion during normal operation
+            QTimer::singleShot(0, [item]() {
+                delete item;
+            });
+        }
     }
 }
 

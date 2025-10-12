@@ -95,15 +95,31 @@ DockItem::DockItem(DockApplet* dockApplet)
 
 DockItem::~DockItem()
 {
-	delete m_iconItem;
-	delete m_textItem;
-	delete m_animationTimer;
+	// Clear the dock applet pointer to prevent any access during destruction
+	DockApplet* applet = m_dockApplet;
+	m_dockApplet = nullptr;
+	
+	// Unregister first, before deleting child items
+	// (scene removal already handled by DockApplet::close during shutdown)
+	if (applet && !applet->isDestroying()) {
+		applet->unregisterDockItem(this);
+	}
 
-	m_dockApplet->unregisterDockItem(this);
+	delete m_iconItem;
+	m_iconItem = nullptr;
+	delete m_textItem;
+	m_textItem = nullptr;
+	delete m_animationTimer;
+	m_animationTimer = nullptr;
 }
 
 void DockItem::updateContent()
 {
+    // Safety checks
+    if (!m_textItem || !m_iconItem || !m_dockApplet || !m_dockApplet->panelWindow()) {
+        return;
+    }
+    
     m_textItem->setFont(m_dockApplet->panelWindow()->font());
     QFontMetrics fontMetrics(m_textItem->font());
     
@@ -185,7 +201,7 @@ void DockItem::removeClient(Client* client)
 
 void DockItem::setWaylandClient(WaylandClient* waylandClient)
 {
-    if (!waylandClient) {
+    if (!waylandClient || !m_textItem || !m_iconItem) {
         return;
     }
     
@@ -201,6 +217,7 @@ void DockItem::setWaylandClient(WaylandClient* waylandClient)
         
         updateContent();
     } catch (...) {
+        // Silently handle any errors
     }
 }
 

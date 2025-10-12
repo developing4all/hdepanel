@@ -22,14 +22,17 @@ WaylandSupport::WaylandSupport(QObject* parent)
     , m_registry(nullptr)
     , m_compositor(nullptr)
     , m_xdg_wm_base(nullptr)
-    , m_updateTimer(new QTimer(this))
+    , m_updateTimer(nullptr)
 {
-    m_updateTimer->setInterval(500);
-    connect(m_updateTimer, &QTimer::timeout, this, &WaylandSupport::updateWindows);
 }
 
 WaylandSupport::~WaylandSupport()
 {
+    if (m_updateTimer) {
+        m_updateTimer->stop();
+        delete m_updateTimer;
+        m_updateTimer = nullptr;
+    }
     if (m_display) {
         wl_display_disconnect(m_display);
     }
@@ -65,6 +68,13 @@ bool WaylandSupport::initialize()
     m_registry = wl_display_get_registry(m_display);
     wl_registry_add_listener(m_registry, &registryListener, this);
     wl_display_roundtrip(m_display);
+
+    // Create timer in the GUI thread
+    if (!m_updateTimer) {
+        m_updateTimer = new QTimer(this);
+        m_updateTimer->setInterval(500);
+        connect(m_updateTimer, &QTimer::timeout, this, &WaylandSupport::updateWindows);
+    }
 
     m_initialized = true;
     m_updateTimer->start();

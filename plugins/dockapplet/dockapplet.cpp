@@ -27,6 +27,7 @@
 
 #include <QtCore/QDateTime>
 #include <QtCore/QTimer>
+#include <QtCore/QCoreApplication>
 #include <QtGui/QPainter>
 #include <QtGui/QFontMetrics>
 #if QT_VERSION >= 0x050000
@@ -98,27 +99,62 @@ void DockApplet::close()
     // Set destroying flag to prevent callbacks
     m_destroying = true;
     
-    while(!m_clients.isEmpty())
-    {
-        unsigned long key = m_clients.begin().key();
-        delete m_clients.begin().value();
-        m_clients.remove(key);
+    // Stop Wayland support updates
+    if (m_waylandSupport) {
+        delete m_waylandSupport;
+        m_waylandSupport = nullptr;
     }
-    while(!m_in_loop.isEmpty())
-    {
-        delete m_in_loop.takeLast();
+    
+    // Remove ALL DockItems from the scene first
+    QGraphicsScene* panelScene = scene();
+    for (DockItem* item : m_dockItems) {
+        if (item && panelScene && item->scene() == panelScene) {
+            try {
+                panelScene->removeItem(item);
+            } catch (...) {
+                // Ignore exceptions during cleanup
+            }
+        }
     }
-
-    while(!m_dockItems.isEmpty())
-    {
-        delete m_dockItems.takeLast();
-    }
-
-    // Clean up Wayland clients
-    for (auto it = m_waylandClients.begin(); it != m_waylandClients.end(); ++it) {
-        delete it.value();
-    }
+    
+    // Clear all lists - DockItems will be deleted by their owning clients
+    m_dockItems.clear();
+    
+    QList<WaylandClient*> waylandClientsToDelete = m_waylandClients.values();
     m_waylandClients.clear();
+    
+    QMap<unsigned long, Client*> x11ClientsToDelete = m_clients;
+    m_clients.clear();
+    
+    QList<Client*> loopClientsToDelete = m_in_loop;
+    m_in_loop.clear();
+    
+    // Delete clients - they will handle deleting their DockItems
+    for (WaylandClient* client : waylandClientsToDelete) {
+        if (client) {
+            try {
+                delete client;
+            } catch (...) {
+                // Ignore exceptions during cleanup
+            }
+        }
+    }
+    
+    for (auto it = x11ClientsToDelete.begin(); it != x11ClientsToDelete.end(); ++it) {
+        try {
+            delete it.value();
+        } catch (...) {
+            // Ignore exceptions during cleanup
+        }
+    }
+    
+    for (Client* client : loopClientsToDelete) {
+        try {
+            delete client;
+        } catch (...) {
+            // Ignore exceptions during cleanup
+        }
+    }
 }
 
 void DockApplet::setPanelWindow(PanelWindow *panelWindow)
@@ -271,11 +307,15 @@ void DockApplet::unregisterDockItem(DockItem* dockItem)
 	int index = m_dockItems.indexOf(dockItem);
 	if (index >= 0) {
 		m_dockItems.remove(index);
-		updateLayout();
 		
-		// Force a complete repaint of the entire dock area
-		if (scene()) {
-			scene()->update(sceneBoundingRect());
+		// Only update layout if not being destroyed
+		if (!m_destroying) {
+			updateLayout();
+			
+			// Force a complete repaint of the entire dock area
+			if (scene()) {
+				scene()->update(sceneBoundingRect());
+			}
 		}
 	}
 }
@@ -386,10 +426,17 @@ void DockApplet::updateWaylandClientList(const QList<WaylandWindow>& windows)
     if (!surfacesToRemove.isEmpty()) {
     }
     
-    // Remove closed clients
+    // Remove closed clients safely with deferred deletion
     for (void* surface : surfacesToRemove) {
-        delete m_waylandClients[surface];
-        m_waylandClients.remove(surface);
+        WaylandClient* client = m_waylandClients.value(surface, nullptr);
+        if (client) {
+            // Remove from map first
+            m_waylandClients.remove(surface);
+            // Use QTimer::singleShot to defer deletion to avoid crashes
+            QTimer::singleShot(0, [client]() {
+                delete client;
+            });
+        }
     }
     
     // Add new clients and update existing ones
@@ -410,10 +457,22 @@ void DockApplet::updateWaylandClientList(const QList<WaylandWindow>& windows)
         } else {
             // Create new client
             try {
+                // Safety check before creating
+                if (!window.surface || window.appId.isEmpty()) {
+                    continue;
+                }
+                
                 WaylandClient* waylandClient = new WaylandClient(this, window);
-                m_waylandClients[window.surface] = waylandClient;
+                if (waylandClient) {
+                    m_waylandClients[window.surface] = waylandClient;
+                } else {
+                    qDebug() << "Failed to create WaylandClient for" << window.appId;
+                }
+            } catch (const std::exception& e) {
+                qDebug() << "Exception creating WaylandClient:" << e.what();
+                continue;
             } catch (...) {
-                // Handle any errors during client creation
+                qDebug() << "Unknown exception creating WaylandClient for" << window.appId;
                 continue;
             }
         }
@@ -726,3 +785,4 @@ void DockApplet::showConfigurationDialog()
 
 
 #include "moc_dockapplet.cpp"
+

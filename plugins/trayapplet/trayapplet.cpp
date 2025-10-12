@@ -143,7 +143,7 @@ void TrayApplet::close()
 
 	while(!m_trayItems.isEmpty())
 	{
-		delete m_trayItems[m_trayItems.size() - 1];
+		delete m_trayItems.takeLast();
 	}
 }
 

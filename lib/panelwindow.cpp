@@ -42,6 +42,7 @@
 #include <QLinearGradient>
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
+#include <typeinfo>
  
 #if QT_VERSION < 0x060000
 #include <QDesktopWidget>
@@ -646,11 +647,6 @@ void PanelWindow::applyX11Struts(const QRect& panelGeom)
         bottom = panelGeom.height();
     }
 
-    qDebug() << "applyX11Struts: position=" << (isTop ? "top" : (isBottom ? "bottom" : "center"))
-             << "geom=" << panelGeom
-             << "GNOME offset=" << gnomeTop
-             << "L/R/T/B=" << left << right << top << bottom;
-
     X11Support::setStrut(
         winId(),
         left, right, top, bottom,
@@ -661,7 +657,6 @@ void PanelWindow::applyX11Struts(const QRect& panelGeom)
     );
 
     m_lastStrutGeom = panelGeom;
-    qDebug() << "applyX11Struts(): applied for" << winId() << "top=" << top << "bottom=" << bottom;
 }
 
 // ---------------------- Wayland fallback ----------------------

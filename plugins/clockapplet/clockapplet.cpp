@@ -73,17 +73,27 @@ ClockApplet::~ClockApplet()
 
 void ClockApplet::close()
 {
-    delete m_textItem;
-    delete m_timer;
-    if(m_calendar != NULL)
-    {
+    if (m_textItem) {
+        delete m_textItem;
+        m_textItem = nullptr;
+    }
+    
+    if (m_timer) {
+        delete m_timer;
+        m_timer = nullptr;
+    }
+    
+    if (m_calendar) {
         delete m_calendar;
+        m_calendar = nullptr;
     }
 }
 
 void ClockApplet::fontChanged()
 {
-    m_textItem->setFont(m_panelWindow->font());
+    if (m_textItem && m_panelWindow) {
+        m_textItem->setFont(m_panelWindow->font());
+    }
 }
 
 bool ClockApplet::init()
@@ -95,11 +105,15 @@ bool ClockApplet::init()
 
 void ClockApplet::layoutChanged()
 {
-	m_textItem->setPos((m_size.width() - m_textItem->boundingRect().size().width())/2.0, m_panelWindow->textBaseLine());
+    if (m_textItem && m_panelWindow) {
+	    m_textItem->setPos((m_size.width() - m_textItem->boundingRect().size().width())/2.0, m_panelWindow->textBaseLine());
+    }
 }
 
 void ClockApplet::updateContent()
 {
+    if (!m_textItem) return;
+    
 	QDateTime dateTimeNow = QDateTime::currentDateTime();
 	m_text = dateTimeNow.toString("h:mm AP");
 	m_textItem->setText(m_text);
@@ -115,12 +129,16 @@ QSize ClockApplet::desiredSize()
 
 void ClockApplet::scheduleUpdate()
 {
-	m_timer->setInterval(1000 - QDateTime::currentDateTime().time().msec());
-	m_timer->start();
+    if (m_timer) {
+	    m_timer->setInterval(1000 - QDateTime::currentDateTime().time().msec());
+	    m_timer->start();
+    }
 }
 
 void ClockApplet::clicked()
 {
+    if (!m_calendar || !m_panelWindow) return;
+    
     // Show calender widget
     //int x = localToScreen(QPoint(0, m_size.height())).x();
     int x = localToScreen(QPoint(0, m_size.height())).x() - m_calendar->width() + m_size.width();

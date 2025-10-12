@@ -1,11 +1,11 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
  * This Files has been imported to hde from qtpanel
  *
- * Copyright: 2015-2016 Haydar Alkaduhimi
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -29,6 +29,7 @@
 
 #include <QAction>
 #include <QDateTime>
+#include <QTimer>
 
 PanelApplication* PanelApplication::m_instance = NULL;
 
@@ -50,12 +51,23 @@ PanelApplication::PanelApplication(int& argc, char** argv)
     Q_UNUSED(settings)
 
 	m_iconLoader = new IconLoader();
-	m_x11support = new X11Support();
+	m_x11support = nullptr;
 #if QT_VERSION >= 0x050000
-	myXEv.setX11Support(m_x11support);
-    installNativeEventFilter(&myXEv);
+    // Only initialize X11 support on X11 platform
+#if QT_VERSION < 0x060000
+    if (QX11Info::isPlatformX11()) {
+#else
+    if (qApp->platformName().toLower().contains("xcb")) {
 #endif
+        m_x11support = new X11Support();
+        myXEv.setX11Support(m_x11support);
+        installNativeEventFilter(&myXEv);
+        installEventFilter(m_x11support);
+    }
+#else
+    m_x11support = new X11Support();
     installEventFilter(m_x11support);
+#endif
     m_desktopApplications = new DesktopApplications();
 
     //QObject::connect(this, SIGNAL(aboutToQuit()), this, SLOT(deletePanels()) );
@@ -65,7 +77,8 @@ PanelApplication::~PanelApplication()
 {
     deletePanels();
     delete m_desktopApplications;
-    delete m_x11support;
+    if (m_x11support)
+        delete m_x11support;
     delete m_iconLoader;
 
     m_instance = NULL;
@@ -153,11 +166,38 @@ void PanelApplication::init()
 void PanelApplication::showPanel(const QString& panel_id)
 {
     PanelWindow* panelWindow = new PanelWindow(panel_id);
-    panelWindow->resize(adjustHardcodedPixelSize(128), adjustHardcodedPixelSize(32));
+    // Use FillSpace to span full screen width
     panelWindow->setLayoutPolicy(PanelWindow::FillSpace);
     panelWindow->setDockMode(true);
+    
+    // Initialize applets first
     panelWindow->init();
+    
+    // Then update layout
+    panelWindow->updateLayout();
+    
+    // Set position BEFORE showing the window
+    panelWindow->updatePosition();
+    
     panelWindow->show();
+    
+    // Update position after window is shown and layer surface is configured
+    panelWindow->updatePosition();
+    
+    // Force position multiple times to ensure it sticks
+    QTimer::singleShot(100, [panelWindow]() {
+        panelWindow->updatePosition();
+    });
+    
+    QTimer::singleShot(500, [panelWindow]() {
+        panelWindow->updatePosition();
+    });
+    
+    QTimer::singleShot(1000, [panelWindow]() {
+        panelWindow->updatePosition();
+    });
+    
+    
     m_panelWindows.append(panelWindow);
     //QObject::connect(this, SIGNAL(aboutToQuit()), panelWindow, SLOT(deleteLater()) );
 }

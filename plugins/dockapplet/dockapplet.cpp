@@ -1,12 +1,12 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
  * This Files has been imported to hde from qtpanel
  *
- * Copyright: 2015-2016 Haydar Alkaduhimi
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Copyright: 2014 Leslie Zhai <xiang.zhai@i-soft.com.cn>
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -39,13 +39,17 @@
 #include <QtGui/QMenu>
 #endif
 #include <QDebug>
-#include <QDesktopWidget>
+#include <QScreen>
 
 #include "dockapplet.h"
+#include "dockitem.h"
+#include "client.h"
+#include "waylandclient.h"
 #include "textgraphicsitem.h"
 #include "panelapplication.h"
 #include "panelwindow.h"
 #include "x11support.h"
+#include "waylandsupport.h"
 #include "animationutils.h"
 #include "dpisupport.h"
 #include <dockconfigurationdialog.h>
@@ -54,425 +58,34 @@
 
 #include <settings.h>
 
-DockItem::DockItem(DockApplet* dockApplet)
-{
-    m_dragging = false;
-    m_highlightIntensity =0.0;
-    m_urgencyHighlightIntensity = 0.0;
-    m_isMinimized = false;
-
-	m_dockApplet = dockApplet;
-
-	m_animationTimer = new QTimer();
-
-	m_animationTimer->setInterval(20);
-	m_animationTimer->setSingleShot(true);
-	connect(m_animationTimer, SIGNAL(timeout()), this, SLOT(animate()));
-
-	setParentItem(m_dockApplet);
-#if QT_VERSION >= 0x050000
-    setAcceptHoverEvents(true);
-#else
-    setAcceptsHoverEvents(true);
-#endif
-	setAcceptedMouseButtons(Qt::LeftButton | Qt::RightButton);
-
-	m_textItem = new TextGraphicsItem(this);
-	m_textItem->setColor(Qt::white);
-	m_textItem->setFont(m_dockApplet->panelWindow()->font());
-
-	m_iconItem = new QGraphicsPixmapItem(this);
-
-	m_dockApplet->registerDockItem(this);
-}
-
-DockItem::~DockItem()
-{
-	delete m_iconItem;
-	delete m_textItem;
-	delete m_animationTimer;
-
-	m_dockApplet->unregisterDockItem(this);
-}
-
-void DockItem::updateContent()
-{
-	if(m_clients.isEmpty())
-		return;
-
-    m_textItem->setFont(m_dockApplet->panelWindow()->font());
-    QFontMetrics fontMetrics(m_textItem->font());
-	QString shortName = fontMetrics.elidedText(m_clients[0]->name(), Qt::ElideRight, m_targetSize.width() - adjustHardcodedPixelSize(36));
-	m_textItem->setText(shortName);
-	m_textItem->setPos(adjustHardcodedPixelSize(28), m_dockApplet->panelWindow()->textBaseLine());
-
-	m_iconItem->setPixmap(m_clients[0]->icon().pixmap(adjustHardcodedPixelSize(16)));
-	m_iconItem->setPos(adjustHardcodedPixelSize(8), m_targetSize.height()/2 - adjustHardcodedPixelSize(8));
-
-	update();
-}
-
-void DockItem::fontChanged()
-{
-    m_textItem->setFont(m_dockApplet->panelWindow()->font());
-    update();
-}
-
-void DockItem::addClient(Client* client)
-{
-	m_clients.append(client);
-	updateClientsIconGeometry();
-	updateContent();
-}
-
-void DockItem::removeClient(Client* client)
-{
-	m_clients.remove(m_clients.indexOf(client));
-	if(m_clients.isEmpty())
-	{
-		// TODO: Stub. Item may be a launcher.
-		delete this;
-	}
-	else
-	{
-		updateContent();
-	}
-}
-
-void DockItem::setTargetPosition(const QPoint& targetPosition)
-{
-	m_targetPosition = targetPosition;
-	updateClientsIconGeometry();
-}
-
-void DockItem::setTargetSize(const QSize& targetSize)
-{
-	m_targetSize = targetSize;
-	updateClientsIconGeometry();
-	updateContent();
-}
-
-void DockItem::moveInstantly()
-{
-	m_position = m_targetPosition;
-	m_size = m_targetSize;
-	setPos(m_position.x(), m_position.y());
-	update();
-}
-
-void DockItem::startAnimation()
-{
-	if(!m_animationTimer->isActive())
-		m_animationTimer->start();
-}
-
-void DockItem::animate()
-{
-	bool needAnotherStep = false;
-
-	static const qreal highlightAnimationSpeed = 0.15;
-	qreal targetIntensity = isUnderMouse() ? 1.0 : 0.0;
-	m_highlightIntensity = AnimationUtils::animate(m_highlightIntensity, targetIntensity, highlightAnimationSpeed, needAnotherStep);
-
-	static const qreal urgencyHighlightAnimationSpeed = 0.015;
-	qreal targetUrgencyIntensity = 0.0;
-	if(isUrgent())
-	{
-		qint64 msecs = QDateTime::currentMSecsSinceEpoch() % 3000;
-		if(msecs < 1500)
-			targetUrgencyIntensity = 1.0;
-		else
-			targetUrgencyIntensity = 0.5;
-		needAnotherStep = true;
-	}
-	m_urgencyHighlightIntensity = AnimationUtils::animate(m_urgencyHighlightIntensity, targetUrgencyIntensity, urgencyHighlightAnimationSpeed, needAnotherStep);
-
-	if(!m_dragging)
-	{
-		static const int positionAnimationSpeed = 24;
-		static const int sizeAnimationSpeed = 24;
-		m_position.setX(AnimationUtils::animateExponentially(m_position.x(), m_targetPosition.x(), 0.2, positionAnimationSpeed, needAnotherStep));
-		m_position.setY(AnimationUtils::animateExponentially(m_position.y(), m_targetPosition.y(), 0.2, positionAnimationSpeed, needAnotherStep));
-		m_size.setWidth(AnimationUtils::animate(m_size.width(), m_targetSize.width(), sizeAnimationSpeed, needAnotherStep));
-		m_size.setHeight(AnimationUtils::animate(m_size.height(), m_targetSize.height(), sizeAnimationSpeed, needAnotherStep));
-		setPos(m_position.x(), m_position.y());
-	}
-
-	update();
-
-	if(needAnotherStep)
-		m_animationTimer->start();
-}
-
-void DockItem::close()
-{
-	for(int i = 0; i < m_clients.size(); i++)
-	{
-		X11Support::closeWindow(m_clients[i]->handle());
-	}
-}
-
-QRectF DockItem::boundingRect() const
-{
-	return QRectF(0.0, 0.0, m_size.width() - 1, m_size.height() - 1);
-}
-
-void DockItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
-{
-    Q_UNUSED(widget)
-    Q_UNUSED(option)
-    painter->setPen(Qt::NoPen);
-	QPointF center(m_size.width()/2.0, m_size.height() + adjustHardcodedPixelSize(32));
-	QRectF rect(0.0, adjustHardcodedPixelSize(4), m_size.width(), m_size.height() - adjustHardcodedPixelSize(8));
-	static const qreal roundRadius = adjustHardcodedPixelSize(3);
-
-	{
-		QRadialGradient gradient(center, adjustHardcodedPixelSize(200), center);
-		gradient.setColorAt(0.0, QColor(255, 255, 255, 80 + static_cast<int>(80*m_highlightIntensity)));
-		gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
-		painter->setBrush(QBrush(gradient));
-		painter->drawRoundedRect(rect, roundRadius, roundRadius);
-	}
-
-	if(m_urgencyHighlightIntensity > 0.001)
-	{
-		QRadialGradient gradient(center, adjustHardcodedPixelSize(200), center);
-		gradient.setColorAt(0.0, QColor(255, 100, 0, static_cast<int>(160*m_urgencyHighlightIntensity)));
-		gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
-		painter->setBrush(QBrush(gradient));
-		painter->drawRoundedRect(rect, roundRadius, roundRadius);
-	}
-}
-
-void DockItem::hoverEnterEvent(QGraphicsSceneHoverEvent* event)
-{
-    Q_UNUSED(event)
-    startAnimation();
-}
-
-void DockItem::hoverLeaveEvent(QGraphicsSceneHoverEvent* event)
-{
-    Q_UNUSED(event)
-    startAnimation();
-}
-
-void DockItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
-{
-	if(event->button() == Qt::LeftButton)
-	{
-		m_dragging = true;
-		m_mouseDownPosition = event->scenePos();
-		m_dragStartPosition = m_position;
-		m_dockApplet->draggingStarted();
-		setZValue(1.0); // Be on top when dragging.
-	}
-}
-
-void DockItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
-{
-	if (event->button() == Qt::LeftButton) {
-		m_dragging = false;
-		m_dockApplet->draggingStopped();
-		setZValue(0.0); // No more on top.
-		startAnimation(); // Item can be out of it's regular, start animation to bring it back.
-	}
-
-	if (isUnderMouse()) {
-		if (m_clients.isEmpty()) return;
-
-		if (event->button() == Qt::LeftButton) {
-			static const qreal clickMouseMoveTolerance = 10.0;
-
-			if ((event->scenePos() - m_mouseDownPosition).manhattanLength() < 
-                clickMouseMoveTolerance) {
-                if (m_dockApplet->activeWindow() == m_clients[0]->handle()) {
-#if QT_VERSION >= 0x050000
-                    if (m_isMinimized) {
-                        X11Support::activateWindow(m_clients[0]->handle());
-                        m_isMinimized = false;
-                    } else {
-                        X11Support::minimizeWindow(m_clients[0]->handle());
-                        m_isMinimized = true;
-                    }
-#else
-                    X11Support::minimizeWindow(m_clients[0]->handle());
-#endif
-                } else 
-					X11Support::activateWindow(m_clients[0]->handle());
-			}
-		}
-
-        if (event->button() == Qt::RightButton && !m_dragging) {
-            HPopupMenu menu;
-
-            menu.addTitle("Application");
-            menu.addAction(QIcon::fromTheme("window-close"), "Close", this, SLOT(close()));
-            menu.addTitle("Dock Applet");
-            menu.addAction(QIcon::fromTheme("preferences-other"), "Configure Dock Applet", m_dockApplet, SLOT(showConfigurationDialog()));
-
-            menu.addTitle("Panel");
-            menu.addAction(QIcon::fromTheme("preferences-desktop"), "Configure Panel", m_dockApplet->panelWindow(), SLOT(showConfigurationDialog()));
-
-            menu.addAction(QIcon::fromTheme("list-add"), "Add Panel", QApplication::instance(), SLOT(addPanel()));
-            menu.addAction(QIcon::fromTheme("list-remove"), "Remove Panel", m_dockApplet->panelWindow(), SLOT(removePanel()));
-
-            menu.exec(event->screenPos());
-        }
-	}
-}
-
-void DockItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
-{
-	// Mouse events are sent only when mouse button is pressed.
-	if(!m_dragging)
-		return;
-
-	// TODO: Vertical orientation support.
-
-	QPointF delta = event->scenePos() - m_mouseDownPosition;
-	m_position.setX(m_dragStartPosition.x() + static_cast<int>(delta.x()));
-	if(m_position.x() < 0)
-		m_position.setX(0);
-	if(m_position.x() >= m_dockApplet->size().width() - m_targetSize.width())
-		m_position.setX(m_dockApplet->size().width() - m_targetSize.width());
-	setPos(m_position.x(), m_position.y());
-
-	int criticalShift = m_targetSize.width()*55/100;
-
-	if(m_position.x() < m_targetPosition.x() - criticalShift)
-		m_dockApplet->moveItem(this, false);
-
-	if(m_position.x() > m_targetPosition.x() + criticalShift)
-		m_dockApplet->moveItem(this, true);
-
-	update();
-}
-
-void DockItem::updateClientsIconGeometry()
-{
-	QPointF topLeft = m_dockApplet->mapToScene(m_targetPosition);
-	QVector<unsigned long> values;
-	values.resize(4);
-	values[0] = static_cast<unsigned long>(topLeft.x()) + m_dockApplet->panelWindow()->pos().x();
-	values[1] = static_cast<unsigned long>(topLeft.y()) + m_dockApplet->panelWindow()->pos().y();
-	values[2] = m_targetSize.width();
-	values[3] = m_targetSize.height();
-	for(int i = 0; i < m_clients.size(); i++)
-	{
-		X11Support::setWindowPropertyCardinalArray(m_clients[i]->handle(), "_NET_WM_ICON_GEOMETRY", values);
-	}
-}
-
-bool DockItem::isUrgent()
-{
-	for(int i = 0; i < m_clients.size(); i++)
-	{
-		if(m_clients[i]->isUrgent())
-			return true;
-	}
-	return false;
-}
-
-Client::Client(DockApplet* dockApplet, unsigned long handle)
-	: m_dockItem(NULL)
-{
-	m_dockApplet = dockApplet;
-	m_handle = handle;
-
-    XSelectInput(QX11Info::display(), m_handle, PropertyChangeMask | StructureNotifyMask);
-
-	updateVisibility();
-	updateName();
-	updateIcon();
-	updateUrgency();
-}
-
-Client::~Client()
-{
-	if(m_dockItem != NULL)
-	{
-		m_dockItem->removeClient(this);
-	}
-}
-
-void Client::windowPropertyChanged(unsigned long atom)
-{
-
-    if(atom == X11Support::atom("_NET_WM_WINDOW_TYPE") || atom == X11Support::atom("_NET_WM_STATE"))
-	{
-        updateVisibility();
-    }
-
-	if(atom == X11Support::atom("_NET_WM_VISIBLE_NAME") || atom == X11Support::atom("_NET_WM_NAME") || atom == X11Support::atom("WM_NAME"))
-    {
-		updateName();
-	}
-
-	if(atom == X11Support::atom("_NET_WM_ICON"))
-	{
-        updateIcon();
-	}
-
-	if(atom == X11Support::atom("WM_HINTS"))
-	{
-		updateUrgency();
-    }
-}
-
-void Client::updateVisibility()
-{
-	QVector<unsigned long> windowTypes = X11Support::getWindowPropertyAtomsArray(m_handle, "_NET_WM_WINDOW_TYPE");
-	QVector<unsigned long> windowStates = X11Support::getWindowPropertyAtomsArray(m_handle, "_NET_WM_STATE");
-
-	// Show only regular windows in dock.
-	// When no window type is set, assume it's normal window.
-	m_visible = (windowTypes.size() == 0) || (windowTypes.size() == 1 && windowTypes[0] == X11Support::atom("_NET_WM_WINDOW_TYPE_NORMAL"));
-	// Don't show window if requested explicitly in window states.
-	if(windowStates.contains(X11Support::atom("_NET_WM_STATE_SKIP_TASKBAR")))
-		m_visible = false;
-
-	if(m_dockItem == NULL && m_visible)
-	{
-		m_dockItem = m_dockApplet->dockItemForClient(this);
-		m_dockItem->addClient(this);
-	}
-
-	if(m_dockItem != NULL && !m_visible)
-	{
-        m_dockItem->removeClient(this);
-        m_dockItem = NULL;
-	}
-}
-
-void Client::updateName()
-{
-	m_name = X11Support::getWindowName(m_handle);
-	if(m_dockItem != NULL)
-		m_dockItem->updateContent();
-}
-
-void Client::updateIcon()
-{
-	m_icon = X11Support::getWindowIcon(m_handle);
-	if(m_dockItem != NULL)
-		m_dockItem->updateContent();
-}
-
-void Client::updateUrgency()
-{
-	m_isUrgent = X11Support::getWindowUrgency(m_handle);
-	if(m_dockItem != NULL)
-		m_dockItem->startAnimation();
-}
+// Include Xlib locally to access XSelectInput and event masks without leaking macros globally
+#include <X11/Xlib.h>
 
 DockApplet::DockApplet(PanelWindow* panelWindow)
-	: Applet(panelWindow), m_dragging(false)
+	: Applet(panelWindow), m_dragging(false), m_initialized(false), m_destroying(false), m_waylandSupport(nullptr)
 {
     setObjectName("Dock");
 
-    // Register for notifications about window property changes.
-    connect(X11Support::instance(), SIGNAL(windowPropertyChanged(ulong,ulong)), this, SLOT(windowPropertyChanged(ulong,ulong)));
-    connect(X11Support::instance(), SIGNAL(windowReconfigured(ulong, int, int, int, int)), this, SLOT(windowReconfigured(ulong, int, int, int, int)));
+    // Register for notifications about window property changes (X11 only).
+#if QT_VERSION >= 0x050000
+    if (qApp->platformName().toLower().contains("xcb") && X11Support::instance()) {
+#endif
+        connect(X11Support::instance(), SIGNAL(windowPropertyChanged(ulong,ulong)), this, SLOT(windowPropertyChanged(ulong,ulong)));
+        connect(X11Support::instance(), SIGNAL(windowReconfigured(ulong, int, int, int, int)), this, SLOT(windowReconfigured(ulong, int, int, int, int)));
+        connect(X11Support::instance(), SIGNAL(windowClosed(ulong)), this, SLOT(windowClosed(ulong)));
+#if QT_VERSION >= 0x050000
+    }
+#endif
+
+    // Initialize Wayland support if available
+    m_waylandSupport = new WaylandSupport(this);
+    if (m_waylandSupport->isAvailable() && m_waylandSupport->initialize()) {
+        // Connect to the windowsUpdated signal
+        connect(m_waylandSupport, &WaylandSupport::windowsUpdated, this, &DockApplet::updateWaylandClientList);
+    } else {
+        delete m_waylandSupport;
+        m_waylandSupport = nullptr;
+    }
 }
 
 DockApplet::~DockApplet()
@@ -482,6 +95,9 @@ DockApplet::~DockApplet()
 
 void DockApplet::close()
 {
+    // Set destroying flag to prevent callbacks
+    m_destroying = true;
+    
     while(!m_clients.isEmpty())
     {
         unsigned long key = m_clients.begin().key();
@@ -490,21 +106,29 @@ void DockApplet::close()
     }
     while(!m_in_loop.isEmpty())
     {
-        delete m_in_loop[m_in_loop.size() - 1];
-        //unsigned long key = m_in_loop.begin().key();
-        //delete m_in_loop.begin();
-        //m_in_loop.remove(key);
+        delete m_in_loop.takeLast();
     }
 
     while(!m_dockItems.isEmpty())
     {
-        delete m_dockItems[m_dockItems.size() - 1];
+        delete m_dockItems.takeLast();
     }
+
+    // Clean up Wayland clients
+    for (auto it = m_waylandClients.begin(); it != m_waylandClients.end(); ++it) {
+        delete it.value();
+    }
+    m_waylandClients.clear();
 }
 
 void DockApplet::setPanelWindow(PanelWindow *panelWindow)
 {
     Applet::setPanelWindow(panelWindow);
+}
+
+void DockApplet::layoutChanged()
+{
+	updateLayout();
 }
 
 void DockApplet::fontChanged()
@@ -517,34 +141,81 @@ void DockApplet::fontChanged()
 bool DockApplet::init()
 {
     readSettings();
+    
+    // Initialize window detection - use the unified updateClientList method
     updateClientList();
-	updateActiveWindow();
+    
+    // Update active window for X11 platforms
+#if QT_VERSION >= 0x050000
+    if (qApp->platformName().toLower().contains("xcb")) {
+        updateActiveWindow();
+    }
+#endif
 
-	for(int i = 0; i < m_dockItems.size(); i++)
-		m_dockItems[i]->moveInstantly();
+
+	// Mark as initialized to allow future updateClientList() calls
+	m_initialized = true;
 
 	return true;
+}
+
+QSize DockApplet::desiredSize()
+{
+	return QSize(-1, -1); // Take all available space.
 }
 
 void DockApplet::updateLayout()
 {
 	// TODO: Vertical orientation support.
+	
+	// Clean up dock items marked for deletion
+	QVector<DockItem*> itemsToDelete;
+	for (int i = 0; i < m_dockItems.size(); i++) {
+		if (m_dockItems[i]->shouldDelete()) {
+			qDebug() << "DockApplet::updateLayout - Marking dock item for deletion";
+			itemsToDelete.append(m_dockItems[i]);
+		}
+	}
+	
+	// Remove and delete the marked items
+	for (DockItem* item : itemsToDelete) {
+		qDebug() << "DockApplet::updateLayout - Removing dock item marked for deletion";
+		unregisterDockItem(item);
+		m_dockItems.removeAll(item);
+		delete item;
+	}
+	
+	// If size is not set yet, use a default width
 	int freeSpace = m_size.width();
+	if (freeSpace <= 0) {
+		freeSpace = 800; // Default width if not set
+	}
+	
 	int spaceForOneClient = (m_dockItems.size() > 0) ? freeSpace/m_dockItems.size() : 0;
 	int currentPosition = 0;
+	
 	for(int i = 0; i < m_dockItems.size(); i++)
 	{
 		int spaceForThisClient = spaceForOneClient;
 		static const int maxSpace = adjustHardcodedPixelSize(256);
 		if(spaceForThisClient > maxSpace)
 			spaceForThisClient = maxSpace;
-		m_dockItems[i]->setTargetPosition(QPoint(currentPosition, 0));
-		m_dockItems[i]->setTargetSize(QSize(spaceForThisClient - 4, m_size.height()));
+		
+		QPoint targetPos = QPoint(currentPosition, 0);
+		QSize targetSize = QSize(spaceForThisClient - 4, m_size.height() > 0 ? m_size.height() : 48);
+		
+		m_dockItems[i]->setTargetPosition(targetPos);
+		m_dockItems[i]->setTargetSize(targetSize);
 		m_dockItems[i]->startAnimation();
 		currentPosition += spaceForThisClient;
 	}
 
 	update();
+	
+	// Force a complete repaint of the entire dock area
+	if (scene()) {
+		scene()->update(sceneBoundingRect());
+	}
 }
 
 void DockApplet::draggingStarted()
@@ -561,35 +232,26 @@ void DockApplet::draggingStopped()
 
 void DockApplet::moveItem(DockItem* dockItem, bool right)
 {
-	int currentIndex = m_dockItems.indexOf(dockItem);
+	int index = m_dockItems.indexOf(dockItem);
+	if(index == -1)
+		return;
+
 	if(right)
 	{
-		if(currentIndex != (m_dockItems.size() - 1))
+		if(index < m_dockItems.size() - 1)
 		{
-			m_dockItems.remove(currentIndex);
-			m_dockItems.insert(currentIndex + 1, dockItem);
-			updateLayout();
+			m_dockItems.swapItemsAt(index, index + 1);
 		}
 	}
 	else
 	{
-		if(currentIndex != 0)
+		if(index > 0)
 		{
-			m_dockItems.remove(currentIndex);
-			m_dockItems.insert(currentIndex - 1, dockItem);
-			updateLayout();
+			m_dockItems.swapItemsAt(index, index - 1);
 		}
 	}
-}
 
-void DockApplet::layoutChanged()
-{
 	updateLayout();
-}
-
-QSize DockApplet::desiredSize()
-{
-	return QSize(-1, -1); // Take all available space.
 }
 
 void DockApplet::registerDockItem(DockItem* dockItem)
@@ -597,56 +259,259 @@ void DockApplet::registerDockItem(DockItem* dockItem)
 	m_dockItems.append(dockItem);
     updateLayout();
 	dockItem->moveInstantly();
+	
+	// Force a complete repaint of the entire dock area
+	if (scene()) {
+		scene()->update(sceneBoundingRect());
+	}
 }
 
 void DockApplet::unregisterDockItem(DockItem* dockItem)
 {
-	m_dockItems.remove(m_dockItems.indexOf(dockItem));
-	updateLayout();
+	int index = m_dockItems.indexOf(dockItem);
+	if (index >= 0) {
+		m_dockItems.remove(index);
+		updateLayout();
+		
+		// Force a complete repaint of the entire dock area
+		if (scene()) {
+			scene()->update(sceneBoundingRect());
+		}
+	}
 }
 
 DockItem* DockApplet::dockItemForClient(Client* client)
 {
-    Q_UNUSED(client)
-	// FIXME: Stub.
-	return new DockItem(this);
+	if (!client) {
+		return nullptr;
+	}
+	
+	// Check if we already have a dock item for this client
+	for (DockItem* item : m_dockItems) {
+		if (item->hasClient(client)) {
+			return item;
+		}
+	}
+	
+	// Create a new dock item for this client
+	DockItem* dockItem = new DockItem(this);
+	dockItem->addClient(client);
+	
+	// Register the dock item immediately
+	registerDockItem(dockItem);
+	
+	return dockItem;
 }
 
-void DockApplet::readSettings()
+DockItem* DockApplet::dockItemForWaylandClient(WaylandClient* client)
 {
-    m_only_current_screen = Settings::value(m_id, "only_current_screen", false).toBool();
-    m_only_current_desktop = Settings::value(m_id, "only_current_desktop", true).toBool();
-    m_only_minimized = Settings::value(m_id, "only_minimized", false).toBool();
+	if (!client) {
+		return nullptr;
+	}
+	
+	// Check if we already have a dock item for this wayland client
+	for (DockItem* item : m_dockItems) {
+		if (item->hasWaylandClient(client)) {
+			return item;
+		}
+	}
+	
+	// Create a new dock item for this wayland client
+	DockItem* dockItem = new DockItem(this);
+	dockItem->setWaylandClient(client);
+	
+	// Register the dock item immediately
+	registerDockItem(dockItem);
+	
+	return dockItem;
 }
-
 
 void DockApplet::updateClientList()
 {
-	if (m_dragging) return; 
+    // Prevent multiple calls during initialization
+    if (!m_initialized) {
+        return;
+    }
+    
+    if (m_waylandSupport) {
+        // Wayland updates are handled by signal/slot connection
+        // No need to call updateWaylandClientList() here
+    } else {
+        updateX11ClientList();
+    }
+    
+    // Deduplicate dock items after updating
+    deduplicateDockItems();
+    
+    // Update layout after deduplication to recalculate positions
+    updateLayout();
+    
+    // Move items instantly to their new positions
+    for(int i = 0; i < m_dockItems.size(); i++)
+        m_dockItems[i]->moveInstantly();
+    
+    // Force a complete repaint of the entire dock area
+    if (scene()) {
+        scene()->update(sceneBoundingRect());
+    }
+}
 
+void DockApplet::updateWaylandClientList(const QList<WaylandWindow>& windows)
+{
+    // Safety check to prevent execution during destruction
+    if (!m_waylandSupport || m_destroying) {
+        return;
+    }
+    
+    static int lastWindowCount = -1;
+    if (windows.size() != lastWindowCount) {
+        lastWindowCount = windows.size();
+    }
+    
+    // Create a set of current app IDs for efficient lookup
+    QSet<QString> currentAppIds;
+    for (const WaylandWindow& window : windows) {
+        currentAppIds.insert(window.appId);
+    }
+    
+    // Remove clients that no longer exist
+    QList<void*> surfacesToRemove;
+    for (auto it = m_waylandClients.begin(); it != m_waylandClients.end(); ++it) {
+        QString clientAppId = it.value()->appId();
+        if (!currentAppIds.contains(clientAppId)) {
+            surfacesToRemove.append(it.key());
+        }
+    }
+    
+    if (!surfacesToRemove.isEmpty()) {
+    }
+    
+    // Remove closed clients
+    for (void* surface : surfacesToRemove) {
+        delete m_waylandClients[surface];
+        m_waylandClients.remove(surface);
+    }
+    
+    // Add new clients and update existing ones
+    for (const WaylandWindow& window : windows) {
+        // Find existing client by app ID
+        WaylandClient* existingClient = nullptr;
+        for (auto it = m_waylandClients.begin(); it != m_waylandClients.end(); ++it) {
+            if (it.value()->appId() == window.appId) {
+                existingClient = it.value();
+                break;
+            }
+        }
+        
+        if (existingClient) {
+            // Update existing client
+            QString oldTitle = existingClient->name();
+            existingClient->updateFromWindow(window);
+        } else {
+            // Create new client
+            try {
+                WaylandClient* waylandClient = new WaylandClient(this, window);
+                m_waylandClients[window.surface] = waylandClient;
+            } catch (...) {
+                // Handle any errors during client creation
+                continue;
+            }
+        }
+    }
+}
+
+void DockApplet::updateX11ClientList()
+{
+#if QT_VERSION >= 0x050000
+    if (qApp->platformName().toLower().contains("xcb") == false) return; 
+#endif
+	if (m_dragging) return;
+	
+	// Prevent multiple calls during initialization
+	if (!m_initialized) {
+		return;
+	}
+	
 	QVector<unsigned long> windows = X11Support::getWindowPropertyWindowsArray(
         X11Support::rootWindow(), "_NET_CLIENT_LIST");
+    
+    // Fallback: if _NET_CLIENT_LIST is empty, try to get windows from window tree
+    if (windows.isEmpty()) {
+        windows = X11Support::getAllWindows();
+    }
 
     unsigned long CurrentDesktop = X11Support::getWindowPropertyCardinal(X11Support::rootWindow(),"_NET_CURRENT_DESKTOP");
     unsigned long WindowDesktop;
 
-	// Handle new clients.
+    // Handle new clients.
 	for (int i = 0; i < windows.size(); i++) {
+        QString windowName = X11Support::getWindowName(windows[i]);
+        QString windowClass = X11Support::getWindowPropertyUTF8String(windows[i], "WM_CLASS");
+        qDebug() << "DockApplet::updateX11ClientList - Processing window" << QString::number(windows[i], 16) << "name:" << windowName << "class:" << windowClass;
+
+        // Skip system services and utilities
+        QString windowNameLower = windowName.toLower();
+        QString windowClassLower = windowClass.toLower();
+        bool isSystemService = windowNameLower.contains("org.kde.xwaylandvideobridge") ||
+                              windowNameLower.contains("org.kde.plasma") ||
+                              windowNameLower.contains("org.gnome.shell") ||
+                              windowNameLower.contains("com.canonical.unity") ||
+                              windowNameLower.contains("com.ubuntu.") ||
+                              windowNameLower.contains("org.freedesktop.") ||
+                              windowNameLower.startsWith("gjs") ||
+                              windowNameLower.startsWith("gnome-shell") ||
+                              windowClassLower.contains("xwaylandvideobridge") ||
+                              windowClassLower.contains("plasma") ||
+                              windowClassLower.contains("gnome-shell") ||
+                              windowClassLower.contains("hdepanel");
+        
+        if (isSystemService) {
+            qDebug() << "DockApplet::updateX11ClientList - Skipping system service window" << QString::number(windows[i], 16) << "name:" << windowName << "class:" << windowClass;
+            continue;
+        }
 
         // If Window isn't in current desktop , skip
         WindowDesktop = X11Support::getWindowPropertyCardinal(windows[i],"_NET_WM_DESKTOP");
-        if (WindowDesktop != CurrentDesktop)
-          continue;
+        // Handle sticky windows (0xFFFFFFFFFFFFFFFF) and regular desktop windows
+        if (WindowDesktop != CurrentDesktop && WindowDesktop != 0xFFFFFFFFFFFFFFFF) {
+            continue;
+        }
 
 
 		if (!m_clients.contains(windows[i])) {
 			// Skip our own windows.
-			if (QWidget::find(windows[i]) != NULL) 
-                continue;
+			if (QWidget::find(windows[i]) != NULL) {
+				continue;
+			}
+			
+			// Skip special window types (panels, docks, etc.)
+			QVector<unsigned long> windowTypes = X11Support::getWindowPropertyAtomsArray(windows[i], "_NET_WM_WINDOW_TYPE");
+			bool isSpecialWindow = false;
+			for (unsigned long windowType : windowTypes) {
+				// Compare with known atom values for special window types
+				unsigned long dockAtom = X11Support::atom("_NET_WM_WINDOW_TYPE_DOCK");
+				unsigned long panelAtom = X11Support::atom("_NET_WM_WINDOW_TYPE_PANEL");
+				unsigned long desktopAtom = X11Support::atom("_NET_WM_WINDOW_TYPE_DESKTOP");
+				unsigned long notificationAtom = X11Support::atom("_NET_WM_WINDOW_TYPE_NOTIFICATION");
+				
+				if (windowType == dockAtom || 
+				    windowType == panelAtom ||
+				    windowType == desktopAtom ||
+				    windowType == notificationAtom) {
+					isSpecialWindow = true;
+					break;
+				}
+			}
+			if (isSpecialWindow) {
+				continue;
+			}
 
             // Check screen windows
             QRect windowGeometry = X11Support::getWindowWindowsGeometry(windows[i]);
-            QRect screenGeometry = QApplication::desktop()->screenGeometry(m_panelWindow->screen());
+            const QList<QScreen*> screens = QGuiApplication::screens();
+            const int sidx = m_panelWindow->screen();
+            const QScreen* screen = (sidx >= 0 && sidx < screens.size()) ? screens[sidx] : QGuiApplication::primaryScreen();
+            const QRect screenGeometry = screen ? screen->geometry() : QRect(0,0,1920,1080);
             if(m_only_current_screen && (!screenGeometry.contains(windowGeometry.topLeft())))
             {
                 continue;
@@ -657,8 +522,10 @@ void DockApplet::updateClientList()
                 continue;
             }
 
+            qDebug() << "DockApplet::updateX11ClientList - Creating new client for window" << QString::number(windows[i], 16) << "name:" << windowName;
             m_clients[windows[i]] = new Client(this, windows[i]);
         }
+        
 	}
 
     m_in_loop.clear();
@@ -669,118 +536,187 @@ void DockApplet::updateClientList()
 
             if(m_in_loop.contains(client))
             {
-                clientRemoved = false;
-                break;
+                continue;
             }
 
-            int handle = client->handle();
-
-
-            // Check minimized windows
-            if(m_only_minimized && !X11Support::getWindowMinimizedState(handle))
+            unsigned long handle = client->handle();
+            if (!windows.contains(handle))
             {
+                qDebug() << "DockApplet::updateX11ClientList - Window" << QString::number(handle, 16) << "no longer in window list, removing client";
+                qDebug() << "DockApplet::updateX11ClientList - Removing client for window" << QString::number(handle, 16);
                 delete m_clients[handle];
                 m_clients.remove(handle);
                 clientRemoved = true;
-                break;
-            }
-
-            // Check screen windows
-            QRect windowGeometry = X11Support::getWindowWindowsGeometry(handle);
-            QRect screenGeometry = QApplication::desktop()->screenGeometry(m_panelWindow->screen());
-            if(m_only_current_screen && (!screenGeometry.contains(windowGeometry.topLeft())))
-            {
-                delete m_clients[handle];
-                m_clients.remove(handle);
-                //clientRemoved = true;
-                break;
-            }
-
-            if (!windows.contains(handle)) {
-                if(!m_in_loop.contains(client))
-                    m_in_loop.append(client);
-                delete m_clients[handle];
-                m_clients.remove(handle);
-                clientRemoved = true;
-                break;
             }
         }
-        if (!clientRemoved) break;
-	}
+
+        if(!clientRemoved)
+            break;
+    }
+
+    // Clean up any remaining clients in the loop
+    foreach(Client* client, m_in_loop) {
+        int handle = client->handle();
+        delete m_clients[handle];
+        m_clients.remove(handle);
+    }
+    
+    // Update layout to clean up dock items marked for deletion
+    updateLayout();
 }
+
 
 void DockApplet::updateActiveWindow()
 {
-    unsigned long activeWindow = X11Support::getWindowPropertyWindow(
-        X11Support::rootWindow(), "_NET_ACTIVE_WINDOW");
-    if (activeWindow) m_activeWindow = activeWindow;
+#if QT_VERSION >= 0x050000
+    if (qApp->platformName().toLower().contains("xcb") == false) return; 
+#endif
+	unsigned long activeWindow = X11Support::getWindowPropertyCardinal(X11Support::rootWindow(), "_NET_ACTIVE_WINDOW");
+	if(activeWindow == 0)
+		return;
+
+	m_activeWindow = activeWindow;
+
+	for(int i = 0; i < m_dockItems.size(); i++)
+	{
+		m_dockItems[i]->update();
+	}
+}
+
+void DockApplet::windowPropertyChanged(unsigned long window, unsigned long atom)
+{
+#if QT_VERSION >= 0x050000
+    if (qApp->platformName().toLower().contains("xcb") == false) return; 
+#endif
+    
+    // Check if this is a _NET_CLIENT_LIST change (new window created/removed)
+    if (atom == X11Support::atom("_NET_CLIENT_LIST")) {
+        updateClientList();
+        return;
+    }
+    
+    if (m_clients.contains(window))
+		m_clients[window]->windowPropertyChanged(atom);
 }
 
 void DockApplet::windowReconfigured(unsigned long window, int x, int y, int width, int height)
 {
-    Q_UNUSED(window)
+#if QT_VERSION >= 0x050000
+    if (qApp->platformName().toLower().contains("xcb") == false) return; 
+#endif
     Q_UNUSED(x)
     Q_UNUSED(y)
     Q_UNUSED(width)
     Q_UNUSED(height)
 
-    if (window == X11Support::rootWindow()) {
+    if (m_clients.contains(window)) {
+        // Handle window reconfiguration if needed
         return;
     }
 
     updateClientList();
-    //qDebug() << "State changed";
 }
 
-void DockApplet::windowPropertyChanged(unsigned long window, unsigned long atom)
+void DockApplet::windowClosed(unsigned long window)
 {
-    // If Desktop is changed, clear windows list
-    if (atom == X11Support::atom("_NET_WM_DESKTOP")){
-        foreach(Client* client, m_clients) {
-            int handle = client->handle();
-            delete m_clients[handle];
-            m_clients.remove(handle);
-        }
-        //And update with news window
-       updateClientList();
+#if QT_VERSION >= 0x050000
+    //if (qApp->platformName().toLower().contains("xcb") == false) return; 
+#endif
+    
+    qDebug() << "DockApplet::windowClosed - Window" << QString::number(window, 16) << "closed";
+    
+    if (m_clients.contains(window)) {
+        qDebug() << "DockApplet::windowClosed - Removing client for window" << QString::number(window, 16);
+        // Remove the client
+        delete m_clients[window];
+        m_clients.remove(window);
+        
+        // Update layout
+        updateLayout();
+    } else {
+        qDebug() << "DockApplet::windowClosed - Window" << QString::number(window, 16) << "not found in clients";
     }
-
-    if (window == X11Support::rootWindow()) {
-        if (atom == X11Support::atom("_NET_CLIENT_LIST"))
-            updateClientList();
-
-		if(atom == X11Support::atom("_NET_ACTIVE_WINDOW")) 
-            updateActiveWindow();
-
-		return;
-	}
-
-    if (m_clients.contains(window))
-		m_clients[window]->windowPropertyChanged(atom);
 }
 
-void DockApplet::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
+void DockApplet::readSettings()
 {
-        if (event->button() == Qt::RightButton && !m_dragging) {
-            HPopupMenu menu;
+    m_only_current_screen = Settings::value(m_id, "only_current_screen", true).toBool();
+    m_only_current_desktop = Settings::value(m_id, "only_current_desktop", true).toBool();
+    m_only_minimized = Settings::value(m_id, "only_minimized", false).toBool();
+}
 
-            menu.addTitle("Dock Applet");
-            menu.addAction(QIcon::fromTheme("preferences-other"), "Configure Dock Applet", this, SLOT(showConfigurationDialog()));
+void DockApplet::deduplicateDockItems()
+{
+	QVector<DockItem*> itemsToRemove;
+	QSet<QString> seenApplications;
+	
+	for (int i = 0; i < m_dockItems.size(); ++i) {
+		DockItem* item = m_dockItems[i];
+		QString itemText = item->text();
+		QString normalizedName = itemText.toLower();
+		
+		// Extract application name from various patterns
+		QString appName = normalizedName;
+		if (normalizedName.contains(" - hdepanel")) {
+			// Extract from "dockapplet.cpp - hdepanel - Cursor" -> "cursor"
+			QString extracted = normalizedName.split(" - hdepanel").last().trimmed();
+			// Remove leading dash and space if present
+			if (extracted.startsWith("- ")) {
+				extracted = extracted.mid(2).trimmed();
+			}
+			appName = extracted;
+		} else if (normalizedName.contains(" - hde/panel")) {
+			// Extract from "dockapplet.cpp - hde/panel - Cursor" -> "cursor"
+			QString extracted = normalizedName.split(" - hde/panel").last().trimmed();
+			// Remove leading dash and space if present
+			if (extracted.startsWith("- ")) {
+				extracted = extracted.mid(2).trimmed();
+			}
+			appName = extracted;
+		}
+		
+		// Check if we've seen this application before
+		if (seenApplications.contains(appName)) {
+			itemsToRemove.append(item);
+		} else {
+			seenApplications.insert(appName);
+		}
+	}
+	
+	// Remove duplicate items safely
+	for (DockItem* item : itemsToRemove) {
+		if (m_dockItems.contains(item)) {
+			// Remove from list first
+			m_dockItems.removeAll(item);
+			// Then delete - the destructor will call unregisterDockItem
+			delete item;
+		}
+	}
+}
 
-            menu.addTitle("Panel");
-            menu.addAction(QIcon::fromTheme("preferences-desktop"), "Configure Panel", panelWindow(), SLOT(showConfigurationDialog()));
-
-            menu.addAction(QIcon::fromTheme("list-add"), "Add Panel", QApplication::instance(), SLOT(addPanel()));
-            menu.addAction(QIcon::fromTheme("list-remove"), "Remove Panel", panelWindow(), SLOT(removePanel()));
-
-            menu.exec(event->screenPos());
-        }
+DockItem* DockApplet::createDockItem(const QString& name, const QIcon& icon, const QString& objectName)
+{
+	// Create the dock item
+	DockItem* dockItem = new DockItem(this);
+	
+	// Set object name if provided
+	if (!objectName.isEmpty()) {
+		dockItem->setObjectName(objectName);
+	}
+	
+	// Register the dock item first (this will trigger updateLayout which sets target size)
+	registerDockItem(dockItem);
+	
+	// Now set text and icon (this will call updateContent with proper target size)
+	dockItem->setText(name);
+	dockItem->setIcon(icon);
+	
+	return dockItem;
 }
 
 void DockApplet::showConfigurationDialog()
 {
-    DockConfigurationDialog dialog(m_id);
-
+    DockConfigurationDialog dialog(m_id, panelWindow());
     if(dialog.exec())
     {
         readSettings();
@@ -788,3 +724,5 @@ void DockApplet::showConfigurationDialog()
     }
 }
 
+
+#include "moc_dockapplet.cpp"

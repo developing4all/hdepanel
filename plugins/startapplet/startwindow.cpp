@@ -142,8 +142,11 @@ void StartWindow::setProfileImage()
         // Icon=
         QSettings setting("/var/lib/AccountsService/users/" + name, QSettings::IniFormat);
         setting.beginGroup("User");
-        m_profileImage.load(setting.value("Icon").toString());
-        qDebug() << "Icon: " << setting.value("Icon").toString();
+        QString iconPath = setting.value("Icon").toString();
+        if (!iconPath.isEmpty()) {
+            m_profileImage.load(iconPath);
+        }
+        // qDebug() << "Icon: " << iconPath;
     }
 
     // If not succeed try to load KDE profile image
@@ -240,7 +243,7 @@ void StartWindow::addMenuItems()
     m_menu->setStyle(&m_style);
 #endif
     //m_menu->setFont(m_panelWindow->font());
-    m_menu->setStyleSheet(QString().sprintf(menuStyleSheet,
+    m_menu->setStyleSheet(QString::asprintf(menuStyleSheet,
         adjustHardcodedPixelSize(36),
         adjustHardcodedPixelSize(38),
         adjustHardcodedPixelSize(20),

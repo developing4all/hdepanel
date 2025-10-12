@@ -1,7 +1,10 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
  * (c)LGPL3+
  *
+ * This Files has been imported to hde from qtpanel
+ *
  * Copyright: 2015-2025 Haydar Alkaduhimi
+ * Copyright: 2014 Leslie Zhai <xiang.zhai@i-soft.com.cn>
  * Authors:
  *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
@@ -22,26 +25,26 @@
  *
  * END_COMMON_COPYRIGHT_HEADER */
 
-#ifndef SETTINGS_H
-#define SETTINGS_H
+#ifndef DOCKAPPLETPLUGIN_H
+#define DOCKAPPLETPLUGIN_H
 
-#include <QVariant>
+#include <QtCore/QObject>
+#include "applet.h"
 
-class QSettings;
+// Forward declarations
+class DockApplet;
 
-class Settings
+class DockAppletPlugin: public QObject, public AppletPlugin
 {
+    Q_OBJECT
+    Q_PLUGIN_METADATA(IID "hde.panel.appletplugin")
+    Q_INTERFACES(AppletPlugin)
+
 public:
-    Settings();
-    static QSettings *s_settings;
+    DockAppletPlugin();
+    ~DockAppletPlugin();
 
-    static void setGroup(const QString &group);
-
-    static QVariant value(const QString &group, const QString &key, const QVariant &defaultValue = QVariant()) ;
-    static QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) ;
-
-    static void setValue(const QString &group, const QString &key, const QVariant &value);
-    static void setValue(const QString &key, const QVariant &value);
+    Applet* createApplet(PanelWindow* panelWindow);
 };
 
-#endif // SETTINGS_H
+#endif

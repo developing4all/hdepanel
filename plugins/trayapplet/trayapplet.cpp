@@ -1,12 +1,12 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
  * This Files has been imported to hde from qtpanel
  *
- * Copyright: 2015-2016 Haydar Alkaduhimi
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Copyright: 2014 Leslie Zhai <xiang.zhai@i-soft.com.cn>
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -37,6 +37,7 @@
 #include "panelwindow.h"
 #include "x11support.h"
 #include "dpisupport.h"
+#include "sni.h"
 
 TrayItem::TrayItem(TrayApplet* trayApplet, unsigned long window)
 	: m_trayApplet(trayApplet), m_window(window)
@@ -106,6 +107,18 @@ TrayApplet::TrayApplet(PanelWindow* panelWindow)
 	: Applet(panelWindow), m_initialized(false), m_iconSize(adjustHardcodedPixelSize(24)), m_spacing(adjustHardcodedPixelSize(4))
 {
     setObjectName("Tray");
+#if QT_VERSION >= 0x050000
+    if (qApp->platformName().toLower().contains("xcb") == false) {
+        // Wayland: initialize SNI watcher to host indicators via DBus
+        m_sniWatcher = new SniWatcher(this);
+        connect(m_sniWatcher, &SniWatcher::itemAdded, this, [this](SniItemProxy* /*item*/){ updateLayout(); update(); });
+        connect(m_sniWatcher, &SniWatcher::itemRemoved, this, [this](const QString &){ updateLayout(); update(); });
+    } else {
+        m_sniWatcher = NULL;
+    }
+#else
+    m_sniWatcher = NULL;
+#endif
 }
 
 TrayApplet::~TrayApplet()
@@ -121,7 +134,11 @@ void TrayApplet::setPanelWindow(PanelWindow *panelWindow)
 
 void TrayApplet::close()
 {
+#if QT_VERSION >= 0x050000
+    if(m_initialized && qApp->platformName().toLower().contains("xcb"))
+#else
 	if(m_initialized)
+#endif
 		X11Support::freeSystemTray();
 
 	while(!m_trayItems.isEmpty())
@@ -132,7 +149,15 @@ void TrayApplet::close()
 
 bool TrayApplet::init()
 {
-	m_initialized = X11Support::makeSystemTray(m_panelWindow->winId());
+    // System tray is X11-specific; skip on Wayland
+#if QT_VERSION >= 0x050000
+    if (qApp->platformName().toLower().contains("xcb") == false) {
+        // Wayland path: rely on SNI via DBus; report initialized to keep layout
+        m_initialized = true;
+        return true;
+    }
+#endif
+    m_initialized = X11Support::makeSystemTray(m_panelWindow->winId());
 
 	if(!m_initialized)
 	{

@@ -4,6 +4,7 @@
  * This Files has been imported to hde from qtpanel
  *
  * Copyright: 2015-2025 Haydar Alkaduhimi
+ * Copyright: 2014 Leslie Zhai <xiang.zhai@i-soft.com.cn>
  * Authors:
  *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
@@ -24,31 +25,64 @@
  *
  * END_COMMON_COPYRIGHT_HEADER */
 
-#include "dpisupport.h"
+#ifndef CLIENT_H
+#define CLIENT_H
 
-#include <QtGlobal>
-#if QT_VERSION >= 0x060000
-#include <QApplication>
-#include <QScreen>
-#elif QT_VERSION >= 0x050000
-#include <QApplication>
-#include <QScreen>
-#include <QDesktopWidget>
-#else
-#include <QtGui/QApplication>
-#include <QtGui/QDesktopWidget>
-#endif
+#include <QtCore/QString>
+#include <QtGui/QIcon>
 
-int adjustHardcodedPixelSize(int size)
+// Forward declarations
+class DockApplet;
+class DockItem;
+
+// Used for tracking connected windows (X11 clients).
+// Client may have it's DockItem, but not necessary (for example, special windows are not shown in dock).
+class Client
 {
-#if QT_VERSION >= 0x060000
-    QScreen* screen = QGuiApplication::primaryScreen();
-    const int dpi = screen ? int(screen->logicalDotsPerInchX()) : 96;
-#elif QT_VERSION >= 0x050000
-    QScreen* screen = QGuiApplication::primaryScreen();
-    const int dpi = screen ? int(screen->logicalDotsPerInchX()) : 96;
-#else
-    const int dpi = qApp->desktop()->logicalDpiX();
+public:
+	Client(DockApplet* dockApplet, unsigned long handle);
+	~Client();
+
+	unsigned long handle() const
+	{
+		return m_handle;
+	}
+
+	bool isVisible()
+	{
+		return m_visible;
+	}
+
+	const QString& name() const
+	{
+		return m_name;
+	}
+
+	const QIcon& icon() const
+	{
+		return m_icon;
+	}
+
+	bool isUrgent() const
+	{
+		return m_isUrgent;
+	}
+
+	void windowPropertyChanged(unsigned long atom);
+
+private:
+	void updateVisibility();
+	void updateName();
+	void updateIcon();
+	void updateUrgency();
+
+	DockApplet* m_dockApplet;
+	unsigned long m_handle;
+	QString m_name;
+	QIcon m_icon;
+	bool m_isUrgent;
+	bool m_visible;
+	DockItem* m_dockItem;
+};
+
 #endif
-    return size * dpi / 96;
-}

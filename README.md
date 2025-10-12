@@ -20,7 +20,7 @@ Clock applet.
 
 
 # LICENSE
-GPL 2.0
+GPL 3.0
 
 
 # Build 

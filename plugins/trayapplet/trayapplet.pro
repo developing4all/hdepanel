@@ -1,7 +1,10 @@
 TEMPLATE        = lib
 CONFIG         += plugin
 
-QT += widgets x11extras
+QT += widgets dbus
+lessThan(QT_MAJOR_VERSION, 6) {
+    QT += x11extras
+}
 
 DESTDIR         = ../
 
@@ -10,11 +13,13 @@ INCLUDEPATH    += ../../lib/
 
 HEADERS += \
     trayapplet.h \
-    ../../lib/applet.h
+    ../../lib/applet.h \
+    sni.h
 
 
 SOURCES += \
-    trayapplet.cpp
+    trayapplet.cpp \
+    sni.cpp
 
 
 

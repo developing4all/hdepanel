@@ -1,11 +1,11 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
  * This Files has been imported to hde from qtpanel
  *
- * Copyright: 2015-2016 Haydar Alkaduhimi
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -93,6 +93,8 @@ public:
 	QList<DesktopApplication> applications();
 	DesktopApplication applicationFromPath(const QString& path);
 	void launch(const QString& path);
+	QString getApplicationIcon(const QString& appId, const QString& wmClass = QString());
+	QList<DesktopApplication> searchApplications(const QString& appId, const QString& wmClass = QString());
 
 signals:
 	void applicationUpdated(const DesktopApplication& app);

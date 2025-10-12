@@ -4,7 +4,7 @@
  * This Files has been imported to hde from qtpanel
  *
  * Copyright: 2015-2025 Haydar Alkaduhimi
- * Copyright (C) 2014 Leslie Zhai <xiang.zhai@i-soft.com.cn>
+ * Copyright: 2014 Leslie Zhai <xiang.zhai@i-soft.com.cn>
  * Authors:
  *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
@@ -25,40 +25,70 @@
  *
  * END_COMMON_COPYRIGHT_HEADER */
 
+#ifndef WAYLANDCLIENT_H
+#define WAYLANDCLIENT_H
 
-#ifndef TEXTGRAPHICSITEM_H
-#define TEXTGRAPHICSITEM_H
+#include <QtCore/QString>
+#include <QtGui/QIcon>
 
-#include <QtGui/QColor>
-#include <QtGui/QFont>
-#if QT_VERSION >= 0x050000
-#include <QGraphicsItem>
-#else
-#include <QtGui/QGraphicsItem>
-#endif
+// Forward declarations
+struct WaylandWindow;
+class DockApplet;
+class DockItem;
 
-class TextGraphicsItem: public QGraphicsItem
+// Used for tracking Wayland windows
+class WaylandClient
 {
 public:
-	TextGraphicsItem(QGraphicsItem* parent = NULL);
-	~TextGraphicsItem();
+	WaylandClient(DockApplet* dockApplet, const WaylandWindow& window);
+	~WaylandClient();
 
-	void setColor(const QColor& color);
-	void setFont(const QFont& font);
-	void setText(const QString& text);
-    void setImage(const QImage& image);
+	void* surface() const
+	{
+		return m_surface;
+	}
 
-	const QFont& font() const { return m_font; }
-	QString text() const { return m_text; }
+	bool isVisible() const
+	{
+		return m_visible;
+	}
 
-	QRectF boundingRect() const;
-	void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget);
+	const QString& name() const
+	{
+		return m_name;
+	}
+
+	const QString& appId() const
+	{
+		return m_appId;
+	}
+
+	const QIcon& icon() const
+	{
+		return m_icon;
+	}
+
+	bool isUrgent() const
+	{
+		return m_isUrgent;
+	}
+
+	void updateFromWindow(const WaylandWindow& window);
 
 private:
-	QColor m_color;
-	QFont m_font;
-	QString m_text;
-    QImage m_image;
+	void updateVisibility();
+	void updateName();
+	void updateIcon();
+	void updateUrgency();
+
+	DockApplet* m_dockApplet;
+	void* m_surface;
+	QString m_name;
+	QString m_appId;
+	QIcon m_icon;
+	bool m_isUrgent;
+	bool m_visible;
+	DockItem* m_dockItem;
 };
 
 #endif

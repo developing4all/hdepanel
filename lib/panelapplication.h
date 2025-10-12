@@ -1,11 +1,11 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
  * This Files has been imported to hde from qtpanel
  *
- * Copyright: 2015-2016 Haydar Alkaduhimi
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -51,27 +51,31 @@ class IconLoader;
 class X11Support;
 class DesktopApplications;
 
-#if QT_VERSION >= 0x050000                                                         
-class MyXcbEventFilter : public QAbstractNativeEventFilter                         
-{                                                                                  
-public:                   
-    MyXcbEventFilter() :m_x11support(NULL) {}
+#if QT_VERSION >= 0x050000
+class MyXcbEventFilter : public QAbstractNativeEventFilter
+{
+public:
+    MyXcbEventFilter() : m_x11support(NULL) {}
 
-    virtual bool nativeEventFilter(const QByteArray &eventType, void *message, long *) Q_DECL_OVERRIDE
+#if QT_VERSION >= 0x060000
+    bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *) override
+#else
+    bool nativeEventFilter(const QByteArray &eventType, void *message, long *) Q_DECL_OVERRIDE
+#endif
     {
         if(eventType != "xcb_generic_event_t")
             qDebug() << eventType;
 
         xcb_generic_event_t *ev = static_cast<xcb_generic_event_t *>(message);
-        if (m_x11support) m_x11support->onX11Event(ev); 
-        return false;                                                              
+        if (m_x11support) m_x11support->onX11Event(ev);
+        return false;
     }
 
     void setX11Support(X11Support *x11support) { m_x11support = x11support; }
 
 private:
-    X11Support *m_x11support;    
-};                                                                                 
+    X11Support *m_x11support;
+};
 #endif
 
 class PanelApplication: public QApplication 

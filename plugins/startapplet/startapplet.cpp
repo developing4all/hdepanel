@@ -6,18 +6,26 @@
 
 #include <QIcon>
 #include <QApplication>
-#include <QDesktopWidget>
+#include <QScreen>
 #include <QDebug>
 
 StartApplet::StartApplet(PanelWindow* panelWindow)
     : Applet(panelWindow)
 {
     setObjectName("Start");
-    if(panelWindow != 0)
-    {
-        setPanelWindow(panelWindow);
-    }
     m_start = new StartWindow;
+    
+    // Create text item for "Start" text
+    m_textItem = new TextGraphicsItem(this);
+    m_textItem->setColor(Qt::white);
+    m_textItem->setText("Start");
+    
+    // Create icon item for start icon
+    m_iconItem = new TextGraphicsItem(this);
+    m_iconItem->setColor(Qt::white);
+#if QT_VERSION >= 0x050000
+    m_iconItem->setImage(QImage(QIcon::fromTheme("start-here").pixmap(22,22).toImage()));
+#endif
 }
 
 StartApplet::~StartApplet()
@@ -32,24 +40,28 @@ void StartApplet::setPanelWindow(PanelWindow *panelWindow)
 {
     Applet::setPanelWindow(panelWindow);
 
-    m_textItem = new TextGraphicsItem(this);
-    m_textItem->setColor(Qt::white);
-    m_textItem->setFont(m_panelWindow->font());
-    m_textItem->setText("Start");
-#if QT_VERSION >= 0x050000
-    m_textItem->setImage(QImage(QIcon::fromTheme("start-here").pixmap(22,22).toImage()));
-#endif
+    // Update existing text item
+    if (m_textItem) {
+        m_textItem->setFont(m_panelWindow->font());
+    }
+    
+    // Icon item doesn't need updating as it's just an image
 }
 
 QSize StartApplet::desiredSize()
 {
-#if QT_VERSION >= 0x050000
-    return QSize(m_textItem->boundingRect().size().width() + 16,
-                 m_textItem->boundingRect().size().height());
-#else
-    return QSize(m_textItem->boundingRect().size().width(),
-                 m_textItem->boundingRect().size().height());
-#endif
+    if (!m_textItem || !m_panelWindow) return QSize(100, 48);
+    
+    // Calculate width: left padding + icon + margin + text + right padding
+    QFontMetrics metrics(m_panelWindow->font());
+    int textWidth = metrics.horizontalAdvance("Start");
+    int leftPadding = 12;   // Left padding
+    int iconWidth = 22;     // Icon width
+    int margin = 12;        // Margin between icon and text
+    int rightPadding = 16;  // Right padding
+    
+    int totalWidth = leftPadding + iconWidth + margin + textWidth + rightPadding;
+    return QSize(totalWidth, m_panelWindow->height());
 }
 
 bool StartApplet::init()
@@ -64,7 +76,13 @@ void StartApplet::clicked()
     int x = localToScreen(QPoint(0, m_size.height())).x();
     int y = localToScreen(QPoint(0, m_size.height())).y();
 
-    if(y >= QApplication::desktop()->screenGeometry(m_panelWindow->screen()).height() )
+    {
+        const QList<QScreen*> screens = QGuiApplication::screens();
+        const int sidx = m_panelWindow->screen();
+        const QScreen* screen = (sidx >= 0 && sidx < screens.size()) ? screens[sidx] : QGuiApplication::primaryScreen();
+        const QRect screenGeometry = screen ? screen->geometry() : QRect(0,0,1920,1080);
+
+    if(y >= screenGeometry.height() )
     {
         y = y - m_start->height() - m_size.height();
     }
@@ -74,7 +92,7 @@ void StartApplet::clicked()
     qDebug() << "m_size.width(): " << m_size.width();
     qDebug() << "X: " << x;
 */
-    if((x - m_start->width() + m_size.width()) >= QApplication::desktop()->screenGeometry(m_panelWindow->screen()).width())
+    if((x - m_start->width() + m_size.width()) >= screenGeometry.width())
     {
         x = localToScreen(QPoint(0, m_size.height())).x() - m_start->width() + m_size.width();
     }
@@ -82,16 +100,29 @@ void StartApplet::clicked()
 
     m_start->show();
     m_start->setFocused();
+    }
 }
 
 void StartApplet::layoutChanged()
 {
-#if QT_VERSION >= 0x050000
-    m_textItem->setPos(8,
-        (m_panelWindow->height() - m_textItem->boundingRect().height()) / 2);
-#else
-    m_textItem->setPos(8, m_panelWindow->textBaseLine());
-#endif
+    if (!m_panelWindow) return;
+    
+    // Define spacing constants (same as in desiredSize)
+    int leftPadding = 12;   // Left padding
+    int iconWidth = 22;     // Icon width
+    int margin = 12;        // Margin between icon and text
+    
+    // Position icon at the left edge with padding, vertically centered
+    if (m_iconItem) {
+        m_iconItem->setPos(leftPadding, (m_panelWindow->height() - iconWidth) / 2);
+    }
+    
+    // Position text after the icon with proper margin
+    if (m_textItem) {
+        int textX = leftPadding + iconWidth + margin;
+        int textY = m_panelWindow->textBaseLine();
+        m_textItem->setPos(textX, textY);
+    }
 }
 
 

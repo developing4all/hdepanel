@@ -1,7 +1,10 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
  * (c)LGPL3+
  *
+ * This Files has been imported to hde from qtpanel
+ *
  * Copyright: 2015-2025 Haydar Alkaduhimi
+ * Copyright: 2014 Leslie Zhai <xiang.zhai@i-soft.com.cn>
  * Authors:
  *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
@@ -22,26 +25,20 @@
  *
  * END_COMMON_COPYRIGHT_HEADER */
 
-#ifndef SETTINGS_H
-#define SETTINGS_H
+#include "dockappletplugin.h"
+#include "dockapplet.h"
 
-#include <QVariant>
-
-class QSettings;
-
-class Settings
+DockAppletPlugin::DockAppletPlugin()
 {
-public:
-    Settings();
-    static QSettings *s_settings;
+}
 
-    static void setGroup(const QString &group);
+DockAppletPlugin::~DockAppletPlugin()
+{
+}
 
-    static QVariant value(const QString &group, const QString &key, const QVariant &defaultValue = QVariant()) ;
-    static QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) ;
+Applet* DockAppletPlugin::createApplet(PanelWindow* panelWindow)
+{
+    return new DockApplet(panelWindow);
+}
 
-    static void setValue(const QString &group, const QString &key, const QVariant &value);
-    static void setValue(const QString &key, const QVariant &value);
-};
-
-#endif // SETTINGS_H
+#include "moc_dockappletplugin.cpp"

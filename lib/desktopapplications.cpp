@@ -1,11 +1,11 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
  * This Files has been imported to hde from qtpanel
  *
- * Copyright: 2015-2016 Haydar Alkaduhimi
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -31,7 +31,9 @@
 #include <QtCore/QMutexLocker>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
+#include <QtCore/QFileInfo>
 #include <QtCore/QTextStream>
+#include <climits>
 #include <QtCore/QProcess>
 #include <QtGui/QIcon>
 #include "iconloader.h"
@@ -80,8 +82,12 @@ bool DesktopApplication::init(const QString& path)
 		{
 			m_iconName = value;
 		}
-		if(key == "Categories")
-			m_categories = value.split(";", QString::SkipEmptyParts);
+        if(key == "Categories")
+#if QT_VERSION >= 0x060000
+            m_categories = value.split(';', Qt::SkipEmptyParts);
+#else
+            m_categories = value.split(";", QString::SkipEmptyParts);
+#endif
 	}
 
 	return true;
@@ -327,4 +333,81 @@ void DesktopApplications::traverse(const QDir& dir)
 			m_fileTasks.append(fileInfo.canonicalFilePath());
 		}
 	}
+}
+
+QString DesktopApplications::getApplicationIcon(const QString& appId, const QString& wmClass)
+{
+    if (appId.isEmpty() && wmClass.isEmpty()) {
+        return "application-x-executable";
+    }
+    
+    // Search for matching applications
+    QList<DesktopApplication> matches = searchApplications(appId, wmClass);
+    
+    if (matches.isEmpty()) {
+        // Fallback: use the appId or wmClass itself as the icon name
+        QString fallbackIcon = !appId.isEmpty() ? appId.toLower() : wmClass.toLower();
+        return fallbackIcon;
+    }
+    
+    // Return the icon from the first match
+    QString icon = matches.first().iconName();
+    if (!icon.isEmpty()) {
+        return icon;
+    }
+    
+    // If no icon found, use fallback
+    QString fallbackIcon = !appId.isEmpty() ? appId.toLower() : wmClass.toLower();
+    return fallbackIcon;
+}
+
+QList<DesktopApplication> DesktopApplications::searchApplications(const QString& appId, const QString& wmClass)
+{
+    QList<DesktopApplication> results;
+    
+    if (appId.isEmpty() && wmClass.isEmpty()) {
+        return results;
+    }
+    
+    QString appIdLower = appId.toLower();
+    QString wmClassLower = wmClass.toLower();
+    
+    QList<DesktopApplication> apps = applications();
+    
+    for (const DesktopApplication& app : apps) {
+        QString fileName = QFileInfo(app.path()).completeBaseName().toLower();
+        QString appName = app.name().toLower();
+        
+        bool matches = false;
+        
+        // Check appId matches
+        if (!appIdLower.isEmpty()) {
+            if (fileName == appIdLower || 
+                fileName.startsWith(appIdLower + "-") || 
+                fileName.startsWith(appIdLower + "_") ||
+                appName == appIdLower ||
+                fileName.contains(appIdLower) ||
+                appName.contains(appIdLower)) {
+                matches = true;
+            }
+        }
+        
+        // Check wmClass matches
+        if (!wmClassLower.isEmpty()) {
+            if (fileName == wmClassLower || 
+                fileName.startsWith(wmClassLower + "-") || 
+                fileName.startsWith(wmClassLower + "_") ||
+                appName == wmClassLower ||
+                fileName.contains(wmClassLower) ||
+                appName.contains(wmClassLower)) {
+                matches = true;
+            }
+        }
+        
+        if (matches) {
+            results.append(app);
+        }
+    }
+    
+    return results;
 }

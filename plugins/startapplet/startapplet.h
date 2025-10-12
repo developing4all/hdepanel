@@ -48,6 +48,7 @@ protected:
 
 private:
     TextGraphicsItem* m_textItem;
+    TextGraphicsItem* m_iconItem;
     StartWindow *m_start;
 
 };

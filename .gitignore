@@ -6,6 +6,9 @@
 *.exe
 *.o
 *.so
+*.a
+*.lib
+*.dylib
 
 # Packages #
 ############
@@ -23,6 +26,17 @@
 # Qt Project #
 ##############
 *.pro.user*
+*.pro.user
+*.qbs.user*
+*.qbs.user
+.qmake.stash
+Makefile*
+moc_*.cpp
+moc_*.h
+moc_predefs.h
+qrc_*.cpp
+ui_*.h
+*.moc
 
 # Logs and databases #
 ######################
@@ -39,3 +53,142 @@
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Qt Creator #
+##############
+*.autosave
+CMakeLists.txt.user*
+CMakeLists.txt.user
+.qtc_clangd/
+.vscode/
+
+# Qt Generated Files #
+#####################
+# MOC files
+moc_*.cpp
+moc_*.h
+moc_predefs.h
+*.moc
+
+# UIC files  
+ui_*.h
+
+# QRC files
+qrc_*.cpp
+
+# Object files
+*.o
+*.obj
+
+# Libraries
+*.a
+*.lib
+*.so
+*.so.*
+*.dll
+*.dylib
+
+# Executables
+hdepanel
+hdepanel.exe
+hdepanel.app
+
+# Qt Build Directories #
+########################
+build-*/
+build/
+debug/
+release/
+*-build-*
+*_build_*
+
+# Qt Temporary Files #
+#####################
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# Qt Plugin Files #
+###################
+*.dll
+*.so
+*.dylib
+lib*.so
+lib*.so.*
+
+# Qt Documentation #
+####################
+doc/
+docs/
+*.qch
+*.qhc
+
+# Qt Translation Files #
+#######################
+*.qm
+*.ts.bak
+
+# Qt Resource Files #
+#####################
+*.qrc.bak
+
+# Qt Designer Files #
+#####################
+*.ui.bak
+
+# Qt Test Files #
+##################
+*.log
+test-results/
+test-results.xml
+
+# Qt Package Files #
+####################
+*.deb
+*.rpm
+*.dmg
+*.msi
+*.exe
+
+# IDE Files #
+#############
+.vscode/
+.idea/
+*.vcxproj.user
+*.vcxproj.filters
+*.vcproj.user
+*.vcproj.filters
+*.sln.user
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# CMake #
+#########
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# Conan #
+#########
+conanfile.txt
+conaninfo.txt
+conanbuildinfo.*
+conan.lock
+
+# Other Build Systems #
+######################
+.ninja_deps
+.ninja_log
+build.ninja

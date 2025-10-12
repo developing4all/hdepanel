@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>488</width>
-    <height>337</height>
+    <width>581</width>
+    <height>367</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -51,7 +51,7 @@
      <item>
       <widget class="QStackedWidget" name="stackedWidget">
        <property name="currentIndex">
-        <number>1</number>
+        <number>0</number>
        </property>
        <widget class="QWidget" name="page">
         <layout class="QVBoxLayout" name="verticalLayout">
@@ -104,6 +104,32 @@
               </item>
              </widget>
             </item>
+            <item row="2" column="0">
+             <widget class="QLabel" name="horizontalPositionLabel">
+              <property name="text">
+               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Horizontal position:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <widget class="QComboBox" name="horizontalPosition">
+              <item>
+               <property name="text">
+                <string>Left</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Center</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>Right</string>
+               </property>
+              </item>
+             </widget>
+            </item>
             <item row="3" column="0">
              <widget class="QLabel" name="fontLabel">
               <property name="text">
@@ -118,14 +144,14 @@
               </property>
              </widget>
             </item>
-            <item row="2" column="0">
+            <item row="5" column="0">
              <widget class="QLabel" name="label">
               <property name="text">
                <string>screen:</string>
               </property>
              </widget>
             </item>
-            <item row="2" column="1">
+            <item row="5" column="1">
              <widget class="QComboBox" name="screen"/>
             </item>
             <item row="4" column="1">
@@ -190,8 +216,7 @@
              </property>
              <property name="icon">
               <iconset theme="go-up">
-               <normaloff/>
-              </iconset>
+               <normaloff>.</normaloff>.</iconset>
              </property>
              <property name="autoRaise">
               <bool>true</bool>
@@ -217,8 +242,7 @@
              </property>
              <property name="icon">
               <iconset theme="go-down">
-               <normaloff/>
-              </iconset>
+               <normaloff>.</normaloff>.</iconset>
              </property>
              <property name="autoRaise">
               <bool>true</bool>
@@ -257,8 +281,7 @@
              </property>
              <property name="icon">
               <iconset theme="list-add">
-               <normaloff/>
-              </iconset>
+               <normaloff>.</normaloff>.</iconset>
              </property>
              <property name="autoRaise">
               <bool>true</bool>
@@ -284,8 +307,7 @@
              </property>
              <property name="icon">
               <iconset theme="list-remove">
-               <normaloff/>
-              </iconset>
+               <normaloff>.</normaloff>.</iconset>
              </property>
              <property name="autoRaise">
               <bool>true</bool>
@@ -321,8 +343,7 @@
              </property>
              <property name="icon">
               <iconset theme="preferences-system">
-               <normaloff/>
-              </iconset>
+               <normaloff>.</normaloff>.</iconset>
              </property>
              <property name="iconSize">
               <size>

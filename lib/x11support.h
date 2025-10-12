@@ -1,12 +1,12 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
  * This Files has been imported to hde from qtpanel
  *
- * Copyright: 2015-2016 Haydar Alkaduhimi
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Copyright (C) 2014 Leslie Zhai <xiang.zhai@i-soft.com.cn>
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -33,9 +33,11 @@
 #include <QtCore/QObject>
 #include <QtGui/QIcon>
 #include <QtGui/QPixmap>
-#if QT_VERSION >= 0x050000                                                         
-#include <QApplication>                                                            
-#include <QX11Info>                                                                
+#if QT_VERSION >= 0x050000
+#include <QApplication>
+#if QT_VERSION < 0x060000
+#include <QX11Info>
+#endif
 #include <xcb/xcb.h>
 #else                                                                              
 #include <QtGui/QApplication>                                                      
@@ -43,8 +45,9 @@
 #include <QtGui/QImage>                                                            
 #endif
 
-// TODO: Keep all the X11 stuff with scary defines below normal headers.
-#include <X11/Xlib.h>
+// Avoid including X11 headers here to prevent macro collisions (e.g. None).
+// Forward declare X11 types used in method signatures.
+typedef union _XEvent XEvent;
 
 class X11Support: public QObject
 {
@@ -52,6 +55,7 @@ class X11Support: public QObject
 public:
 	X11Support();
 	~X11Support();
+	static int detectTopPanelHeight(Display *dpy);
 
 #if QT_VERSION >= 0x050000
     void onX11Event(xcb_generic_event_t *event);
@@ -72,8 +76,11 @@ public:
 	static void setWindowPropertyVisualId(unsigned long window, const QString& name, unsigned long value);
 	static unsigned long getWindowPropertyCardinal(unsigned long window, const QString& name);
 	static unsigned long getWindowPropertyWindow(unsigned long window, const QString& name);
+	static QVector<unsigned long> getWindowPropertyCardinalArray(unsigned long window, const QString& name);
 	static QVector<unsigned long> getWindowPropertyWindowsArray(unsigned long window, const QString& name);
 	static QVector<unsigned long> getWindowPropertyAtomsArray(unsigned long window, const QString& name);
+    static QVector<unsigned long> getAllWindows();
+    static void getAllWindowsRecursive(void* dpy, unsigned long window, QVector<unsigned long>& windows);
 	static QString getWindowPropertyUTF8String(unsigned long window, const QString& name);
 	static QString getWindowPropertyLatin1String(unsigned long window, const QString& name);
 	static QString getWindowName(unsigned long window);
@@ -101,7 +108,7 @@ public:
 	static void reparentWindow(unsigned long window, unsigned long parent);
 	static void setWindowBackgroundBlack(unsigned long window);
     // See
-    static void setStrut(Window _wid,
+    static void setStrut(unsigned long _wid,
                   int left, int right,
                   int top,  int bottom,
 

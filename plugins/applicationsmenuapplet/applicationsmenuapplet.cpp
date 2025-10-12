@@ -1,12 +1,12 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
  * This Files has been imported to hde from qtpanel
  *
- * Copyright: 2015-2016 Haydar Alkaduhimi
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Copyright: 2014 Leslie Zhai <xiang.zhai@i-soft.com.cn>
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -80,10 +80,11 @@ ApplicationsMenuApplet::ApplicationsMenuApplet(PanelWindow* panelWindow)
     : Applet(panelWindow), m_menuOpened(false)
 {
     setObjectName("ApplicationsMenu");
-    if(panelWindow != 0)
-    {
-        setPanelWindow(panelWindow);
-    }
+    
+    // Create m_textItem early so desiredSize() doesn't crash
+    m_textItem = new TextGraphicsItem(this);
+    m_textItem->setColor(Qt::white);
+    m_textItem->setText("Applications");
 }
 void ApplicationsMenuApplet::setPanelWindow(PanelWindow *panelWindow)
 {
@@ -95,7 +96,7 @@ void ApplicationsMenuApplet::setPanelWindow(PanelWindow *panelWindow)
     m_menu->setStyle(&m_style);
 #endif
     m_menu->setFont(m_panelWindow->font());
-    m_menu->setStyleSheet(QString().sprintf(menuStyleSheet,
+    m_menu->setStyleSheet(QString::asprintf(menuStyleSheet,
         adjustHardcodedPixelSize(36),
         adjustHardcodedPixelSize(38),
         adjustHardcodedPixelSize(20),
@@ -168,9 +169,11 @@ bool ApplicationsMenuApplet::init()
 QSize ApplicationsMenuApplet::desiredSize()
 {
 #if QT_VERSION >= 0x050000
+    if (!m_textItem) return QSize(100, 24);
     return QSize(m_textItem->boundingRect().size().width() + 16,
                  m_textItem->boundingRect().size().height());
 #else
+    if (!m_textItem) return QSize(100, 24);
     return QSize(m_textItem->boundingRect().size().width(),
                  m_textItem->boundingRect().size().height());
 #endif

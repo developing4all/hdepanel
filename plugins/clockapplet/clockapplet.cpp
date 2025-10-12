@@ -1,12 +1,12 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
  * This Files has been imported to hde from qtpanel
  *
- * Copyright: 2015-2016 Haydar Alkaduhimi
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Copyright: 2014 Leslie Zhai <xiang.zhai@i-soft.com.cn>
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -39,7 +39,7 @@
 #include <QDebug>
 
 #include <QApplication>
-#include <QDesktopWidget>
+#include <QScreen>
 
 #include "calendar.h"
 
@@ -47,12 +47,11 @@ ClockApplet::ClockApplet(PanelWindow* panelWindow)
 	: Applet(panelWindow)
 {
     setObjectName("Clock");
-    if(panelWindow != 0)
-    {
-        setPanelWindow(panelWindow);
-    }
-
     m_calendar = new Calendar;
+    
+    // Create m_textItem early so desiredSize() doesn't crash
+    m_textItem = new TextGraphicsItem(this);
+    m_textItem->setColor(Qt::white);
 }
 
 void ClockApplet::setPanelWindow(PanelWindow *panelWindow)
@@ -110,6 +109,7 @@ void ClockApplet::updateContent()
 
 QSize ClockApplet::desiredSize()
 {
+	if (!m_textItem) return QSize(100, 24);
 	return QSize(m_textItem->boundingRect().width() + 16, m_textItem->boundingRect().height() + 16);
 }
 
@@ -127,17 +127,24 @@ void ClockApplet::clicked()
     int y = localToScreen(QPoint(0, m_size.height())).y();
 
     //qDebug() << "orig x: " << x;
-    if(y >= QApplication::desktop()->screenGeometry(m_panelWindow->screen()).height() )
+    {
+        const QList<QScreen*> screens = QGuiApplication::screens();
+        const int sidx = m_panelWindow->screen();
+        const QScreen* screen = (sidx >= 0 && sidx < screens.size()) ? screens[sidx] : QGuiApplication::primaryScreen();
+        const QRect screenGeometry = screen ? screen->geometry() : QRect(0,0,1920,1080);
+
+    if(y >= screenGeometry.height() )
     {
         y = y - m_calendar->height() - m_size.height();
     }
 
-    if((x) < QApplication::desktop()->screenGeometry(m_panelWindow->screen()).x())
+    if((x) < screenGeometry.x())
     {
         //qDebug() << "SIZE Error";
-        x = QApplication::desktop()->screenGeometry(m_panelWindow->screen()).x() + m_position.x() ;
+        x = screenGeometry.x() + m_position.x() ;
     }
     m_calendar->move(x,y);
     m_calendar->show();
     m_calendar->setFocused();
+}
 }

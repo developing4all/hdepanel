@@ -1,7 +1,10 @@
 TEMPLATE        = lib
 CONFIG         += plugin
 
-QT += widgets x11extras xml
+QT += widgets xml
+lessThan(QT_MAJOR_VERSION, 6) {
+    QT += x11extras
+}
 
 #CONFIG += qxt
 #QXT += core widgets

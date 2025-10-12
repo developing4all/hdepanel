@@ -1,12 +1,9 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
- * This Files has been imported to hde from qtpanel
- *
- * Copyright: 2015-2016 Haydar Alkaduhimi
- * Copyright (C) 2014 Leslie Zhai <xiang.zhai@i-soft.com.cn>
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -25,62 +22,67 @@
  *
  * END_COMMON_COPYRIGHT_HEADER */
 
-#include <QtGui/QResizeEvent>
-#if QT_VERSION >= 0x050000
-#include <QApplication>                                                   
-#include <QDesktopWidget>                                                    
-#include <QGraphicsScene>                                                    
-#include <QGraphicsSceneMouseEvent>                                          
-#include <QGraphicsView>                                                     
-//#include <QMenu>
-#else
-#include <QtGui/QApplication>
-#include <QtGui/QDesktopWidget>
-#include <QtGui/QGraphicsScene>
-#include <QtGui/QGraphicsSceneMouseEvent>
-#include <QtGui/QGraphicsView>
-//#include <QtGui/QMenu>
-#endif
-#include <QPluginLoader>
-
-#include <QStandardPaths>
-
-#include <QDir>
-
-#include "hpopupmenu.h"
-#include "applet.h"
-
-#include "settings.h"
-
 #include "panelwindow.h"
-#include "dpisupport.h"
+
+#include <QApplication>
+#include <QGuiApplication>
+#include <QScreen>
+#include <QDebug>
+#include <QProcessEnvironment>
+#include <QProcess>
+#include <QGraphicsScene>
+#include <QGraphicsSceneMouseEvent>
+#include <QGraphicsView>
+#include <QShowEvent>
+#include <QMouseEvent>
+#include <QResizeEvent>
+#include <QTimer>
+#include <QDir>
+#include <QPluginLoader>
+#include <QLinearGradient>
+#include <QPainter>
+#include <QStyleOptionGraphicsItem>
+ 
+#if QT_VERSION < 0x060000
+#include <QDesktopWidget>
+#endif
+ 
+#include <QStandardPaths>
+ 
+#include "settings.h"
+#include "applet.h"
 #include "panelapplication.h"
 #include "x11support.h"
-
 #include "panelsettings.h"
-
-
-PanelWindowGraphicsItem::PanelWindowGraphicsItem(PanelWindow* panelWindow)
-	: m_panelWindow(panelWindow)
+#include "hpopupmenu.h"
+ 
+#if defined(Q_OS_UNIX)
+#  include <X11/Xlib.h>
+#  include <X11/Xatom.h>
+#endif
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#  include <QGuiApplication>
+#else
+#  include <QX11Info>
+#endif
+// ---------------------- PanelWindowGraphicsItem ----------------------
+ 
+PanelWindow::PanelWindowGraphicsItem::PanelWindowGraphicsItem(PanelWindow* panelWindow)
+    : m_panelWindow(panelWindow)
 {
-	setZValue(-10.0); // Background.
+    setZValue(-10.0); // background
     setAcceptedMouseButtons(Qt::RightButton);
 }
-
-PanelWindowGraphicsItem::~PanelWindowGraphicsItem()
+ 
+PanelWindow::PanelWindowGraphicsItem::~PanelWindowGraphicsItem() = default;
+ 
+QRectF PanelWindow::PanelWindowGraphicsItem::boundingRect() const
 {
+    return QRectF(0.0, 0.0, m_panelWindow->width(), m_panelWindow->height());
 }
-
-QRectF PanelWindowGraphicsItem::boundingRect() const
+ 
+void PanelWindow::PanelWindowGraphicsItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget*)
 {
-	return QRectF(0.0, 0.0, m_panelWindow->width(), m_panelWindow->height());
-}
-
-void PanelWindowGraphicsItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
-{
-    Q_UNUSED(option)
-    Q_UNUSED(widget)
-
 	painter->setPen(Qt::NoPen);
 	painter->setBrush(QColor(0, 0, 0, 128));
 	painter->drawRect(boundingRect());
@@ -104,478 +106,603 @@ void PanelWindowGraphicsItem::paint(QPainter* painter, const QStyleOptionGraphic
 		painter->setBrush(QBrush(gradient));
 		painter->drawRect(0.0, 0.0, m_panelWindow->width(), borderThickness);
 	}
-}
-
-void PanelWindowGraphicsItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
+ }
+ 
+void PanelWindow::PanelWindowGraphicsItem::mousePressEvent(QGraphicsSceneMouseEvent* e) { Q_UNUSED(e) }
+void PanelWindow::PanelWindowGraphicsItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* e)
 {
-    Q_UNUSED(event)
+    if (isUnderMouse())
+        m_panelWindow->showPanelContextMenu(QPoint(static_cast<int>(e->pos().x()),
+                                                   static_cast<int>(e->pos().y())));
 }
-
-void PanelWindowGraphicsItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
-{
-	if(isUnderMouse())
-	{
-		m_panelWindow->showPanelContextMenu(QPoint(static_cast<int>(event->pos().x()), static_cast<int>(event->pos().y())));
-	}
-}
-
+ 
+// ---------------------- PanelWindow ----------------------
+ 
 PanelWindow::PanelWindow(QString id)
+    : m_id(std::move(id))
 {
-    m_id = id;
-    m_dockMode = false;
-    m_screen = 0;
-    m_horizontalAnchor = Center;
-    m_verticalAnchor = Min;
-    m_orientation = Horizontal;
-    m_layoutPolicy = Normal;
-
-    setStyleSheet("background-color: transparent");
-	setAttribute(Qt::WA_TranslucentBackground);
-
-	m_scene = new QGraphicsScene();
-	m_scene->setBackgroundBrush(QBrush(Qt::NoBrush));
-
-	m_panelItem = new PanelWindowGraphicsItem(this);
-	m_scene->addItem(m_panelItem);
-
-	m_view = new QGraphicsView(m_scene, this);
-	m_view->setStyleSheet("border-style: none;");
-	m_view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-	m_view->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-	m_view->setRenderHint(QPainter::Antialiasing);
-	m_view->move(0, 0);
-
+    // Defaults
+    m_dockMode        = true;        // docks want to reserve space by default
+    m_screen          = 0;
+    m_horizontalAnchor= Center;
+    m_verticalAnchor  = Max;         // bottom by default
+    m_orientation     = Horizontal;
+    m_layoutPolicy    = FillSpace;   // most panels stretch full width
+ 
+     // Initial size: use screen width, standard height
+#if QT_VERSION < 0x060000
+    const QRect screen = QApplication::desktop()->screenGeometry();
+#else
+    const QList<QScreen*> screens = QGuiApplication::screens();
+    const QRect screen = screens.isEmpty() ? QRect(0,0,1920,1080) : screens.first()->geometry();
+#endif
+    resize(screen.width(), 38);
+ 
+    // Scene / view
+    m_scene = new QGraphicsScene(this);
+    m_scene->setBackgroundBrush(Qt::NoBrush);
+ 
+    auto* item = new PanelWindowGraphicsItem(this);
+    m_scene->addItem(item);
+ 
+    m_view = new QGraphicsView(m_scene, this);
+    m_view->setStyleSheet("border-style: none;");
+    m_view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_view->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_view->setRenderHint(QPainter::Antialiasing);
+    m_view->move(0, 0);
+    m_view->setMouseTracking(true);
+    m_view->setAttribute(Qt::WA_NoMousePropagation);
+    m_view->setAttribute(Qt::WA_TransparentForMouseEvents, false);
+     
+    setAttribute(Qt::WA_TranslucentBackground);
+    setAutoFillBackground(false);
+     
+    // Window flags / attributes
+    setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+    setAttribute(Qt::WA_X11NetWmWindowTypeDock, true);
+    setAttribute(Qt::WA_ShowWithoutActivating);
+    setAttribute(Qt::WA_NoSystemBackground);
+    setAttribute(Qt::WA_TranslucentBackground);
+    setMinimumSize(100, 48);
+ 
+    // Settings & plugins
     readSettings();
-
-    resize(adjustHardcodedPixelSize(512), adjustHardcodedPixelSize(48));
+    setApplets();
+    init();
+ 
+    // Debounce strut applying
+    m_strutDebounce.setSingleShot(true);
+    m_strutDebounce.setInterval(120);
+    connect(&m_strutDebounce, &QTimer::timeout, this, [this]{
+        applyX11Struts(geometry());
+    });
+ 
+#if QT_VERSION >= 0x050000
+    // Wayland fallback: gently reassert position
+#if QT_VERSION < 0x060000
+    const bool isX11 = QX11Info::isPlatformX11();
+#else
+    const bool isX11 = qApp->platformName().toLower().contains("xcb");
+#endif
+    if (!isX11) {
+        m_waylandRepositionTimer = new QTimer(this);
+        m_waylandRepositionTimer->setSingleShot(false);
+        m_waylandRepositionTimer->setInterval(1000);
+        connect(m_waylandRepositionTimer, &QTimer::timeout, this, &PanelWindow::forceWaylandPosition);
+        m_waylandRepositionTimer->start();
+    }
+#endif
 }
+ 
+PanelWindow::~PanelWindow()
+{
+    removeApplets();
+    delete m_view;
+    m_view = nullptr;
+    m_scene = nullptr;
+}
+ 
+void PanelWindow::showEvent(QShowEvent* e)
+{
+    QWidget::showEvent(e);
 
+#if QT_VERSION < 0x060000
+    if (!QX11Info::isPlatformX11()) return;
+#else
+    if (!qApp->platformName().toLower().contains("xcb")) return;
+#endif
+
+    // On X11: set dock type + above, then position, then schedule struts
+    #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    Display *dpy = QX11Info::display();
+#else
+    auto native = qGuiApp->nativeInterface<QNativeInterface::QX11Application>();
+    Display *dpy = native ? native->display() : nullptr;
+#endif
+     if (!dpy) return;
+
+    const Window win = winId();
+
+    const Atom wmType     = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
+    const Atom wmTypeDock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
+    XChangeProperty(dpy, win, wmType, XA_ATOM, 32, PropModeReplace,
+                    (unsigned char*)&wmTypeDock, 1);
+
+    const Atom wmState     = XInternAtom(dpy, "_NET_WM_STATE", False);
+    const Atom wmStateAbove= XInternAtom(dpy, "_NET_WM_STATE_ABOVE", False);
+    XChangeProperty(dpy, win, wmState, XA_ATOM, 32, PropModeReplace,
+                    (unsigned char*)&wmStateAbove, 1);
+
+    // On all desktops
+    const Atom wmDesktop = XInternAtom(dpy, "_NET_WM_DESKTOP", False);
+    const unsigned long allDesktops = 0xFFFFFFFFul;
+    XChangeProperty(dpy, win, wmDesktop, XA_CARDINAL, 32, PropModeReplace,
+                    (unsigned char*)&allDesktops, 1);
+
+    XSync(dpy, False);
+
+    // Place first, apply struts after a short delay to ensure mapping
+    updateLayout();
+    updatePosition();
+    scheduleApplyStruts(); // single, debounced
+
+    qDebug() << "PanelWindow::showEvent - applied dock type; scheduled struts";
+}
+ 
+void PanelWindow::mousePressEvent(QMouseEvent* e)  { e->accept(); QWidget::mousePressEvent(e); }
+void PanelWindow::mouseReleaseEvent(QMouseEvent* e){ e->accept(); QWidget::mouseReleaseEvent(e); }
+ 
+void PanelWindow::resizeEvent(QResizeEvent* ev)
+{
+    qDebug() << "PanelWindow::resizeEvent - new size:" << ev->size()
+             << "isVisible:" << isVisible() << "isHidden:" << isHidden();
+
+    // Keep the view in sync
+    m_view->resize(ev->size());
+    m_view->setSceneRect(QRectF(QPointF(0,0), QSizeF(ev->size())));
+
+    // Layout then re-position; strut will be scheduled once
+    updateLayout();
+    updatePosition();
+    scheduleApplyStrutsIfMoved();
+
+    qDebug() << "PanelWindow::resizeEvent - done; geom:" << geometry();
+}
+ 
+// ---------------------- Settings & Applets ----------------------
+ 
 void PanelWindow::readSettings()
 {
     setFontName(Settings::value(m_id, "fontName", "default").toString());
     setScreen(Settings::value(m_id, "screen", 0).toInt());
 
-    PanelWindow::Anchor m_verticalAnchor;
-    QString verticalPosition = Settings::value(m_id, "verticalPosition", "Bottom").toString();
-    if(verticalPosition == "Top")
-        m_verticalAnchor = PanelWindow::Min;
-    else if(verticalPosition == "Bottom")
-        m_verticalAnchor = PanelWindow::Max;
+    // Vertical
+    const QString vpos = Settings::value(m_id, "verticalPosition", "Bottom").toString();
+    m_verticalAnchor = (vpos == "Top") ? Min : Max;
 
-    setVerticalAnchor(m_verticalAnchor);
+    // Horizontal
+    const QString hpos = Settings::value(m_id, "horizontalPosition", "Center").toString();
+    if      (hpos == "Left")  m_horizontalAnchor = Min;
+    else if (hpos == "Right") m_horizontalAnchor = Max;
+    else                      m_horizontalAnchor = Center;
 
-    m_appletnames = Settings::value(m_id, "applets", QStringList() ).toStringList();
-
-    setApplets();
+    m_appletnames = Settings::value(m_id, "applets", QStringList()).toStringList();
 }
-
-void PanelWindow::resetApplets()
+ 
+bool PanelWindow::init()
 {
-    removeApplets();
-
-    m_appletnames = Settings::value(m_id, "applets", QStringList() ).toStringList();
-
-    setApplets();
-    init();
-    //repaint();
-    updateLayout();
-    updatePosition();
-
+    for (int i = 0; i < m_applets.size();) {
+        m_applets[i]->setPanelWindow(this);
+        if (!m_applets[i]->init())
+            m_applets.remove(i);
+        else
+            ++i;
+    }
+    return true;
 }
+ 
 void PanelWindow::setApplets()
 {
-    //qDebug() << applets;
-
-    QDir plugDir = QDir(qApp->applicationDirPath() + "/plugins");
-
-    // If does not exists check the standard plugin directory
-    if((!plugDir.exists()) && QDir("/usr/lib/hde/panel/plugins").exists())
-    {
+    QDir plugDir(qApp->applicationDirPath() + "/plugins");
+    if (!plugDir.exists() && QDir("/usr/lib/hde/panel/plugins").exists())
         plugDir.cd("/usr/lib/hde/panel/plugins");
-    }
 
-    //qDebug() << "Plugins directoy: " << plugDir.absolutePath();
-
-    foreach(QString applet_id, m_appletnames)
-    {
+    for (const QString& applet_id : m_appletnames) {
         loadApplet(applet_id, plugDir);
     }
 }
-
+ 
 void PanelWindow::loadApplet(QString applet_id, QDir &plugDir)
 {
-    int index = applet_id.lastIndexOf("_");
-    QString applet_name = applet_id.left(index);
+    const int idx = applet_id.lastIndexOf('_');
+    const QString name = applet_id.left(idx);
+    const QString path = plugDir.absolutePath() + "/lib" + name.toLower() + ".so";
 
-    QString applet_path = plugDir.absolutePath() + "/lib" + applet_name.toLower() + ".so";
-    //qDebug() << "applet_path: " << applet_path;
-    if(QLibrary::isLibrary(applet_path))
-    {
-        QPluginLoader loader(applet_path, this);
-        AppletPlugin *appletplugin = qobject_cast<AppletPlugin *>(loader.instance());
-        if (appletplugin)
-        {
-
-            Applet *applet = appletplugin->createApplet(this);
-            if(applet)
-            {
-                applet->setId(applet_id);
-                m_applets.append(applet);
-                //qDebug() << applet->objectName();
-
+    if (QLibrary::isLibrary(path)) {
+        QPluginLoader loader(path, this);
+        if (auto* plugin = qobject_cast<AppletPlugin*>(loader.instance())) {
+            if (Applet* a = plugin->createApplet(this)) {
+                a->setId(applet_id);
+                m_applets.append(a);
+                m_scene->addItem(a);
             }
-            else
-            {
-                qDebug() << "applet '" << applet_name << "' not loaded";
-            }
-
-        }
-        else
-        {
-            //qDebug() << "";
-            //qDebug() << "BAD";
+        } else {
             qDebug() << loader.errorString();
-            //qDebug() << "BAD";
-            //qDebug() << "";
         }
-        //loader.unload();
     }
-
 }
-
+ 
 void PanelWindow::removeApplets()
 {
     qDebug() << "removing apllets";
-    while(!m_applets.isEmpty())
-    {
-        delete m_applets.takeLast();
+    while (!m_applets.isEmpty()) {
+        if (Applet* a = m_applets.takeLast()) {
+            a->close();
+            delete a;
+        }
     }
 }
-
-PanelWindow::~PanelWindow()
-{
-    removeApplets();
-	delete m_view;
-	delete m_panelItem;
-	delete m_scene;
-}
-
-bool PanelWindow::init()
-{
-	for(int i = 0; i < m_applets.size();)
-	{
-		if(!m_applets[i]->init())
-			m_applets.remove(i);
-		else
-			i++;
-	}
-    return true;
-}
-
+ 
+// ---------------------- Public setters -> schedule geometry work ----------------------
+ 
 void PanelWindow::setDockMode(bool dockMode)
 {
+    if (m_dockMode == dockMode) return;
     m_dockMode = dockMode;
 
-	// FIXME: no DOCK effect for Qt5?
-    setAttribute(Qt::WA_X11NetWmWindowTypeDock, m_dockMode);
-#if QT_VERSION >= 0x050000
-    setWindowFlags(Qt::BypassWindowManagerHint | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+#if QT_VERSION < 0x060000
+    if (QX11Info::isPlatformX11())
+        setAttribute(Qt::WA_X11NetWmWindowTypeDock, m_dockMode);
+#else
+    if (qApp->platformName().toLower().contains("xcb"))
+        setAttribute(Qt::WA_X11NetWmWindowTypeDock, m_dockMode);
 #endif
 
-	if (!m_dockMode)
-	{
-		// No need to reserve space anymore.
+    if (!m_dockMode) {
         X11Support::removeWindowProperty(winId(), "_NET_WM_STRUT");
         X11Support::removeWindowProperty(winId(), "_NET_WM_STRUT_PARTIAL");
-	}
+    }
 
-	// When in dock mode, panel should appear on all desktops.
-	unsigned long desktop = m_dockMode ? 0xFFFFFFFF : 0;
-	X11Support::setWindowPropertyCardinal(winId(), "_NET_WM_DESKTOP", desktop);
-
-	updateLayout();
-	updatePosition();
+    updateLayout();
+    updatePosition();
+    scheduleApplyStruts();
 }
 
 void PanelWindow::setScreen(int screen)
 {
-	m_screen = screen;
-	updateLayout();
-	updatePosition();
+    if (m_screen == screen) return;
+    m_screen = screen;
+    updateLayout();
+    updatePosition();
+    scheduleApplyStruts();
 }
 
-void PanelWindow::setHorizontalAnchor(Anchor horizontalAnchor)
+void PanelWindow::setHorizontalAnchor(Anchor a)
 {
-	m_horizontalAnchor = horizontalAnchor;
-	updatePosition();
+    if (m_horizontalAnchor == a) return;
+    m_horizontalAnchor = a;
+    updatePosition();
+    scheduleApplyStruts();
 }
 
-void PanelWindow::setVerticalAnchor(Anchor verticalAnchor)
+void PanelWindow::setVerticalAnchor(Anchor a)
 {
-	m_verticalAnchor = verticalAnchor;
-	updatePosition();
+    if (m_verticalAnchor == a) return;
+    m_verticalAnchor = a;
+    updatePosition();
+    scheduleApplyStruts();
+}
+ 
+void PanelWindow::setOrientation(Orientation o) { m_orientation = o; }
+void PanelWindow::setLayoutPolicy(LayoutPolicy p)
+{
+    if (m_layoutPolicy == p) return;
+    m_layoutPolicy = p;
+    updateLayout();
+    updatePosition();
+    scheduleApplyStruts();
 }
 
-void PanelWindow::setOrientation(Orientation orientation)
+// ---------------------- Geometry helpers ----------------------
+
+QRect PanelWindow::currentScreenGeometry() const
 {
-	m_orientation = orientation;
+#if QT_VERSION >= 0x050000
+    const auto screens = QGuiApplication::screens();
+    if (m_screen >= 0 && m_screen < screens.size())
+        return screens[m_screen]->geometry();
+    return screens.isEmpty() ? QRect(0,0,1920,1080) : screens.first()->geometry();
+#else
+    return QApplication::desktop()->screenGeometry(m_screen);
+#endif
 }
 
-void PanelWindow::setLayoutPolicy(LayoutPolicy layoutPolicy)
+QRect PanelWindow::getAvailableScreenGeometry() const
 {
-	m_layoutPolicy = layoutPolicy;
-	updateLayout();
-}
+    const QRect screen = currentScreenGeometry();
+    QRect available = screen;
 
-void PanelWindow::updatePosition()
-{
-    QRect screenGeometry = QApplication::desktop()->screenGeometry(m_screen);
+#if QT_VERSION >= 0x050000
+    const auto screens = QGuiApplication::screens();
+    QRect scrAvail = (!screens.isEmpty() ?
+        (m_screen >= 0 && m_screen < screens.size() ? screens[m_screen]->availableGeometry()
+                                                    : screens.first()->availableGeometry())
+        : QRect());
+    if (scrAvail.isValid()) available = scrAvail;
+#else
+    QRect scrAvail = QApplication::desktop()->availableGeometry(m_screen);
+    if (scrAvail.isValid()) available = scrAvail;
+#endif
 
-    int left = 0;
-    int right = 0;
-    int top = 0;
-    int buttom = 0;
-    int leftStartY = 0;
-    int leftEndY = 0;
-    int rightStartY = 0;
-    int rightEndY = 0;
-    int topStartX = 0;
-    int topEndX = 0;
-    int bottomStartX = 0;
-    int bottomEndX= 0;
-
-    //top = screenGeometry.top() + height()-1;
-    //topEndX = screenGeometry.x() + width()-1;
-
-     if(!m_dockMode)
-        return;
-
-
-	int x;
-
-    switch(m_horizontalAnchor)
-	{
-	case Min:
-        x = screenGeometry.left();
-        break;
-	case Center:
-		x = (screenGeometry.left() + screenGeometry.right() + 1 - width())/2;
-        break;
-	case Max:
-		x = screenGeometry.right() - width() + 1;
-        break;
-	default:
-        Q_ASSERT(false);
-		break;
-	}
-
-	int y;
-	switch(m_verticalAnchor)
-	{
-	case Min:
-        y = screenGeometry.top();
-		break;
-	case Center:
-		y = (screenGeometry.top() + screenGeometry.bottom() + 1 - height())/2;
-		break;
-	case Max:
-		y = screenGeometry.bottom() - height() + 1;
-		break;
-	default:
-		Q_ASSERT(false);
-		break;
-	}
-
-	move(x, y);
-
-    //qDebug() << "screen: " << m_screen << " geometry: " << screenGeometry;
-
-    X11Support::setStrut(winId(), // winid
-                         left, right, top, buttom, // int left, int right, int top,  int bottom,
-                         leftStartY, leftEndY,    // int leftStartY,   int leftEndY,
-                         rightStartY, rightEndY,    // rightStartY,  int rightEndY,
-                         topStartX, topEndX, // topStartX,    int topEndX,
-                         bottomStartX, bottomEndX // bottomStartX, int bottomEndX
-                     );
-
-
-    //setScreen(m_screen);
-    //qDebug() << "screen: " << screen() << " m_screen: " << m_screen;
-
-    // @ToDo: More tests on multiple screens, it works with tow horizontal aligned screens has the same geometries.
-	// Update reserved space.
-    if(m_dockMode)
-	{
-        QVector<unsigned long> values; // Values for setting _NET_WM_STRUT_PARTIAL property.
-        values.fill(0, 12);
-        switch(m_horizontalAnchor)
-		{
-		case Min:
-            values[0] = x + width();    // left
-            values[4] = y;              // leftStartY
-            values[5] = y + height();   // leftEndY
-			break;
-		case Max:
-            values[1] = QApplication::desktop()->width() - x;   // right
-            values[6] = y;                                      // rightStartY
-            values[7] = y + height();                           // rightEndY
-			break;
-		default:
-			break;
-		}
-		switch(m_verticalAnchor)
-		{
-		case Min:
-            values[2] = y + height();       // Top
-            values[8] = x;         // topStartX
-            values[9] = x ;        // topEndX
-			break;
-		case Max:
-            values[3] = QApplication::desktop()->height() - y; // buttom
-            values[10] = x;                                    // bottomStartX
-            values[11] = x ;                          // bottomEndX
-			break;
-		default:
-			break;
-		}
-        /*
-    if(m_dockMode)
-    {
-        QVector<unsigned long> values; // Values for setting _NET_WM_STRUT_PARTIAL property.
-        values.fill(0, 12);
-        switch(m_horizontalAnchor)
-        {
-        case Min:
-            values[0] = x + width();
-            values[4] = y;
-            values[5] = y + height();
-            break;
-        case Max:
-            values[1] = QApplication::desktop()->width() - x;
-            values[6] = y;
-            values[7] = y + height();
-            break;
-        default:
-            break;
+    // Try EWMH _NET_WORKAREA (X11)
+#if QT_VERSION < 0x060000
+    const bool isX11 = QX11Info::isPlatformX11();
+#else
+    const bool isX11 = qApp->platformName().toLower().contains("xcb");
+#endif
+    if (isX11) {
+        QVector<unsigned long> wa = X11Support::getWindowPropertyCardinalArray(
+            X11Support::rootWindow(), "_NET_WORKAREA");
+        if (!wa.isEmpty() && (wa.size()%4)==0) {
+            unsigned long deskCount = static_cast<unsigned long>(wa.size()/4);
+            unsigned long curDesk = X11Support::getWindowPropertyCardinal(
+                X11Support::rootWindow(), "_NET_CURRENT_DESKTOP");
+            if (deskCount == 0) deskCount = 1;
+            if (curDesk >= deskCount) curDesk = 0;
+            const int off = static_cast<int>(curDesk*4);
+            if (off+3 < wa.size()) {
+                QRect r( (int)wa[off], (int)wa[off+1], (int)wa[off+2], (int)wa[off+3] );
+                if (r.isValid() && !r.isEmpty()) {
+                    QRect cand = r.intersected(screen);
+                    available = cand.isValid() ? cand : r;
+                }
+            }
         }
-        switch(m_verticalAnchor)
-        {
-        case Min:
-            values[2] = y + height();
-            values[8] = x;
-            values[9] = x + width();
-            break;
-        case Max:
-            values[3] = QApplication::desktop()->height() - y;
-            values[10] = x;
-            values[11] = x + width();
-            break;
-        default:
-            break;
-        }         */
-		X11Support::setWindowPropertyCardinalArray(winId(), "_NET_WM_STRUT_PARTIAL", values);
-        values.resize(4);
-        X11Support::setWindowPropertyCardinalArray(winId(), "_NET_WM_STRUT", values);
-	}
+    }
 
-	// Update "blur behind" hint.
-    QVector<unsigned long> values;
-    values.resize(4);
-    values[0] = 0;
-    values[1] = 0;
-    values[2] = width();
-    values[3] = height();
-    X11Support::setWindowPropertyCardinalArray(winId(), "_KDE_NET_WM_BLUR_BEHIND_REGION", values);
+    return available;
 }
 
-int PanelWindow::textBaseLine()
+QRect PanelWindow::getAnchorGeometry(const QRect& screen, const QRect& available) const
 {
-	QFontMetrics metrics(font());
-	return (height() - metrics.height())/2 + metrics.ascent();
+    QRect anchor = available.intersected(screen);
+    if (!anchor.isValid() || anchor.isEmpty())
+        anchor = available.isValid() ? available : screen;
+    return anchor;
 }
 
-void PanelWindow::resizeEvent(QResizeEvent* event)
-{
-	m_view->resize(event->size());
-	m_view->setSceneRect(0, 0, event->size().width(), event->size().height());
-	updateLayout();
-	updatePosition();
-}
+// ---------------------- Layout & Position ----------------------
 
 void PanelWindow::updateLayout()
 {
-	// TODO: Vertical orientation support.
+    qDebug() << "PanelWindow::updateLayout - size:" << size() << "policy:" << m_layoutPolicy;
 
-	static const int spacing = adjustHardcodedPixelSize(4);
+    if (m_layoutPolicy == FillSpace && m_orientation == Horizontal) {
+        const int w = currentScreenGeometry().width();
+        if (width() != w) resize(w, height());
+    } else if (m_layoutPolicy == AutoSize) {
+        // Sum fixed applet widths + spacers (very similar to your original code)
+        const int spacing = 4;
+        int desired = 0;
+        int spacers = 0;
+        for (Applet* a : m_applets) {
+            const int w = a->desiredSize().width();
+            if (w >= 0) desired += w; else ++spacers;
+        }
+        if (!m_applets.isEmpty()) desired += spacing * (m_applets.size()-1);
+        desired = qMax(desired, minimumWidth());
+        if (width() != desired) resize(desired, height());
+    }
 
-	if(m_layoutPolicy != Normal && !m_dockMode)
-	{
-		int desiredSize = 0;
-		if(m_layoutPolicy == AutoSize)
-		{
-			for(int i = 0; i < m_applets.size(); i++)
-			{
-				if(m_applets[i]->desiredSize().width() >= 0)
-					desiredSize += m_applets[i]->desiredSize().width();
-				else
-					desiredSize += 64; // Spacer applets don't really make sense on auto-size panel.
-			}
-			desiredSize += spacing*(m_applets.size() - 1);
-			if(desiredSize < 0)
-				desiredSize = 0;
-		}
-		if(m_layoutPolicy == FillSpace)
-		{
-			QRect screenGeometry = QApplication::desktop()->screenGeometry(m_screen);
-			desiredSize = screenGeometry.width();
-		}
+    // Layout applets horizontally
+    const int spacing = 4;
+    int freeSpace = width() - spacing * (m_applets.size() - 1);
+    int spacers = 0;
+    for (Applet* a : m_applets) {
+        const int w = a->desiredSize().width();
+        if (w >= 0) freeSpace -= w; else ++spacers;
+    }
+    const int perSpacer = (spacers > 0) ? (freeSpace / spacers) : 0;
 
-		if(desiredSize != width())
-			resize(desiredSize, height());
-	}
+    int x = 0;
+    int remainingSpacers = spacers;
+    for (Applet* a : m_applets) {
+        QSize sz = a->desiredSize();
+        if (sz.width() < 0) {
+            if (remainingSpacers > 1) { sz.setWidth(perSpacer); freeSpace -= perSpacer; --remainingSpacers; }
+            else { sz.setWidth(freeSpace); freeSpace = 0; --remainingSpacers; }
+        }
+        sz.setHeight(height());
+        a->setPosition(QPoint(x,0));
+        a->setSize(sz);
+        x += sz.width() + spacing;
+    }
+}
+int PanelWindow::detectGnomeTopOffsetPx() const {
+   #if QT_VERSION < 0x060000
+       const bool isX11 = QX11Info::isPlatformX11();
+   #else
+       const bool isX11 = qApp->platformName().toLower().contains("xcb");
+   #endif
+       if (!isX11) return 0;
+   
+       const QByteArray desktop = qgetenv("XDG_CURRENT_DESKTOP");
+       const QByteArray mode    = qgetenv("GNOME_SHELL_SESSION_MODE");
+       const bool isGnome = desktop.contains("GNOME") || mode.contains("ubuntu");
+   
+       if (!isGnome) return 0;
+   
+       // Use your detector that inspects X11 (not workarea!)
+       Display *dpy = nullptr;
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+       dpy = QX11Info::display();
+#else
+   if (auto native = qGuiApp->nativeInterface<QNativeInterface::QX11Application>())
+        dpy = native->display();
+#endif
 
-	// Get total amount of space available for "spacer" applets (that take all available free space).
-	int freeSpace = width() - spacing*(m_applets.size() - 1);
-	int numSpacers = 0;
-	for(int i = 0; i < m_applets.size(); i++)
-	{
-		if(m_applets[i]->desiredSize().width() >= 0)
-			freeSpace -= m_applets[i]->desiredSize().width();
-		else
-			numSpacers++;
-	}
-	int spaceForOneSpacer = numSpacers > 0 ? (freeSpace/numSpacers) : 0;
+        int h = dpy ? X11Support::detectTopPanelHeight(dpy) : 0;
 
-	// Calculate rectangles for each applet.
-	int spacePos = 0;
-	for(int i = 0; i < m_applets.size(); i++)
-	{
-		QPoint appletPosition(spacePos, 0);
-		QSize appletSize = m_applets[i]->desiredSize();
+        if (h <= 0 || h > 128) h = 32; // sane fallback
+        return h;
+ }
 
-		if(appletSize.width() < 0)
-		{
-			if(numSpacers > 1)
-			{
-				appletSize.setWidth(spaceForOneSpacer);
-				freeSpace -= spaceForOneSpacer;
-				numSpacers--;
-			}
-			else
-			{
-				appletSize.setWidth(freeSpace);
-				freeSpace = 0;
-				numSpacers--;
-			}
-		}
 
-		appletSize.setHeight(height());
+void PanelWindow::updatePosition() {
+    const QRect screen = currentScreenGeometry();
 
-		m_applets[i]->setPosition(appletPosition);
-		m_applets[i]->setSize(appletSize);
+    // 1) What *others* reserve (excludes our own window)
+    int extLeft = 0;
+    int extRight = 0;
+    int extTop = 0;
+    int extBottom = 0;
+    
+    // (in the future you can detect other panels here)
+    int x = screen.left();
+    switch (m_horizontalAnchor) {
+        case Min:    x = screen.left() + extLeft; break;
+        case Center: x = screen.left() + (screen.width() - width()) / 2; break;
+        case Max:    x = screen.right() - extRight - width() + 1; break;
+    }
+    
+    int y = 0;
+    switch (m_verticalAnchor) {
+        case Min:
+            y = screen.top() + detectGnomeTopOffsetPx() + extTop;
+            break;
+        case Center:
+            y = screen.top() + (screen.height() - height()) / 2;
+            break;
+        case Max:
+            y = screen.bottom() - extBottom - height() + 1;
+            break;
+    }
 
-		spacePos += appletSize.width() + spacing;
-	}
+    // 2) GNOME top bar (constant or X11 probe, not workarea)
+    const int gnomeTop = detectGnomeTopOffsetPx();
+
+    // width for FillSpace
+    if (m_layoutPolicy == FillSpace && m_orientation == Horizontal) {
+        if (width() != screen.width()) resize(screen.width(), height());
+    }
+
+    setGeometry(x, y, width(), height());
+
+    // Apply *our* strut (only our height). This will change workarea,
+    // but our future placements no longer depend on workarea.
+    applyX11Struts(geometry());
+}
+
+ 
+// ---------------------- Strut application (debounced) ----------------------
+
+void PanelWindow::setupStrutProperties()
+{
+    // called during init paths if needed
+    scheduleApplyStruts();
+}
+
+void PanelWindow::scheduleApplyStruts()
+{
+    // coalesce multiple callers
+    m_strutDebounce.start();
+}
+
+void PanelWindow::scheduleApplyStrutsIfMoved()
+{
+    if (geometry() != m_lastStrutGeom)
+        scheduleApplyStruts();
+}
+
+void PanelWindow::applyX11Struts(const QRect& panelGeom)
+{
+#if QT_VERSION < 0x060000
+    if (!QX11Info::isPlatformX11()) return;
+#else
+    if (!qApp->platformName().toLower().contains("xcb")) return;
+#endif
+    if (!m_dockMode) return;
+    if (!panelGeom.isValid() || panelGeom.isEmpty()) return;
+
+    // Determine top/bottom
+    const bool isTop = (m_verticalAnchor == Min);
+    const bool isBottom = (m_verticalAnchor == Max);
+
+    // GNOME top bar offset
+    const int gnomeTop = detectGnomeTopOffsetPx();
+
+    // Build _NET_WM_STRUT_PARTIAL
+    int left=0, right=0, top=0, bottom=0;
+    int leftStartY=0, leftEndY=0, rightStartY=0, rightEndY=0;
+    int topStartX=panelGeom.left(), topEndX=panelGeom.right();
+    int bottomStartX=panelGeom.left(), bottomEndX=panelGeom.right();
+
+    if (isTop) {
+        // Reserve GNOME bar + our height so other windows start below us
+        top = gnomeTop + panelGeom.height();
+    } else if (isBottom) {
+        bottom = panelGeom.height();
+    }
+
+    qDebug() << "applyX11Struts: position=" << (isTop ? "top" : (isBottom ? "bottom" : "center"))
+             << "geom=" << panelGeom
+             << "GNOME offset=" << gnomeTop
+             << "L/R/T/B=" << left << right << top << bottom;
+
+    X11Support::setStrut(
+        winId(),
+        left, right, top, bottom,
+        leftStartY, leftEndY,
+        rightStartY, rightEndY,
+        topStartX, topEndX,
+        bottomStartX, bottomEndX
+    );
+
+    m_lastStrutGeom = panelGeom;
+    qDebug() << "applyX11Struts(): applied for" << winId() << "top=" << top << "bottom=" << bottom;
+}
+
+// ---------------------- Wayland fallback ----------------------
+ 
+void PanelWindow::forceWaylandPosition()
+{
+#if QT_VERSION < 0x060000
+    const bool isX11 = QX11Info::isPlatformX11();
+#else
+    const bool isX11 = qApp->platformName().toLower().contains("xcb");
+#endif
+    if (isX11 || !isVisible()) return;
+
+    // Reassert position based on our rules (best-effort under Wayland)
+    const QRect screen    = currentScreenGeometry();
+    const QRect available = getAvailableScreenGeometry();
+    QRect anchor          = getAnchorGeometry(screen, available);
+
+    int x = (m_layoutPolicy == FillSpace && m_orientation == Horizontal)
+            ? screen.left()
+            : anchor.left() + (m_horizontalAnchor == Min ? 0 :
+                               m_horizontalAnchor == Center ? (anchor.width() - width())/2 :
+                               (anchor.width() - width()));
+
+    int y = 0;
+    if (m_verticalAnchor == Min)      y = anchor.top();
+    else if (m_verticalAnchor == Max) y = anchor.bottom() - height() + 1;
+    else                              y = anchor.top() + (anchor.height() - height())/2;
+
+    if (geometry().topLeft() != QPoint(x,y)) {
+        move(x,y);
+        update();
+        repaint();
+    }
+}
+
+// ---------------------- Misc UI ----------------------
+
+int PanelWindow::textBaseLine()
+{
+    QFontMetrics m(font());
+    return (height() - m.height())/2 + m.ascent();
 }
 
 void PanelWindow::showPanelContextMenu(const QPoint& point)
@@ -612,37 +739,34 @@ void PanelWindow::showConfigurationDialog()
 
 void PanelWindow::removePanel()
 {
-
-    ((PanelApplication *)QApplication::instance())->removePanel(m_id);
+    static_cast<PanelApplication*>(QApplication::instance())->removePanel(m_id);
 }
 
 void PanelWindow::setFontName(const QString& fontName)
 {
-    QFont m_panelFont;
-    QString m_fontName = fontName;
-    if(m_fontName != "default")
-    {
-        // Parse font name. Example: "Droid Sans 11".
-        int lastSpacePos = m_fontName.lastIndexOf(' ');
-        // Should have at least one space, otherwise string is malformed, keep default in that case.
-        if(lastSpacePos != -1)
-        {
-            int fontSize = m_fontName.mid(lastSpacePos).toInt();
-            QString fontFamily = m_fontName;
-            fontFamily.truncate(lastSpacePos);
-            m_panelFont = QFont(fontFamily, fontSize);
+    QFont f = (fontName != "default") ? QFont() : QApplication::font();
+    if (fontName != "default") {
+        const int lastSpace = fontName.lastIndexOf(' ');
+        if (lastSpace != -1) {
+            bool ok = false;
+            const int size = fontName.mid(lastSpace+1).toInt(&ok);
+            const QString fam = fontName.left(lastSpace);
+            f = QFont(fam, ok ? size : f.pointSize());
         }
     }
-    else
-    {
-        m_panelFont = QApplication::font();
-    }
+    setFont(f);
+    for (Applet* a : m_applets) a->fontChanged();
+}
 
-    this->setFont(m_panelFont);
+void PanelWindow::resetApplets()
+{
+    removeApplets();
 
-    for(int i = 0; i < m_applets.size();)
-    {
-        (m_applets.at(i))->fontChanged();
-        i++;
-    }
+    // Reload applet list from settings
+    m_appletnames = Settings::value(m_id, "applets", QStringList()).toStringList();
+
+    setApplets();
+    init();  // re-initialize all applets
+    updateLayout();
+    updatePosition();
 }

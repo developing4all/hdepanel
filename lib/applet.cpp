@@ -1,11 +1,11 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
  * This Files has been imported to hde from qtpanel
  *
- * Copyright: 2015-2016 Haydar Alkaduhimi
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -43,18 +43,17 @@ Applet::Applet(PanelWindow* panelWindow)
     m_highlightIntensity = 0.0;
     m_interactive = false;
 
-	setZValue(-1.0);
-	setAcceptedMouseButtons(Qt::RightButton);
-    if(panelWindow != 0)
-    {
-        this->setPanelWindow(panelWindow);
-    }
+    setZValue(-1.0);
+    setAcceptedMouseButtons(Qt::RightButton);
+    // Defer parenting until panel window is fully initialized
+    m_panelWindow = panelWindow;
 }
 
 void Applet::setPanelWindow(PanelWindow *panelWindow)
 {
     m_panelWindow = panelWindow;
-    setParentItem(m_panelWindow->panelItem());
+    // Note: Not calling setParentItem here to avoid Qt6 crashes
+    // Applets are already added to the scene via PanelWindow's management
 }
 
 Applet::~Applet()

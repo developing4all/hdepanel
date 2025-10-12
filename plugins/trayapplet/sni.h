@@ -1,0 +1,53 @@
+/* Minimal Status Notifier (SNI) watcher and item interfaces for Wayland */
+
+#ifndef SNI_H
+#define SNI_H
+
+#include <QObject>
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusObjectPath>
+#include <QIcon>
+#include <QMap>
+
+class SniItemProxy : public QObject {
+    Q_OBJECT
+public:
+    explicit SniItemProxy(const QString &service, const QString &path, QObject *parent = nullptr);
+    QString id() const { return m_id; }
+    QIcon icon() const;
+
+signals:
+    void changed();
+
+private:
+    QString m_service;
+    QString m_path;
+    QString m_id;
+};
+
+class SniWatcher : public QObject {
+    Q_OBJECT
+public:
+    explicit SniWatcher(QObject *parent = nullptr);
+    const QMap<QString, SniItemProxy*> &items() const { return m_items; }
+
+signals:
+    void itemAdded(SniItemProxy* item);
+    void itemRemoved(const QString &id);
+
+private slots:
+    void onServiceOwnerChanged(const QString &name, const QString &oldOwner, const QString &newOwner);
+
+private:
+    void registerWatcher();
+    void addItem(const QString &service, const QString &path);
+    void removeItem(const QString &id);
+
+    QDBusConnection m_bus;
+    QMap<QString, SniItemProxy*> m_items; // key: unique id
+};
+
+#endif // SNI_H
+
+

@@ -1,9 +1,9 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
- * Copyright: 2015-2016 Haydar Alkaduhimi
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -38,7 +38,9 @@ void Settings::setGroup(const QString &group)
 {
     if(Settings::s_settings->group() != group)
     {
-        Settings::s_settings->endGroup();
+        if (!Settings::s_settings->group().isEmpty()) {
+            Settings::s_settings->endGroup();
+        }
         Settings::s_settings->beginGroup(group);
     }
 }

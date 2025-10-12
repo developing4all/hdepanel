@@ -1,9 +1,9 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
- * Copyright: 2015-2016 Haydar Alkaduhimi
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -49,6 +49,8 @@ private slots:
     void on_theme_activated(const QString &theme);
 
     void on_verticalPosition_activated(const QString &verticalPosition);
+
+    void on_horizontalPosition_activated(const QString &horizontalPosition);
 
     void on_screen_activated(const QString &screen);
 

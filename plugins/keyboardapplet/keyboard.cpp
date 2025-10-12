@@ -1,9 +1,9 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
- * Copyright: 2015-2016 Haydar Alkaduhimi
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -24,7 +24,7 @@
 
 #include "keyboard.h"
 
-#include <QX11Info>
+#include <QApplication>
 #include <QDebug>
 
 #include <QtXml>
@@ -37,10 +37,12 @@ QString Keyboard::getCurrentLayout()
 {
     QString layout;
 
+    Display* dpy = XOpenDisplay(nullptr);
+    if (!dpy) return layout;
     XkbDescRec* _kbdDescPtr = XkbAllocKeyboard();
-    XkbGetNames(QX11Info::display(), XkbSymbolsNameMask, _kbdDescPtr);
+    XkbGetNames(dpy, XkbSymbolsNameMask, _kbdDescPtr);
     Atom symName = _kbdDescPtr -> names -> symbols;
-    QString layoutString = XGetAtomName(QX11Info::display(), symName);
+    QString layoutString = XGetAtomName(dpy, symName);
     if(layoutString.split("+").count() == 3)
     {
         layout = layoutString.split("+")[1];

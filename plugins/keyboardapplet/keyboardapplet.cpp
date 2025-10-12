@@ -1,9 +1,9 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
- * Copyright: 2015-2016 Haydar Alkaduhimi
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -45,10 +45,10 @@ KeyboardApplet::KeyboardApplet(PanelWindow *panelWindow)
     : Applet(panelWindow)
 {
     setObjectName("Keyboard");
-    if(panelWindow != 0)
-    {
-        setPanelWindow(panelWindow);
-    }
+    
+    // Create m_textItem early so desiredSize() doesn't crash
+    m_textItem = new TextGraphicsItem(this);
+    m_textItem->setColor(Qt::white);
 
     QSettings setting(this);
     m_supported_layouts = setting.value("layouts", QStringList() << "us").toStringList();
@@ -147,9 +147,11 @@ void KeyboardApplet::showConfigurationDialog()
 QSize KeyboardApplet::desiredSize()
 {
 #if QT_VERSION >= 0x050000
+    if (!m_textItem) return QSize(48, 24);
     return QSize(m_textItem->boundingRect().size().width() + 16,
                  m_textItem->boundingRect().size().height());
 #else
+    if (!m_textItem) return QSize(48, 24);
     return QSize(m_textItem->boundingRect().size().width(),
                  m_textItem->boundingRect().size().height());
 #endif

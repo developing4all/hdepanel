@@ -1,9 +1,9 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
- * Copyright: 2015-2016 Haydar Alkaduhimi
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -34,7 +34,10 @@
 #include <QDebug>
 #include <QIcon>
 #include <QSettings>
+#if QT_VERSION < 0x060000
 #include <QDesktopWidget>
+#endif
+#include <QScreen>
 
 #include "panelapplication.h"
 
@@ -87,6 +90,18 @@ PanelSettings::PanelSettings(QString panel_id, QWidget *parent) :
     m_panel_id = panel_id;
     ui->setupUi(this);
 
+    // Manually connect signals that are missing from the UI file
+    connect(ui->theme, QOverload<int>::of(&QComboBox::activated),
+            [this](int) { on_theme_activated(ui->theme->currentText()); });
+    connect(ui->verticalPosition, QOverload<int>::of(&QComboBox::activated),
+            [this](int) { on_verticalPosition_activated(ui->verticalPosition->currentText()); });
+    connect(ui->screen, QOverload<int>::of(&QComboBox::activated),
+            [this](int) { on_screen_activated(ui->screen->currentText()); });
+    connect(ui->font, QOverload<int>::of(&QFontComboBox::currentIndexChanged),
+            [this](int) { on_font_activated(ui->font->currentFont().family()); });
+    connect(ui->fontSize, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &PanelSettings::on_fontSize_valueChanged);
+
     readSettings();
 }
 
@@ -99,21 +114,44 @@ void PanelSettings::setPanelWindow(PanelWindow *panel)
 {
     m_panel = panel;
 
-    ui->theme->setCurrentText(QIcon::themeName());
-    ui->verticalPosition->setCurrentText(Settings::value(m_panel_id, "verticalPosition", "Bottom").toString());
-    ui->screen->setCurrentText(Settings::value(m_panel_id, "screen", "0").toString());
-    ui->font->setCurrentText(m_panel->font().family());
-    ui->fontSize->setValue(m_panel->font().pointSize());
+    if (!ui) {
+        qDebug() << "PanelSettings::setPanelWindow: ui is null!";
+        return;
+    }
+    
+    if (ui->theme) {
+        ui->theme->setCurrentText(QIcon::themeName());
+    }
+    if (ui->verticalPosition) {
+        QString verticalPos = Settings::value(m_panel_id, "verticalPosition", "Bottom").toString();
+        qDebug() << "PanelSettings::setPanelWindow() - Setting vertical position to:" << verticalPos;
+        ui->verticalPosition->setCurrentText(verticalPos);
+        qDebug() << "PanelSettings::setPanelWindow() - Combo box current text:" << ui->verticalPosition->currentText();
+    }
+    if (ui->horizontalPosition) {
+        ui->horizontalPosition->setCurrentText(Settings::value(m_panel_id, "horizontalPosition", "Center").toString());
+    }
+    if (ui->screen) {
+        ui->screen->setCurrentText(Settings::value(m_panel_id, "screen", "0").toString());
+    }
+    
+    if (m_panel && ui->font && ui->fontSize) {
+        ui->font->setCurrentText(m_panel->font().family());
+        ui->fontSize->setValue(m_panel->font().pointSize());
+    }
 
     // applets
-    QStringList applets = m_panel->getApplets();
-    foreach(QString applet_id, applets)
-    {
-        int index = applet_id.lastIndexOf("_");
-        QString applet_name = applet_id.left(index);
-        QListWidgetItem *item = new QListWidgetItem(applet_name);
-        item->setData(Qt::UserRole, applet_id);
-        ui->appletsList->addItem(item);
+    if (m_panel && ui->appletsList) {
+        // Get applets from settings instead of panel to avoid memory corruption
+        QStringList applets = Settings::value(m_panel_id, "applets", QStringList()).toStringList();
+        foreach(QString applet_id, applets)
+        {
+            int index = applet_id.lastIndexOf("_");
+            QString applet_name = applet_id.left(index);
+            QListWidgetItem *item = new QListWidgetItem(applet_name);
+            item->setData(Qt::UserRole, applet_id);
+            ui->appletsList->addItem(item);
+        }
     }
 
     //ui->appletsList->addItems(applets);
@@ -133,10 +171,17 @@ void PanelSettings::readSettings()
     ui->theme->addItems(themes);
 
     // Fill screen numbers
+#if QT_VERSION >= 0x050000
+    const QList<QScreen*> screens = QGuiApplication::screens();
+    for (int screen = 0; screen < screens.size(); ++screen) {
+        ui->screen->addItem(QString::number(screen));
+    }
+#else
     for(int screen = 0; screen < QApplication::desktop()->screenCount(); screen++)
     {
         ui->screen->addItem(QString::number(screen));
     }
+#endif
 }
 
 void PanelSettings::on_theme_activated(const QString &theme)
@@ -147,17 +192,35 @@ void PanelSettings::on_theme_activated(const QString &theme)
 
 void PanelSettings::on_verticalPosition_activated(const QString &verticalPosition)
 {
-//    qDebug() << verticalPosition;
+    qDebug() << "PanelSettings::on_verticalPosition_activated() - Called with:" << verticalPosition;
 
-    PanelWindow::Anchor m_verticalAnchor;
+    PanelWindow::Anchor verticalAnchor = PanelWindow::Max; // Default to bottom
 
     if(verticalPosition == "Top")
-        m_verticalAnchor = PanelWindow::Min;
+        verticalAnchor = PanelWindow::Min;
     else if(verticalPosition == "Bottom")
-        m_verticalAnchor = PanelWindow::Max;
+        verticalAnchor = PanelWindow::Max;
 
-    m_panel->setVerticalAnchor(m_verticalAnchor);
+    qDebug() << "PanelSettings::on_verticalPosition_activated() - Setting vertical anchor to:" << verticalAnchor;
+    m_panel->setVerticalAnchor(verticalAnchor);
     Settings::setValue(m_panel_id, "verticalPosition", verticalPosition);
+}
+
+void PanelSettings::on_horizontalPosition_activated(const QString &horizontalPosition)
+{
+//    qDebug() << horizontalPosition;
+
+    PanelWindow::Anchor horizontalAnchor = PanelWindow::Center; // Default to center
+
+    if(horizontalPosition == "Left")
+        horizontalAnchor = PanelWindow::Min;
+    else if(horizontalPosition == "Center")
+        horizontalAnchor = PanelWindow::Center;
+    else if(horizontalPosition == "Right")
+        horizontalAnchor = PanelWindow::Max;
+
+    m_panel->setHorizontalAnchor(horizontalAnchor);
+    Settings::setValue(m_panel_id, "horizontalPosition", horizontalPosition);
 }
 
 void PanelSettings::on_screen_activated(const QString &screen)

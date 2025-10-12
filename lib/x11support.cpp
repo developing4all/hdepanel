@@ -1,10 +1,10 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
- * (c)LGPL2+
+ * (c)LGPL3+
  *
- * Copyright: 2015-2016 Haydar Alkaduhimi
+ * Copyright: 2015-2025 Haydar Alkaduhimi
  * Copyright (C) 2014 Leslie Zhai <xiang.zhai@i-soft.com.cn>
  * Authors:
- *   Haydar Alkaduhimi <haydar@hosting4all.com>
+ *   Haydar Alkaduhimi <haydar@developing4all.com>
  *
  * This program or library is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
@@ -24,6 +24,7 @@
  * END_COMMON_COPYRIGHT_HEADER */
 
 #include <QDebug>
+#include <unistd.h>
 
 #include "x11support.h"
 
@@ -38,11 +39,82 @@
 
 static XErrorHandler oldX11ErrorHandler = NULL;
 
+// Qt5/Qt6 compatibility helpers for X11 access
+static Display* x11DisplayCompat()
+{
+#if QT_VERSION < 0x060000
+    return QX11Info::display();
+#else
+    static Display* dpy = XOpenDisplay(nullptr);
+    return dpy;
+#endif
+}
+
+static int x11AppScreenCompat()
+{
+#if QT_VERSION < 0x060000
+    return QX11Info::appScreen();
+#else
+    return DefaultScreen(x11DisplayCompat());
+#endif
+}
+
+static Window x11RootWindowCompat()
+{
+#if QT_VERSION < 0x060000
+    return QX11Info::appRootWindow();
+#else
+    return DefaultRootWindow(x11DisplayCompat());
+#endif
+}
+
 static int x11errorHandler(Display* display, XErrorEvent* error)
 {
 	if (error->error_code == BadWindow) return 0;
 
 	return (*oldX11ErrorHandler)(display, error);
+}
+
+int X11Support::detectTopPanelHeight(Display *dpy)
+{
+    if (!dpy)
+        return 0;
+
+    Window root = DefaultRootWindow(dpy);
+    Window root_return, parent_return;
+    Window *children;
+    unsigned int nchildren;
+
+    if (!XQueryTree(dpy, root, &root_return, &parent_return, &children, &nchildren))
+        return 0;
+
+    int topPanelHeight = 0;
+
+    for (unsigned int i = 0; i < nchildren; ++i) {
+        XTextProperty wmName;
+        if (XGetWMName(dpy, children[i], &wmName) && wmName.value) {
+            QString name = QString::fromUtf8(reinterpret_cast<char *>(wmName.value));
+            if (name.contains("Top Bar", Qt::CaseInsensitive) ||
+                name.contains("ubuntu-panel", Qt::CaseInsensitive) ||
+                name.contains("gnome-shell", Qt::CaseInsensitive)) {
+
+                XWindowAttributes attr;
+                if (XGetWindowAttributes(dpy, children[i], &attr)) {
+                    topPanelHeight = attr.height;
+                    qDebug() << "Detected GNOME top panel window:" << name
+                             << "height=" << topPanelHeight;
+                }
+                XFree(wmName.value);
+                break;
+            }
+            XFree(wmName.value);
+        }
+    }
+
+    if (children)
+        XFree(children);
+
+    return topPanelHeight;
 }
 
 X11Support* X11Support::m_instance = NULL;
@@ -51,8 +123,16 @@ X11Support::X11Support()
 {
 	m_instance = this;
 	oldX11ErrorHandler = XSetErrorHandler(x11errorHandler);
-	int damageErrorBase;
-	XDamageQueryExtension(QX11Info::display(), &m_damageEventBase, &damageErrorBase);
+    m_damageEventBase = 0;
+    // Guard against missing X11 display (e.g., Wayland without XWayland)
+//#if QT_VERSION < 0x060000
+    // If no X display is available, disable
+    if (!x11DisplayCompat()) {
+        qWarning() << "X11 platform not detected; disabling XDamage integration";
+        return;
+    }
+    int damageErrorBase = 0;
+    XDamageQueryExtension(x11DisplayCompat(), &m_damageEventBase, &damageErrorBase);
 }
 
 X11Support::~X11Support()
@@ -102,7 +182,7 @@ void X11Support::onX11Event(XEvent* event)
 	{
 		// Repair damaged area.
 		XDamageNotifyEvent* damageEvent = reinterpret_cast<XDamageNotifyEvent*>(event);
-		XDamageSubtract(QX11Info::display(), damageEvent->damage, None, None);
+    XDamageSubtract(x11DisplayCompat(), damageEvent->damage, None, None);
 
 		emit windowDamaged(event->xany.window);
 	}
@@ -118,25 +198,116 @@ void X11Support::onX11Event(XEvent* event)
 
 unsigned long X11Support::rootWindow()
 {
-	return QX11Info::appRootWindow();
+    return x11RootWindowCompat();
 }
 
 unsigned long X11Support::atom(const QString& name)
 {
-	if(!m_instance->m_cachedAtoms.contains(name))
-		m_instance->m_cachedAtoms[name] = XInternAtom(QX11Info::display(), name.toLatin1().data(), False);
+    if(!m_instance->m_cachedAtoms.contains(name))
+        m_instance->m_cachedAtoms[name] = XInternAtom(x11DisplayCompat(), name.toLatin1().data(), False);
 	return m_instance->m_cachedAtoms[name];
 }
 
 void X11Support::removeWindowProperty(unsigned long window, const QString& name)
 {
-	XDeleteProperty(QX11Info::display(), window, atom(name));
+    XDeleteProperty(x11DisplayCompat(), window, atom(name));
 }
 
 void X11Support::setWindowPropertyCardinalArray(unsigned long window, const QString& name, const QVector<unsigned long>& values)
 {
-	XChangeProperty(QX11Info::display(), window, atom(name), XA_CARDINAL, 32, PropModeReplace, reinterpret_cast<const unsigned char*>(values.data()), values.size());
+    XChangeProperty(x11DisplayCompat(), window, atom(name), XA_CARDINAL, 32, PropModeReplace, reinterpret_cast<const unsigned char*>(values.data()), values.size());
 }
+
+// ---- ADD: helper struct & functions (in x11support.cpp, top-level) ----
+struct X11Strut {
+    int left = 0, right = 0, top = 0, bottom = 0;
+    int leftStartY = 0, leftEndY = 0, rightStartY = 0, rightEndY = 0;
+    int topStartX = 0, topEndX = 0, bottomStartX = 0, bottomEndX = 0;
+    bool valid = false;
+};
+
+static bool x11IsViewable(Window w) {
+    XWindowAttributes a;
+    if (!x11DisplayCompat()) return false;
+    if (!XGetWindowAttributes(x11DisplayCompat(), w, &a)) return false;
+    return a.map_state == IsViewable;
+}
+
+static bool x11IsDock(Window w) {
+    if (!x11DisplayCompat()) return false;
+    Atom typeAtom = X11Support::atom("_NET_WM_WINDOW_TYPE");
+    Atom dockAtom = X11Support::atom("_NET_WM_WINDOW_TYPE_DOCK");
+
+    Atom actualType; int actualFormat; unsigned long nitems, bytesAfter;
+    unsigned char* data = nullptr;
+    if (XGetWindowProperty(x11DisplayCompat(), w, typeAtom, 0, 1024, False, XA_ATOM,
+                           &actualType, &actualFormat, &nitems, &bytesAfter, &data) != Success) {
+        return false;
+    }
+    bool isDock = false;
+    if (data && actualType == XA_ATOM && actualFormat == 32) {
+        Atom* atoms = reinterpret_cast<Atom*>(data);
+        for (unsigned long i = 0; i < nitems; ++i) {
+            if (atoms[i] == dockAtom) { isDock = true; break; }
+        }
+    }
+    if (data) XFree(data);
+    return isDock;
+}
+
+static X11Strut x11GetStrut(Window w) {
+    X11Strut s; s.valid = false;
+    if (!x11DisplayCompat()) return s;
+
+    auto readCardinals = [&](Atom prop, QVector<unsigned long>& out)->bool {
+        Atom actualType; int actualFormat; unsigned long nitems, bytesAfter;
+        unsigned char* data = nullptr;
+        if (XGetWindowProperty(x11DisplayCompat(), w, prop, 0, 12, False, XA_CARDINAL,
+                               &actualType, &actualFormat, &nitems, &bytesAfter, &data) != Success) {
+            return false;
+        }
+        bool ok = (data && actualType == XA_CARDINAL && actualFormat == 32 && nitems >= 4);
+        if (ok) {
+            out.resize((int)nitems);
+            memcpy(out.data(), data, nitems * sizeof(unsigned long));
+        }
+        if (data) XFree(data);
+        return ok;
+    };
+
+    QVector<unsigned long> arr;
+    // Prefer _NET_WM_STRUT_PARTIAL (12 values); fall back to _NET_WM_STRUT (4 values)
+    if (readCardinals(X11Support::atom("_NET_WM_STRUT_PARTIAL"), arr) && arr.size() >= 12) {
+        s.left   = (int)arr[0];  s.right  = (int)arr[1];  s.top    = (int)arr[2];  s.bottom = (int)arr[3];
+        s.leftStartY   = (int)arr[4];  s.leftEndY   = (int)arr[5];
+        s.rightStartY  = (int)arr[6];  s.rightEndY  = (int)arr[7];
+        s.topStartX    = (int)arr[8];  s.topEndX    = (int)arr[9];
+        s.bottomStartX = (int)arr[10]; s.bottomEndX = (int)arr[11];
+        s.valid = (s.left || s.right || s.top || s.bottom);
+    } else if (readCardinals(X11Support::atom("_NET_WM_STRUT"), arr) && arr.size() >= 4) {
+        s.left   = (int)arr[0];  s.right  = (int)arr[1];  s.top    = (int)arr[2];  s.bottom = (int)arr[3];
+        s.valid = (s.left || s.right || s.top || s.bottom);
+    }
+    return s;
+}
+
+static QVector<Window> x11ClientList() {
+    QVector<Window> out;
+    if (!x11DisplayCompat()) return out;
+    Atom prop = X11Support::atom("_NET_CLIENT_LIST");
+    Atom actualType; int actualFormat; unsigned long nitems, bytesAfter;
+    unsigned char* data = nullptr;
+    if (XGetWindowProperty(x11DisplayCompat(), X11Support::rootWindow(), prop, 0, 0x7FFFFFFF, False, XA_WINDOW,
+                           &actualType, &actualFormat, &nitems, &bytesAfter, &data) == Success) {
+        if (data && actualType == XA_WINDOW && actualFormat == 32) {
+            Window* wins = reinterpret_cast<Window*>(data);
+            for (unsigned long i = 0; i < nitems; ++i) out.append(wins[i]);
+        }
+        if (data) XFree(data);
+    }
+    return out;
+}
+
 
 void X11Support::setStrut(Window _wid,
                        int left, int right,
@@ -151,7 +322,8 @@ void X11Support::setStrut(Window _wid,
     unsigned long desstrut[12];
     memset(desstrut,0,sizeof(desstrut));
 
-    //so we take our panelsize from the bottom up
+    // Set up EWMH strut properties according to specification
+    // Order: left, right, top, bottom, left_start_y, left_end_y, right_start_y, right_end_y, top_start_x, top_end_x, bottom_start_x, bottom_end_x
     desstrut[0] = left; desstrut[1] = right;
     desstrut[2] = top;  desstrut[3] = bottom;
 
@@ -160,24 +332,76 @@ void X11Support::setStrut(Window _wid,
     desstrut[8] = topStartX;     desstrut[9] = topEndX;
     desstrut[10] = bottomStartX; desstrut[11] = bottomEndX;
 
-    //now we can change that property right
-    XChangeProperty(QX11Info::display(), _wid , X11Support::atom("_NET_WM_STRUT_PARTIAL"),
-                    XA_CARDINAL, 32, PropModeReplace,  (unsigned char *) desstrut, 12  );
+    // Debug output
+    qDebug() << "X11Support::setStrut - Window:" << _wid;
+    qDebug() << "  Basic struts: left=" << left << "right=" << right << "top=" << top << "bottom=" << bottom;
+    qDebug() << "  Left range: startY=" << leftStartY << "endY=" << leftEndY;
+    qDebug() << "  Right range: startY=" << rightStartY << "endY=" << rightEndY;
+    qDebug() << "  Top range: startX=" << topStartX << "endX=" << topEndX;
+    qDebug() << "  Bottom range: startX=" << bottomStartX << "endX=" << bottomEndX;
+    qDebug() << "  Display:" << x11DisplayCompat();
 
-    XChangeProperty(QX11Info::display(), _wid, X11Support::atom("_NET_WM_STRUT"),
+    //now we can change that property right
+    Display* display = x11DisplayCompat();
+    if (!display) {
+        qWarning() << "X11Support::setStrut - No X11 display available";
+        return;
+    }
+    
+    // Check if window is mapped
+    XWindowAttributes attrs;
+    if (XGetWindowAttributes(display, _wid, &attrs) == 0) {
+        qWarning() << "X11Support::setStrut - Cannot get window attributes for window" << _wid;
+        return;
+    }
+    
+    if (attrs.map_state != IsViewable) {
+        qWarning() << "X11Support::setStrut - Window" << _wid << "is not mapped (map_state:" << attrs.map_state << ")";
+        qWarning() << "X11Support::setStrut - Attempting to map window first...";
+        
+        // Try to map the window first
+        XMapWindow(display, _wid);
+        XFlush(display);
+        
+        // Wait a bit and check again
+        usleep(10000); // 10ms
+        if (XGetWindowAttributes(display, _wid, &attrs) != 0) {
+            if (attrs.map_state == IsViewable) {
+                qDebug() << "X11Support::setStrut - Window successfully mapped";
+            } else {
+                qWarning() << "X11Support::setStrut - Window still not mapped after attempt";
+            }
+        }
+    }
+    
+    Atom strutPartialAtom = X11Support::atom("_NET_WM_STRUT_PARTIAL");
+    Atom strutAtom = X11Support::atom("_NET_WM_STRUT");
+    
+    qDebug() << "X11Support::setStrut - Setting _NET_WM_STRUT_PARTIAL atom:" << strutPartialAtom;
+    qDebug() << "X11Support::setStrut - Setting _NET_WM_STRUT atom:" << strutAtom;
+    
+    int result1 = XChangeProperty(display, _wid, strutPartialAtom,
+                    XA_CARDINAL, 32, PropModeReplace, (unsigned char *) desstrut, 12);
+    qDebug() << "X11Support::setStrut - XChangeProperty _NET_WM_STRUT_PARTIAL result:" << result1;
+
+    int result2 = XChangeProperty(display, _wid, strutAtom,
                     XA_CARDINAL, 32, PropModeReplace, (unsigned char*) desstrut, 4);
+    qDebug() << "X11Support::setStrut - XChangeProperty _NET_WM_STRUT result:" << result2;
+    
+    // Flush to ensure the properties are sent to the X server
+    XFlush(display);
 }
 
 
 
 void X11Support::setWindowPropertyCardinal(unsigned long window, const QString& name, unsigned long value)
 {
-	XChangeProperty(QX11Info::display(), window, atom(name), XA_CARDINAL, 32, PropModeReplace, reinterpret_cast<const unsigned char*>(&value), 1);
+    XChangeProperty(x11DisplayCompat(), window, atom(name), XA_CARDINAL, 32, PropModeReplace, reinterpret_cast<const unsigned char*>(&value), 1);
 }
 
 void X11Support::setWindowPropertyVisualId(unsigned long window, const QString& name, unsigned long value)
 {
-	XChangeProperty(QX11Info::display(), window, atom(name), XA_VISUALID, 32, PropModeReplace, reinterpret_cast<const unsigned char*>(&value), 1);
+    XChangeProperty(x11DisplayCompat(), window, atom(name), XA_VISUALID, 32, PropModeReplace, reinterpret_cast<const unsigned char*>(&value), 1);
 }
 
 template<class T>
@@ -187,7 +411,7 @@ static bool getWindowPropertyHelper(unsigned long window, unsigned long atom, un
 	int retFormat;
 	unsigned long numItemsTemp;
 	unsigned long bytesLeft;
-	if(XGetWindowProperty(QX11Info::display(), window, atom, 0, 0x7FFFFFFF, False, type, &retType, &retFormat, &numItemsTemp, &bytesLeft, reinterpret_cast<unsigned char**>(&data)) != Success)
+    if(XGetWindowProperty(x11DisplayCompat(), window, atom, 0, 0x7FFFFFFF, False, type, &retType, &retFormat, &numItemsTemp, &bytesLeft, reinterpret_cast<unsigned char**>(&data)) != Success)
 		return false;
 	numItems = numItemsTemp;
 	if(numItems == 0)
@@ -235,6 +459,20 @@ unsigned long X11Support::getWindowPropertyWindow(unsigned long window, const QS
 	return value;
 }
 
+QVector<unsigned long> X11Support::getWindowPropertyCardinalArray(unsigned long window, const QString& name)
+{
+    int numItems;
+    unsigned long* data;
+    QVector<unsigned long> values;
+    if (!getWindowPropertyHelper(window, atom(name), XA_CARDINAL, numItems, data))
+        return values;
+    values.reserve(numItems);
+    for (int i = 0; i < numItems; ++i)
+        values.append(data[i]);
+    XFree(data);
+    return values;
+}
+
 QVector<unsigned long> X11Support::getWindowPropertyWindowsArray(unsigned long window, const QString& name)
 {
 	int numItems;
@@ -259,6 +497,51 @@ QVector<unsigned long> X11Support::getWindowPropertyAtomsArray(unsigned long win
 		values.append(data[i]);
 	XFree(data);
 	return values;
+}
+
+QVector<unsigned long> X11Support::getAllWindows()
+{
+	QVector<unsigned long> windows;
+	Display* dpy = x11DisplayCompat();
+	if (!dpy) return windows;
+	
+	Window root = DefaultRootWindow(dpy);
+	
+	// Recursively search for windows with names
+	getAllWindowsRecursive(dpy, root, windows);
+	
+	return windows;
+}
+
+void X11Support::getAllWindowsRecursive(void* dpy, unsigned long window, QVector<unsigned long>& windows)
+{
+	Display* display = static_cast<Display*>(dpy);
+	Window win = static_cast<Window>(window);
+	Window parent, *children;
+	unsigned int nchildren;
+	
+	// Get children of this window
+	if (XQueryTree(display, win, &win, &parent, &children, &nchildren)) {
+		for (unsigned int i = 0; i < nchildren; i++) {
+			// Check if this is a real window (not just a container)
+			XWindowAttributes attrs;
+			if (XGetWindowAttributes(display, children[i], &attrs)) {
+				// Only include windows that are mapped and have a name
+				if (attrs.map_state == IsViewable) {
+					QString name = getWindowName(children[i]);
+					qDebug() << "X11Support::getAllWindowsRecursive() - Found window" << QString::number(children[i], 16) << "name:" << name;
+					if (!name.isEmpty() && name != "<Unknown>") {
+						windows.append(children[i]);
+						qDebug() << "X11Support::getAllWindowsRecursive() - Added window" << QString::number(children[i], 16) << "to list";
+					}
+				}
+			}
+			
+			// Recursively search children
+			getAllWindowsRecursive(display, children[i], windows);
+		}
+		XFree(children);
+	}
 }
 
 QString X11Support::getWindowPropertyUTF8String(unsigned long window, const QString& name)
@@ -307,7 +590,7 @@ bool X11Support::getWindowMinimizedState(unsigned long window)
     int actual_format;
     unsigned long i, num_items, bytes_after;
 
-    XGetWindowProperty(QX11Info::display(), window, wmState, 0, 1024, False, XA_ATOM, &actual_type, &actual_format, &num_items, &bytes_after, (unsigned char**)&atoms);
+    XGetWindowProperty(x11DisplayCompat(), window, wmState, 0, 1024, False, XA_ATOM, &actual_type, &actual_format, &num_items, &bytes_after, (unsigned char**)&atoms);
     //usleep(1000000);
     //qDebug() << "itemmmmmm=" <<nItem;
     for(i=0; i<num_items; ++i)
@@ -356,7 +639,7 @@ QIcon X11Support::getWindowIcon(unsigned long window)
 
 bool X11Support::getWindowUrgency(unsigned long window)
 {
-	XWMHints* hints = XGetWMHints(QX11Info::display(), window);
+    XWMHints* hints = XGetWMHints(x11DisplayCompat(), window);
 	if(hints == NULL)
 		return false;
 	bool isUrgent = (hints->flags & 256) != 0; // UrgencyHint
@@ -366,20 +649,20 @@ bool X11Support::getWindowUrgency(unsigned long window)
 
 void X11Support::registerForWindowPropertyChanges(unsigned long window)
 {
-    XSelectInput(QX11Info::display(), window, PropertyChangeMask);
+    XSelectInput(x11DisplayCompat(), window, PropertyChangeMask);
 }
 
 void X11Support::registerForWindowStructureNotify(unsigned long window)
 {
-    XSelectInput(QX11Info::display(), window, StructureNotifyMask);
+    XSelectInput(x11DisplayCompat(), window, StructureNotifyMask);
 }
 
 void X11Support::registerForTrayIconUpdates(unsigned long window)
 {
-	XSelectInput(QX11Info::display(), window, StructureNotifyMask);
+    XSelectInput(x11DisplayCompat(), window, StructureNotifyMask);
 
 	// Apparently, there is no need to destroy damage object, as it's gone automatically when window is destroyed.
-	XDamageCreate(QX11Info::display(), window, XDamageReportNonEmpty);
+    XDamageCreate(x11DisplayCompat(), window, XDamageReportNonEmpty);
 }
 
 static void sendNETWMMessage(unsigned long window, const QString& atomName, unsigned long l0 = 0, unsigned long l1 = 0, unsigned long l2 = 0, unsigned long l3 = 0, unsigned long l4 = 0)
@@ -394,14 +677,14 @@ static void sendNETWMMessage(unsigned long window, const QString& atomName, unsi
 	event.data.l[2] = l2;
 	event.data.l[3] = l3;
 	event.data.l[4] = l4;
-	XSendEvent(QX11Info::display(), X11Support::rootWindow(), False, SubstructureNotifyMask | SubstructureRedirectMask, reinterpret_cast<XEvent*>(&event));
+    XSendEvent(x11DisplayCompat(), X11Support::rootWindow(), False, SubstructureNotifyMask | SubstructureRedirectMask, reinterpret_cast<XEvent*>(&event));
 }
 
 void X11Support::activateWindow(unsigned long window)
 {
-	XWindowChanges wc;
+    XWindowChanges wc;
 	wc.stack_mode = Above;
-	XConfigureWindow(QX11Info::display(), window, CWStackMode, &wc);
+    XConfigureWindow(x11DisplayCompat(), window, CWStackMode, &wc);
 
 	// Apparently, KWin won't bring window to top with configure request,
 	// so we also need to ask it politely by sending a message.
@@ -410,7 +693,7 @@ void X11Support::activateWindow(unsigned long window)
 
 void X11Support::minimizeWindow(unsigned long window)
 {
-    XIconifyWindow(QX11Info::display(), window, QX11Info::appScreen());
+    XIconifyWindow(x11DisplayCompat(), window, x11AppScreenCompat());
 }
 
 void X11Support::closeWindow(unsigned long window)
@@ -420,30 +703,30 @@ void X11Support::closeWindow(unsigned long window)
 
 void X11Support::destroyWindow(unsigned long window)
 {
-	XDestroyWindow(QX11Info::display(), window);
+    XDestroyWindow(x11DisplayCompat(), window);
 }
 
 void X11Support::killClient(unsigned long window)
 {
-	XKillClient(QX11Info::display(), window);
+    XKillClient(x11DisplayCompat(), window);
 }
 
 unsigned long X11Support::systemTrayAtom()
 {
-	return atom(QString("_NET_SYSTEM_TRAY_S") + QString::number(QX11Info::appScreen()));
+    return atom(QString("_NET_SYSTEM_TRAY_S") + QString::number(x11AppScreenCompat()));
 }
 
 bool X11Support::makeSystemTray(unsigned long window)
 {
-    if(XGetSelectionOwner(QX11Info::display(), systemTrayAtom()) != 0)
+    if(XGetSelectionOwner(x11DisplayCompat(), systemTrayAtom()) != 0)
         return false;
 
-	XSetSelectionOwner(QX11Info::display(), systemTrayAtom(), window, CurrentTime);
+        XSetSelectionOwner(x11DisplayCompat(), systemTrayAtom(), window, CurrentTime);
 	setWindowPropertyVisualId(window, "_NET_SYSTEM_TRAY_VISUAL", getARGBVisualId());
-	XSync(QX11Info::display(), False);
+    XSync(x11DisplayCompat(), False);
 
 	// Inform other clients.
-	XClientMessageEvent event;
+    XClientMessageEvent event;
 	event.type = ClientMessage;
 	event.window = rootWindow();
 	event.message_type = atom("MANAGER");
@@ -453,27 +736,27 @@ bool X11Support::makeSystemTray(unsigned long window)
 	event.data.l[2] = window;
 	event.data.l[3] = 0;
 	event.data.l[4] = 0;
-	XSendEvent(QX11Info::display(), X11Support::rootWindow(), False, StructureNotifyMask, reinterpret_cast<XEvent*>(&event));
+    XSendEvent(x11DisplayCompat(), X11Support::rootWindow(), False, StructureNotifyMask, reinterpret_cast<XEvent*>(&event));
 
 	return true;
 }
 
 void X11Support::freeSystemTray()
 {
-    XSetSelectionOwner(QX11Info::display(), systemTrayAtom(), None, CurrentTime);
+    XSetSelectionOwner(x11DisplayCompat(), systemTrayAtom(), None, CurrentTime);
 }
 
 unsigned long X11Support::getARGBVisualId()
 {
-	XVisualInfo visualInfoTemplate;
-	visualInfoTemplate.screen = QX11Info::appScreen();
+    XVisualInfo visualInfoTemplate;
+    visualInfoTemplate.screen = x11AppScreenCompat();
 	visualInfoTemplate.depth = 32;
 	visualInfoTemplate.red_mask = 0x00FF0000;
 	visualInfoTemplate.green_mask = 0x0000FF00;
 	visualInfoTemplate.blue_mask = 0x000000FF;
 
 	int numVisuals;
-	XVisualInfo* visualInfoList = XGetVisualInfo(QX11Info::display(), VisualScreenMask | VisualDepthMask | VisualRedMaskMask | VisualGreenMaskMask | VisualBlueMaskMask, &visualInfoTemplate, &numVisuals);
+    XVisualInfo* visualInfoList = XGetVisualInfo(x11DisplayCompat(), VisualScreenMask | VisualDepthMask | VisualRedMaskMask | VisualGreenMaskMask | VisualBlueMaskMask, &visualInfoTemplate, &numVisuals);
 	unsigned long id = visualInfoList[0].visualid;
 	XFree(visualInfoList);
 
@@ -482,12 +765,12 @@ unsigned long X11Support::getARGBVisualId()
 
 void X11Support::redirectWindow(unsigned long window)
 {
-	XCompositeRedirectWindow(QX11Info::display(), window, CompositeRedirectManual);
+    XCompositeRedirectWindow(x11DisplayCompat(), window, CompositeRedirectManual);
 }
 
 void X11Support::unredirectWindow(unsigned long window)
 {
-	XCompositeUnredirectWindow(QX11Info::display(), window, CompositeRedirectManual);
+    XCompositeUnredirectWindow(x11DisplayCompat(), window, CompositeRedirectManual);
 }
 
 // FIXME: How to convert Pixmap to QPixmap for Qt5?
@@ -495,7 +778,7 @@ QPixmap X11Support::getWindowPixmap(unsigned long window)
 {
 #if QT_VERSION >= 0x050000
     XWindowAttributes attr;
-    XGetWindowAttributes(QX11Info::display(), window, &attr);
+    XGetWindowAttributes(x11DisplayCompat(), window, &attr);
 
     QIcon icon = X11Support::getWindowIcon(window);
     //qDebug() << icon.availableSizes();
@@ -503,9 +786,9 @@ QPixmap X11Support::getWindowPixmap(unsigned long window)
 
     if(pixmap.isNull())
     {
-        Pixmap pix = XCompositeNameWindowPixmap(QX11Info::display(), window);
-        XImage *ximage = XGetImage(QX11Info::display(), pix, 0, 0, attr.width, attr.height, AllPlanes, ZPixmap);
-        XFreePixmap(QX11Info::display(), pix);
+        Pixmap pix = XCompositeNameWindowPixmap(x11DisplayCompat(), window);
+        XImage *ximage = XGetImage(x11DisplayCompat(), pix, 0, 0, attr.width, attr.height, AllPlanes, ZPixmap);
+        XFreePixmap(x11DisplayCompat(), pix);
 
         // This is safe to do since we only composite ARGB32 windows, and PictStandardARGB32
         // matches QImage::Format_ARGB32_Premultiplied.
@@ -525,7 +808,7 @@ QRect X11Support::getWindowWindowsGeometry(unsigned long window)
     XWindowAttributes attr;
     QRect windowGeometry(0,0,0,0);
 
-    if(XGetWindowAttributes(QX11Info::display(), window, &attr) != 0)
+    if(XGetWindowAttributes(x11DisplayCompat(), window, &attr) != 0)
     {
         windowGeometry.setX(attr.x);
         windowGeometry.setY(attr.y);
@@ -538,27 +821,26 @@ QRect X11Support::getWindowWindowsGeometry(unsigned long window)
 
 void X11Support::resizeWindow(unsigned long window, int width, int height)
 {
-	XResizeWindow(QX11Info::display(), window, width, height);
+    XResizeWindow(x11DisplayCompat(), window, width, height);
 }
 
 void X11Support::moveWindow(unsigned long window, int x, int y)
 {
-	XMoveWindow(QX11Info::display(), window, x, y);
+    XMoveWindow(x11DisplayCompat(), window, x, y);
 }
 
 void X11Support::mapWindow(unsigned long window)
 {
-	XMapWindow(QX11Info::display(), window);
+    XMapWindow(x11DisplayCompat(), window);
 }
 
 void X11Support::reparentWindow(unsigned long window, unsigned long parent)
 {
-	XReparentWindow(QX11Info::display(), window, parent, 0, 0);
-	XSync(QX11Info::display(), False);
+    XReparentWindow(x11DisplayCompat(), window, parent, 0, 0);
+    XSync(x11DisplayCompat(), False);
 }
 
 void X11Support::setWindowBackgroundBlack(unsigned long window)
 {
-	XSetWindowBackground(QX11Info::display(), window, BlackPixel(QX11Info::display(), QX11Info::appScreen()));
+    XSetWindowBackground(x11DisplayCompat(), window, BlackPixel(x11DisplayCompat(), x11AppScreenCompat()));
 }
-

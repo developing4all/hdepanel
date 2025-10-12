@@ -146,7 +146,7 @@ PanelWindow::PanelWindow(QString id)
     m_scene->addItem(item);
  
     m_view = new QGraphicsView(m_scene, this);
-    m_view->setStyleSheet("border-style: none;");
+    m_view->setStyleSheet("border-style: none; background: rgba(0, 0, 0, 0.4)");
     m_view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_view->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_view->setRenderHint(QPainter::Antialiasing);
@@ -154,6 +154,7 @@ PanelWindow::PanelWindow(QString id)
     m_view->setMouseTracking(true);
     m_view->setAttribute(Qt::WA_NoMousePropagation);
     m_view->setAttribute(Qt::WA_TransparentForMouseEvents, false);
+    m_view->setBackgroundBrush(Qt::NoBrush);
      
     setAttribute(Qt::WA_TranslucentBackground);
     setAutoFillBackground(false);

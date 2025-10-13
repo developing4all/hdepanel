@@ -433,16 +433,16 @@ void DockItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
         if (event->button() == Qt::RightButton && !m_dragging) {
             HPopupMenu menu;
 
-            menu.addTitle("Application");
-            menu.addAction(QIcon::fromTheme("window-close"), "Close", this, SLOT(close()));
-            menu.addTitle("Dock Applet");
-            menu.addAction(QIcon::fromTheme("preferences-other"), "Configure Dock Applet", m_dockApplet, SLOT(showConfigurationDialog()));
+            menu.addTitle(tr("Application"));
+            menu.addAction(QIcon::fromTheme("window-close"), tr("Close"), this, SLOT(close()));
+            menu.addTitle(tr("Dock Applet"));
+            menu.addAction(QIcon::fromTheme("preferences-other"), tr("Configure Dock Applet"), m_dockApplet, SLOT(showConfigurationDialog()));
 
-            menu.addTitle("Panel");
-            menu.addAction(QIcon::fromTheme("preferences-desktop"), "Configure Panel", m_dockApplet->panelWindow(), SLOT(showConfigurationDialog()));
+            menu.addTitle(tr("Panel"));
+            menu.addAction(QIcon::fromTheme("preferences-desktop"), tr("Configure Panel"), m_dockApplet->panelWindow(), SLOT(showConfigurationDialog()));
 
-            menu.addAction(QIcon::fromTheme("list-add"), "Add Panel", QApplication::instance(), SLOT(addPanel()));
-            menu.addAction(QIcon::fromTheme("list-remove"), "Remove Panel", m_dockApplet->panelWindow(), SLOT(removePanel()));
+            menu.addAction(QIcon::fromTheme("list-add"), tr("Add Panel"), QApplication::instance(), SLOT(addPanel()));
+            menu.addAction(QIcon::fromTheme("list-remove"), tr("Remove Panel"), m_dockApplet->panelWindow(), SLOT(removePanel()));
 
             menu.exec(event->screenPos());
         }

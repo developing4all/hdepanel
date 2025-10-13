@@ -148,7 +148,8 @@ void PanelSettings::setPanelWindow(PanelWindow *panel)
         {
             int index = applet_id.lastIndexOf("_");
             QString applet_name = applet_id.left(index);
-            QListWidgetItem *item = new QListWidgetItem(applet_name);
+            QString translated_name = translateAppletName(applet_name);
+            QListWidgetItem *item = new QListWidgetItem(translated_name);
             item->setData(Qt::UserRole, applet_id);
             ui->appletsList->addItem(item);
         }
@@ -294,7 +295,8 @@ void PanelSettings::on_appletAdd_clicked()
         {
             int index = applet_id.lastIndexOf("_");
             QString applet_name = applet_id.left(index);
-            QListWidgetItem *item = new QListWidgetItem(applet_name);
+            QString translated_name = translateAppletName(applet_name);
+            QListWidgetItem *item = new QListWidgetItem(translated_name);
             item->setData(Qt::UserRole, applet_id);
             ui->appletsList->addItem(item);
             applyAppletList();
@@ -313,4 +315,18 @@ void PanelSettings::on_appletRemove_clicked()
 
 void PanelSettings::on_appletSettings_clicked()
 {
+}
+
+QString PanelSettings::translateAppletName(const QString &appletName)
+{
+    // Translate applet names for the settings dialog
+    if (appletName == "StartApplet") return tr("Start Menu");
+    if (appletName == "ApplicationsMenuApplet") return tr("Applications Menu");
+    if (appletName == "DockApplet") return tr("Task Bar");
+    if (appletName == "TrayApplet") return tr("System Tray");
+    if (appletName == "ClockApplet") return tr("Clock");
+    if (appletName == "KeyboardApplet") return tr("Keyboard Layout");
+    
+    // Return original name if no translation found
+    return appletName;
 }

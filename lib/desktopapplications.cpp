@@ -35,6 +35,7 @@
 #include <QtCore/QTextStream>
 #include <climits>
 #include <QtCore/QProcess>
+#include <QtCore/QLocale>
 #include <QtGui/QIcon>
 #include "iconloader.h"
 #include "dpisupport.h"
@@ -54,6 +55,17 @@ bool DesktopApplication::init(const QString& path)
 	if(!file.open(QIODevice::ReadOnly | QIODevice::Text))
 		return false;
 
+	// Get current locale for translated names
+	QString locale = QLocale::system().name(); // e.g., "nl_NL", "ar_SA"
+	QString language = locale.split('_').first(); // e.g., "nl", "ar"
+	
+	// Keys to look for in order of preference
+	QString localizedNameKey = "Name[" + locale + "]";     // Name[nl_NL]
+	QString languageNameKey = "Name[" + language + "]";    // Name[nl]
+	
+	QString name;
+	QString localizedName;
+	
 	QTextStream in(&file);
 	while(!in.atEnd())
 	{
@@ -75,7 +87,13 @@ bool DesktopApplication::init(const QString& path)
 		if(key == "NoDisplay" && value == "true")
 			m_isNoDisplay = true;
 		if(key == "Name")
-			m_name = value;
+			name = value; // Fallback name
+		// Check for exact locale match (e.g., Name[nl_NL])
+		if(key == localizedNameKey)
+			localizedName = value;
+		// Check for language-only match (e.g., Name[nl])
+		if(key == languageNameKey && localizedName.isEmpty())
+			localizedName = value;
 		if(key == "Exec")
 			m_exec = value;
 		if(key == "Icon")
@@ -89,6 +107,9 @@ bool DesktopApplication::init(const QString& path)
             m_categories = value.split(";", QString::SkipEmptyParts);
 #endif
 	}
+	
+	// Use localized name if available, otherwise fall back to default name
+	m_name = localizedName.isEmpty() ? name : localizedName;
 
 	return true;
 }

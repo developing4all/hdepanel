@@ -70,6 +70,9 @@ private slots:
     void showContextMenuForWidget(const QPoint &pos);
     void addToFavorite();
     void removeFromFavorite();
+    void moveFavoriteUp();
+    void moveFavoriteDown();
+    void sortFavoritesAlphabetically();
 
     void on_menuList_itemActivated(QListWidgetItem *item);
 

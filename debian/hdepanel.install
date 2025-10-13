@@ -1,3 +1,4 @@
 hdepanel usr/bin
 libhdepanel* usr/lib
 plugins/lib*.so usr/lib/hde/panel/plugins
+translations/*.qm usr/share/hdepanel/translations

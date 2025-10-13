@@ -711,11 +711,11 @@ void PanelWindow::showPanelContextMenu(const QPoint& point)
      * Add Panel
      * Remove Panel
      */
-    menu.addTitle("Panel");
-    menu.addAction(QIcon::fromTheme("preferences-desktop"), "Configure Panel", this, SLOT(showConfigurationDialog()));
+    menu.addTitle(tr("Panel"));
+    menu.addAction(QIcon::fromTheme("preferences-desktop"), tr("Configure Panel"), this, SLOT(showConfigurationDialog()));
 
-    menu.addAction(QIcon::fromTheme("list-add"), "Add Panel", QApplication::instance(), SLOT(addPanel()));
-    menu.addAction(QIcon::fromTheme("list-remove"), "Remove Panel", this, SLOT(removePanel()));
+    menu.addAction(QIcon::fromTheme("list-add"), tr("Add Panel"), QApplication::instance(), SLOT(addPanel()));
+    menu.addAction(QIcon::fromTheme("list-remove"), tr("Remove Panel"), this, SLOT(removePanel()));
 
     menu.exec(pos() + point);
 }

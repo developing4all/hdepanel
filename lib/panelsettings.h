@@ -72,6 +72,7 @@ private:
     void readSettings();
     void fontChanged(const QString font);
     void applyAppletList();
+    QString translateAppletName(const QString &appletName);
 
     Ui::PanelSettings *ui;
     QString m_panel_id;

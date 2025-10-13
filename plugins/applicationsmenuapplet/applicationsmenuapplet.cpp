@@ -84,7 +84,7 @@ ApplicationsMenuApplet::ApplicationsMenuApplet(PanelWindow* panelWindow)
     // Create m_textItem early so desiredSize() doesn't crash
     m_textItem = new TextGraphicsItem(this);
     m_textItem->setColor(Qt::white);
-    m_textItem->setText("Applications");
+    m_textItem->setText(tr("Applications"));
 }
 void ApplicationsMenuApplet::setPanelWindow(PanelWindow *panelWindow)
 {
@@ -104,22 +104,22 @@ void ApplicationsMenuApplet::setPanelWindow(PanelWindow *panelWindow)
         adjustHardcodedPixelSize(2),
         adjustHardcodedPixelSize(2)
     ));
-    m_subMenus.append(SubMenu(m_menu, "Accessories", "Utility", "applications-accessories"));
-    m_subMenus.append(SubMenu(m_menu, "Development", "Development", "applications-development"));
-    m_subMenus.append(SubMenu(m_menu, "Education", "Education", "applications-science"));
-    m_subMenus.append(SubMenu(m_menu, "Office", "Office", "applications-office"));
-    m_subMenus.append(SubMenu(m_menu, "Graphics", "Graphics", "applications-graphics"));
-    m_subMenus.append(SubMenu(m_menu, "Multimedia", "AudioVideo", "applications-multimedia"));
-    m_subMenus.append(SubMenu(m_menu, "Games", "Game", "applications-games"));
-    m_subMenus.append(SubMenu(m_menu, "Network", "Network", "applications-internet"));
-    m_subMenus.append(SubMenu(m_menu, "System", "System", "preferences-system"));
-    m_subMenus.append(SubMenu(m_menu, "Settings", "Settings", "preferences-desktop"));
-    m_subMenus.append(SubMenu(m_menu, "Other", "Other", "applications-other"));
+    m_subMenus.append(SubMenu(m_menu, tr("Accessories"), "Utility", "applications-accessories"));
+    m_subMenus.append(SubMenu(m_menu, tr("Development"), "Development", "applications-development"));
+    m_subMenus.append(SubMenu(m_menu, tr("Education"), "Education", "applications-science"));
+    m_subMenus.append(SubMenu(m_menu, tr("Office"), "Office", "applications-office"));
+    m_subMenus.append(SubMenu(m_menu, tr("Graphics"), "Graphics", "applications-graphics"));
+    m_subMenus.append(SubMenu(m_menu, tr("Multimedia"), "AudioVideo", "applications-multimedia"));
+    m_subMenus.append(SubMenu(m_menu, tr("Games"), "Game", "applications-games"));
+    m_subMenus.append(SubMenu(m_menu, tr("Network"), "Network", "applications-internet"));
+    m_subMenus.append(SubMenu(m_menu, tr("System"), "System", "preferences-system"));
+    m_subMenus.append(SubMenu(m_menu, tr("Settings"), "Settings", "preferences-desktop"));
+    m_subMenus.append(SubMenu(m_menu, tr("Other"), "Other", "applications-other"));
 
     m_textItem = new TextGraphicsItem(this);
     m_textItem->setColor(Qt::white);
     m_textItem->setFont(m_panelWindow->font());
-    m_textItem->setText("Applications");
+    m_textItem->setText(tr("Applications"));
 #if QT_VERSION >= 0x050000
     // TODO: add oslogo to act like M$_WIN
     m_textItem->setImage(QImage(QIcon::fromTheme("start-here").pixmap(22,22).toImage()));
@@ -161,7 +161,7 @@ bool ApplicationsMenuApplet::init()
     }
 
     m_menu->addSeparator();
-    m_menu->addAction(QIcon::fromTheme("application-exit"), "Quit", qApp, SLOT(quit()));
+    m_menu->addAction(QIcon::fromTheme("application-exit"), tr("Quit"), qApp, SLOT(quit()));
 
     return true;
 }

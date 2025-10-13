@@ -1,6 +1,11 @@
 #include "panelapplication.h"
 #include <QDebug>
 #include <QtCore/QProcessEnvironment>
+#include <QTranslator>
+#include <QLocale>
+#include <QLibraryInfo>
+#include <QFile>
+#include <QCoreApplication>
 
 #include <signal.h>
 
@@ -61,6 +66,58 @@ int main(int argc, char** argv)
     }
 
     PanelApplication app(argc, argv);
+    
+    // Setup translations
+    QTranslator qtTranslator;
+    QTranslator appTranslator;
+    
+    // Get system locale (e.g., "en_US", "nl_NL", "ar_SA")
+    QString locale = QLocale::system().name();
+    QString language = locale.split('_').first(); // Extract just "nl" from "nl_NL"
+    qDebug() << "System locale:" << locale << "Language:" << language;
+    
+    // Load Qt's built-in translations
+    qtTranslator.load("qt_" + locale, QLibraryInfo::location(QLibraryInfo::TranslationsPath));
+    app.installTranslator(&qtTranslator);
+    
+    // Try to find translation file - check both full locale and language code
+    QString translationsPath;
+    QString translationFile;
+    
+    QStringList searchPaths;
+    searchPaths << "/usr/share/hdepanel/translations"
+                << QCoreApplication::applicationDirPath() + "/translations"
+                << QCoreApplication::applicationDirPath() + "/../translations";
+    
+    QStringList localeVariants;
+    localeVariants << locale << language; // Try "nl_NL" then "nl"
+    
+    // Search for translation file
+    for (const QString& path : searchPaths) {
+        for (const QString& loc : localeVariants) {
+            QString file = path + "/hdepanel_" + loc + ".qm";
+            if (QFile::exists(file)) {
+                translationsPath = path;
+                translationFile = "hdepanel_" + loc;
+                qDebug() << "Found translation file:" << file;
+                break;
+            }
+        }
+        if (!translationsPath.isEmpty()) break;
+    }
+    
+    // Load the translation
+    if (!translationsPath.isEmpty()) {
+        if (appTranslator.load(translationFile, translationsPath)) {
+            app.installTranslator(&appTranslator);
+            qDebug() << "✓ Loaded translation:" << translationFile << "from" << translationsPath;
+        } else {
+            qDebug() << "✗ Failed to load translation:" << translationFile;
+        }
+    } else {
+        qDebug() << "No translation files found for" << locale << "or" << language << "- using default language";
+    }
+    
     app.init();
 
     // Clean shutdown on Ctrl-C

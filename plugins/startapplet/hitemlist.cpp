@@ -15,9 +15,27 @@ HItemList::HItemList(QWidget *parent) :
 
 void HItemList::mousePressEvent(QMouseEvent *event)
 {
-    if (event->button() == Qt::LeftButton)
+    qDebug() << "HItemList::mousePressEvent - button:" << event->button();
+    
+    if (event->button() == Qt::LeftButton) {
         dragStartPosition = event->pos();
-    return QListWidget::mousePressEvent(event);
+    }
+    else if (event->button() == Qt::RightButton) {
+        // Handle right-click for context menu
+        // Select the item under the cursor first
+        QListWidgetItem *item = itemAt(event->pos());
+        if (item) {
+            setCurrentItem(item);
+        }
+        
+        // Emit the customContextMenuRequested signal manually
+        qDebug() << "Emitting customContextMenuRequested signal at" << event->pos();
+        emit customContextMenuRequested(event->pos());
+        return;
+    }
+    
+    // Let the base class handle other events
+    QListWidget::mousePressEvent(event);
 }
 
 void HItemList::mouseMoveEvent(QMouseEvent *event)

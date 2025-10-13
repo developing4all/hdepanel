@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>430</width>
-    <height>550</height>
+    <height>580</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -49,13 +49,13 @@
       <widget class="QListWidget" name="menuList">
        <property name="minimumSize">
         <size>
-         <width>150</width>
+         <width>160</width>
          <height>0</height>
         </size>
        </property>
        <property name="maximumSize">
         <size>
-         <width>150</width>
+         <width>160</width>
          <height>16777215</height>
         </size>
        </property>
@@ -67,6 +67,15 @@
        </property>
        <property name="frameShadow">
         <enum>QFrame::Plain</enum>
+       </property>
+       <property name="resizeMode">
+        <enum>QListView::Fixed</enum>
+       </property>
+       <property name="uniformItemSizes">
+        <bool>true</bool>
+       </property>
+       <property name="horizontalScrollBarPolicy">
+        <enum>Qt::ScrollBarAlwaysOff</enum>
        </property>
       </widget>
      </item>
@@ -156,8 +165,7 @@
        </property>
        <property name="icon">
         <iconset theme="application-exit">
-         <normaloff/>
-        </iconset>
+         <normaloff>.</normaloff>.</iconset>
        </property>
        <property name="iconSize">
         <size>

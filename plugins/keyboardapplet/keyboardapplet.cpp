@@ -117,15 +117,15 @@ void KeyboardApplet::contextMenuEvent(QGraphicsSceneContextMenuEvent *event)
 {
     HPopupMenu menu;
 
-    menu.addTitle("Keyboard Applet");
-    menu.addAction(QIcon::fromTheme("preferences-desktop-keyboard"), "Configure keyboard", this, SLOT(showConfigurationDialog()));
+    menu.addTitle(tr("Keyboard Applet"));
+    menu.addAction(QIcon::fromTheme("preferences-desktop-keyboard"), tr("Configure keyboard"), this, SLOT(showConfigurationDialog()));
 
 
-    menu.addTitle("Panel");
-    menu.addAction(QIcon::fromTheme("preferences-desktop"), "Configure Panel", m_panelWindow, SLOT(showConfigurationDialog()));
+    menu.addTitle(tr("Panel"));
+    menu.addAction(QIcon::fromTheme("preferences-desktop"), tr("Configure Panel"), m_panelWindow, SLOT(showConfigurationDialog()));
 
-    menu.addAction(QIcon::fromTheme("list-add"), "Add Panel", QApplication::instance(), SLOT(addPanel()));
-    menu.addAction(QIcon::fromTheme("list-remove"), "Remove Panel", m_panelWindow, SLOT(removePanel()));
+    menu.addAction(QIcon::fromTheme("list-add"), tr("Add Panel"), QApplication::instance(), SLOT(addPanel()));
+    menu.addAction(QIcon::fromTheme("list-remove"), tr("Remove Panel"), m_panelWindow, SLOT(removePanel()));
 
     menu.exec(event->screenPos());
 }

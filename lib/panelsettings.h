@@ -48,9 +48,9 @@ private slots:
 
     void on_theme_activated(const QString &theme);
 
-    void on_verticalPosition_activated(const QString &verticalPosition);
+    void on_verticalPosition_activated(int index);
 
-    void on_horizontalPosition_activated(const QString &horizontalPosition);
+    void on_horizontalPosition_activated(int index);
 
     void on_screen_activated(const QString &screen);
 

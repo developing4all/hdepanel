@@ -94,7 +94,9 @@ PanelSettings::PanelSettings(QString panel_id, QWidget *parent) :
     connect(ui->theme, QOverload<int>::of(&QComboBox::activated),
             [this](int) { on_theme_activated(ui->theme->currentText()); });
     connect(ui->verticalPosition, QOverload<int>::of(&QComboBox::activated),
-            [this](int) { on_verticalPosition_activated(ui->verticalPosition->currentText()); });
+            this, &PanelSettings::on_verticalPosition_activated);
+    connect(ui->horizontalPosition, QOverload<int>::of(&QComboBox::activated),
+            this, &PanelSettings::on_horizontalPosition_activated);
     connect(ui->screen, QOverload<int>::of(&QComboBox::activated),
             [this](int) { on_screen_activated(ui->screen->currentText()); });
     connect(ui->font, QOverload<int>::of(&QFontComboBox::currentIndexChanged),
@@ -123,13 +125,15 @@ void PanelSettings::setPanelWindow(PanelWindow *panel)
         ui->theme->setCurrentText(QIcon::themeName());
     }
     if (ui->verticalPosition) {
-        QString verticalPos = Settings::value(m_panel_id, "verticalPosition", "Bottom").toString();
-        qDebug() << "PanelSettings::setPanelWindow() - Setting vertical position to:" << verticalPos;
-        ui->verticalPosition->setCurrentText(verticalPos);
-        qDebug() << "PanelSettings::setPanelWindow() - Combo box current text:" << ui->verticalPosition->currentText();
+        // Load position as index: 0=Top, 1=Bottom
+        int verticalPos = Settings::value(m_panel_id, "verticalPosition", 1).toInt();
+        qDebug() << "PanelSettings::setPanelWindow() - Setting vertical position index to:" << verticalPos;
+        ui->verticalPosition->setCurrentIndex(verticalPos);
     }
     if (ui->horizontalPosition) {
-        ui->horizontalPosition->setCurrentText(Settings::value(m_panel_id, "horizontalPosition", "Center").toString());
+        // Load position as index: 0=Left, 1=Center, 2=Right
+        int horizontalPos = Settings::value(m_panel_id, "horizontalPosition", 1).toInt();
+        ui->horizontalPosition->setCurrentIndex(horizontalPos);
     }
     if (ui->screen) {
         ui->screen->setCurrentText(Settings::value(m_panel_id, "screen", "0").toString());
@@ -191,37 +195,34 @@ void PanelSettings::on_theme_activated(const QString &theme)
     Settings::setValue("General", "iconThemeName", theme);
 }
 
-void PanelSettings::on_verticalPosition_activated(const QString &verticalPosition)
+void PanelSettings::on_verticalPosition_activated(int index)
 {
-    qDebug() << "PanelSettings::on_verticalPosition_activated() - Called with:" << verticalPosition;
+    qDebug() << "PanelSettings::on_verticalPosition_activated() - Called with index:" << index;
 
-    PanelWindow::Anchor verticalAnchor = PanelWindow::Max; // Default to bottom
-
-    if(verticalPosition == "Top")
-        verticalAnchor = PanelWindow::Min;
-    else if(verticalPosition == "Bottom")
-        verticalAnchor = PanelWindow::Max;
+    // index: 0=Top, 1=Bottom
+    PanelWindow::Anchor verticalAnchor = (index == 0) ? PanelWindow::Min : PanelWindow::Max;
 
     qDebug() << "PanelSettings::on_verticalPosition_activated() - Setting vertical anchor to:" << verticalAnchor;
     m_panel->setVerticalAnchor(verticalAnchor);
-    Settings::setValue(m_panel_id, "verticalPosition", verticalPosition);
+    Settings::setValue(m_panel_id, "verticalPosition", index);
 }
 
-void PanelSettings::on_horizontalPosition_activated(const QString &horizontalPosition)
+void PanelSettings::on_horizontalPosition_activated(int index)
 {
-//    qDebug() << horizontalPosition;
+    qDebug() << "PanelSettings::on_horizontalPosition_activated() - Called with index:" << index;
 
+    // index: 0=Left, 1=Center, 2=Right
     PanelWindow::Anchor horizontalAnchor = PanelWindow::Center; // Default to center
-
-    if(horizontalPosition == "Left")
+    
+    if(index == 0)
         horizontalAnchor = PanelWindow::Min;
-    else if(horizontalPosition == "Center")
+    else if(index == 1)
         horizontalAnchor = PanelWindow::Center;
-    else if(horizontalPosition == "Right")
+    else if(index == 2)
         horizontalAnchor = PanelWindow::Max;
 
     m_panel->setHorizontalAnchor(horizontalAnchor);
-    Settings::setValue(m_panel_id, "horizontalPosition", horizontalPosition);
+    Settings::setValue(m_panel_id, "horizontalPosition", index);
 }
 
 void PanelSettings::on_screen_activated(const QString &screen)

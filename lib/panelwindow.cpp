@@ -279,15 +279,48 @@ void PanelWindow::readSettings()
     setFontName(Settings::value(m_id, "fontName", "default").toString());
     setScreen(Settings::value(m_id, "screen", 0).toInt());
 
-    // Vertical
-    const QString vpos = Settings::value(m_id, "verticalPosition", "Bottom").toString();
-    m_verticalAnchor = (vpos == "Top") ? Min : Max;
+    // Vertical - support both old string format and new index format
+    QVariant vposVariant = Settings::value(m_id, "verticalPosition", 1);
+#if QT_VERSION >= 0x060000
+    bool vposIsString = (vposVariant.metaType().id() == QMetaType::QString);
+#else
+    bool vposIsString = (vposVariant.type() == QVariant::String);
+#endif
+    if (vposIsString) {
+        // Old string format (for backward compatibility)
+        const QString vpos = vposVariant.toString();
+        m_verticalAnchor = (vpos == "Top") ? Min : Max;
+        // Migrate to new format
+        Settings::setValue(m_id, "verticalPosition", (vpos == "Top") ? 0 : 1);
+    } else {
+        // New index format: 0=Top, 1=Bottom
+        int vposIndex = vposVariant.toInt();
+        m_verticalAnchor = (vposIndex == 0) ? Min : Max;
+    }
 
-    // Horizontal
-    const QString hpos = Settings::value(m_id, "horizontalPosition", "Center").toString();
-    if      (hpos == "Left")  m_horizontalAnchor = Min;
-    else if (hpos == "Right") m_horizontalAnchor = Max;
-    else                      m_horizontalAnchor = Center;
+    // Horizontal - support both old string format and new index format
+    QVariant hposVariant = Settings::value(m_id, "horizontalPosition", 1);
+#if QT_VERSION >= 0x060000
+    bool hposIsString = (hposVariant.metaType().id() == QMetaType::QString);
+#else
+    bool hposIsString = (hposVariant.type() == QVariant::String);
+#endif
+    if (hposIsString) {
+        // Old string format (for backward compatibility)
+        const QString hpos = hposVariant.toString();
+        if      (hpos == "Left")  m_horizontalAnchor = Min;
+        else if (hpos == "Right") m_horizontalAnchor = Max;
+        else                      m_horizontalAnchor = Center;
+        // Migrate to new format
+        int hposIndex = (hpos == "Left") ? 0 : (hpos == "Center") ? 1 : 2;
+        Settings::setValue(m_id, "horizontalPosition", hposIndex);
+    } else {
+        // New index format: 0=Left, 1=Center, 2=Right
+        int hposIndex = hposVariant.toInt();
+        if      (hposIndex == 0) m_horizontalAnchor = Min;
+        else if (hposIndex == 2) m_horizontalAnchor = Max;
+        else                     m_horizontalAnchor = Center;
+    }
 
     m_appletnames = Settings::value(m_id, "applets", QStringList()).toStringList();
 }

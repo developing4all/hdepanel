@@ -27,10 +27,10 @@
  #include <QVector>
  #include <QStringList>
  #include <QRect>
- #include <QTimer>
- #include <QGraphicsItem>
- 
- class QGraphicsScene;
+#include <QTimer>
+#include <QGraphicsItem>
+
+class QGraphicsScene;
  class QGraphicsView;
  class QMouseEvent;
  class QResizeEvent;
@@ -103,7 +103,7 @@
 	 // Utility
 	 QRect getAnchorGeometry(const QRect& screen, const QRect& available) const;
   
-	 // Wayland (fallback positioning only; no layer-shell)
+	 // Wayland positioning
 	 void forceWaylandPosition();
  
  private:
@@ -128,7 +128,7 @@
 	 QTimer        m_strutDebounce;
 	 QRect         m_lastStrutGeom;              // last geometry we applied struts for
  
-	 // Wayland helpers (no layer-shell, only keep a timer to gently reassert position)
+	 // Wayland helpers
 	 QTimer*       m_waylandRepositionTimer = nullptr;
  
 	 friend class PanelWindowGraphicsItem;

@@ -1,5 +1,6 @@
 #include "waylandsupport.h"
 #include "desktopapplications.h"
+#include "windowmanager.h"
 #include <QDebug>
 #include <QFile>
 #include <QGuiApplication>
@@ -17,6 +18,8 @@
 
 WaylandSupport::WaylandSupport(QObject* parent)
     : QObject(parent)
+    , m_windowManager(nullptr)
+    , m_useWindowManager(true)
     , m_initialized(false)
     , m_display(nullptr)
     , m_registry(nullptr)
@@ -24,6 +27,36 @@ WaylandSupport::WaylandSupport(QObject* parent)
     , m_xdg_wm_base(nullptr)
     , m_updateTimer(nullptr)
 {
+    // Try to create a window manager first
+    m_windowManager = WindowManagerFactory::createWindowManager(this);
+    if (m_windowManager) {
+        m_useWindowManager = m_windowManager->initialize();
+        if (m_useWindowManager) {
+            // Connect window manager signals
+            connect(m_windowManager, &WindowManager::windowsUpdated,
+                    this, &WaylandSupport::onWindowManagerWindowsUpdated);
+            connect(m_windowManager, &WindowManager::windowCreated,
+                    this, &WaylandSupport::onWindowManagerWindowCreated);
+            connect(m_windowManager, &WindowManager::windowClosed,
+                    this, &WaylandSupport::onWindowManagerWindowClosed);
+            connect(m_windowManager, &WindowManager::windowActivated,
+                    this, &WaylandSupport::onWindowManagerWindowActivated);
+            connect(m_windowManager, &WindowManager::workspaceChanged,
+                    this, &WaylandSupport::onWindowManagerWorkspaceChanged);
+            connect(m_windowManager, &WindowManager::monitorChanged,
+                    this, &WaylandSupport::onWindowManagerMonitorChanged);
+            
+            qDebug() << "WaylandSupport: Using" << m_windowManager->getWindowManagerName() << "window manager";
+        } else {
+            qDebug() << "WaylandSupport: Window manager initialization failed, falling back to legacy mode";
+            delete m_windowManager;
+            m_windowManager = nullptr;
+            m_useWindowManager = false;
+        }
+    } else {
+        qDebug() << "WaylandSupport: No window manager available, using legacy mode";
+        m_useWindowManager = false;
+    }
 }
 
 WaylandSupport::~WaylandSupport()
@@ -110,6 +143,11 @@ void WaylandSupport::updateWindows()
 
 QList<WaylandWindow> WaylandSupport::getAllWindows()
 {
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->getAllWindows();
+    }
+    
+    // Legacy implementation for backward compatibility
     QList<WaylandWindow> windows;
 
     if (!m_initialized) {
@@ -202,6 +240,11 @@ WaylandWindow WaylandSupport::getWindowInfo(void* surface)
 
 bool WaylandSupport::activateWindow(const QString& appId)
 {
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->activateWindow(appId);
+    }
+    
+    // Legacy implementation for backward compatibility
     if (!m_initialized) {
         qDebug() << "WaylandSupport::activateWindow() - not initialized";
         return false;
@@ -352,6 +395,11 @@ bool WaylandSupport::activateWindow(const QString& appId)
 
 bool WaylandSupport::closeWindow(const QString& appId)
 {
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->closeWindow(appId);
+    }
+    
+    // Legacy implementation for backward compatibility
     if (!m_initialized) {
         qDebug() << "WaylandSupport::closeWindow() - not initialized";
         return false;
@@ -389,6 +437,158 @@ bool WaylandSupport::closeWindow(const QString& appId)
         qDebug() << "WaylandSupport: Extension not available for window closing";
         return false;
     }
+}
+
+bool WaylandSupport::minimizeWindow(const QString& appId)
+{
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->minimizeWindow(appId);
+    }
+    return false; // Not implemented in legacy mode
+}
+
+bool WaylandSupport::maximizeWindow(const QString& appId)
+{
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->maximizeWindow(appId);
+    }
+    return false; // Not implemented in legacy mode
+}
+
+bool WaylandSupport::unmaximizeWindow(const QString& appId)
+{
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->unmaximizeWindow(appId);
+    }
+    return false; // Not implemented in legacy mode
+}
+
+bool WaylandSupport::moveWindowToWorkspace(const QString& appId, int workspace)
+{
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->moveWindowToWorkspace(appId, workspace);
+    }
+    return false; // Not implemented in legacy mode
+}
+
+bool WaylandSupport::moveWindowToMonitor(const QString& appId, int monitor)
+{
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->moveWindowToMonitor(appId, monitor);
+    }
+    return false; // Not implemented in legacy mode
+}
+
+// Window manager information methods
+QString WaylandSupport::getWindowManagerName() const
+{
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->getWindowManagerName();
+    }
+    return "Legacy Wayland Support";
+}
+
+WindowManager::Type WaylandSupport::getWindowManagerType() const
+{
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->getType();
+    }
+    return WindowManager::Type::Unknown;
+}
+
+QString WaylandSupport::getWindowManagerVersion() const
+{
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->getVersion();
+    }
+    return "Unknown";
+}
+
+bool WaylandSupport::supportsWorkspaces() const
+{
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->supportsWorkspaces();
+    }
+    return false;
+}
+
+bool WaylandSupport::supportsMultipleMonitors() const
+{
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->supportsMultipleMonitors();
+    }
+    return false;
+}
+
+int WaylandSupport::getCurrentWorkspace() const
+{
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->getCurrentWorkspace();
+    }
+    return 0;
+}
+
+int WaylandSupport::getWorkspaceCount() const
+{
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->getWorkspaceCount();
+    }
+    return 1;
+}
+
+QStringList WaylandSupport::getWorkspaceNames() const
+{
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->getWorkspaceNames();
+    }
+    return QStringList() << "Workspace 1";
+}
+
+int WaylandSupport::getMonitorCount() const
+{
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->getMonitorCount();
+    }
+    return 1;
+}
+
+QStringList WaylandSupport::getMonitorNames() const
+{
+    if (m_useWindowManager && m_windowManager) {
+        return m_windowManager->getMonitorNames();
+    }
+    return QStringList() << "Monitor 1";
+}
+
+// Signal handlers for window manager events
+void WaylandSupport::onWindowManagerWindowsUpdated(const QList<WaylandWindow>& windows)
+{
+    emit windowsUpdated(windows);
+}
+
+void WaylandSupport::onWindowManagerWindowCreated(const WaylandWindow& window)
+{
+    emit windowCreated(window);
+}
+
+void WaylandSupport::onWindowManagerWindowClosed(const WaylandWindow& window)
+{
+    emit windowClosed(window);
+}
+
+void WaylandSupport::onWindowManagerWindowActivated(const WaylandWindow& window)
+{
+    emit windowActivated(window);
+}
+
+void WaylandSupport::onWindowManagerWorkspaceChanged(int workspace)
+{
+    emit workspaceChanged(workspace);
+}
+
+void WaylandSupport::onWindowManagerMonitorChanged(int monitor)
+{
+    emit monitorChanged(monitor);
 }
 
 QList<WaylandWindow> WaylandSupport::getWindowsFromExtension()

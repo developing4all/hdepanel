@@ -8,73 +8,8 @@
 #include <QSet>
 
 #include <wayland-client.h>
-
-// Comprehensive representation of a "window" for panels/taskbars
-struct WaylandWindow {
-    // Basic identification
-    QString title;
-    QString appId;
-    QString iconName;
-    QString wmClass;
-    QString wmInstanceClass;
-    QString role;
-    
-    // Workspace/Desktop information
-    int workspaceIndex;
-    QString workspaceName;
-    bool onAllWorkspaces;
-    bool isOnCurrentWorkspace;
-    
-    // Screen/Monitor information
-    int monitorIndex;
-    
-    // Geometry
-    int x;
-    int y;
-    int width;
-    int height;
-    
-    // Window state
-    bool visible;
-    bool focused;
-    bool minimized;
-    bool maximized;
-    bool maximizedHorizontally;
-    bool maximizedVertically;
-    
-    // Window flags
-    bool demandsAttention;
-    bool urgent;
-    bool skipTaskbar;
-    bool skipPager;
-    bool decorated;
-    bool resizable;
-    bool moveable;
-    
-    // Client type
-    bool isWayland;
-    bool isX11;
-    QString clientType;
-    
-    // Process information
-    int pid;
-    QString sandboxedAppId;
-    
-    // Visual properties
-    double opacity;
-    
-    // Group information
-    bool hasGroup;
-    unsigned long groupLeaderId;
-    
-    // Timestamps
-    unsigned long createdTime;
-    unsigned long focusTime;
-    
-    // Legacy fields for compatibility
-    void* surface;
-    void* toplevel;
-};
+#include "windowmanagers/windowmanager.h"
+#include "waylandwindow.h"
 
 class WaylandSupport : public QObject
 {
@@ -90,12 +25,40 @@ public:
     WaylandWindow getWindowInfo(void* surface);
     bool activateWindow(const QString& appId);
     bool closeWindow(const QString& appId);
+    bool minimizeWindow(const QString& appId);
+    bool maximizeWindow(const QString& appId);
+    bool unmaximizeWindow(const QString& appId);
+    bool moveWindowToWorkspace(const QString& appId, int workspace);
+    bool moveWindowToMonitor(const QString& appId, int monitor);
+
+    // Window manager information
+    QString getWindowManagerName() const;
+    WindowManager::Type getWindowManagerType() const;
+    QString getWindowManagerVersion() const;
+    bool supportsWorkspaces() const;
+    bool supportsMultipleMonitors() const;
+    int getCurrentWorkspace() const;
+    int getWorkspaceCount() const;
+    QStringList getWorkspaceNames() const;
+    int getMonitorCount() const;
+    QStringList getMonitorNames() const;
 
 signals:
     void windowsUpdated(const QList<WaylandWindow>& windows);
+    void windowCreated(const WaylandWindow& window);
+    void windowClosed(const WaylandWindow& window);
+    void windowActivated(const WaylandWindow& window);
+    void workspaceChanged(int workspace);
+    void monitorChanged(int monitor);
 
 private slots:
     void updateWindows();
+    void onWindowManagerWindowsUpdated(const QList<WaylandWindow>& windows);
+    void onWindowManagerWindowCreated(const WaylandWindow& window);
+    void onWindowManagerWindowClosed(const WaylandWindow& window);
+    void onWindowManagerWindowActivated(const WaylandWindow& window);
+    void onWindowManagerWorkspaceChanged(int workspace);
+    void onWindowManagerMonitorChanged(int monitor);
 
 private:
     void handleRegistryGlobal(wl_registry* registry, uint32_t name, const char* interface, uint32_t version);
@@ -105,12 +68,17 @@ private:
     QString getApplicationTitle(const QString& comm, const QString& cmd);
     QString getApplicationIcon(const QString& appId, const QString& wmClass = QString());
     
-    // GNOME Shell D-Bus integration
+    // Legacy GNOME Shell D-Bus integration (for backward compatibility)
     QList<WaylandWindow> getWindowsFromExtension();     // Safe method using our extension
     QList<WaylandWindow> getWindowsFromGnomeShell();    // Fallback using unsafe eval
 
     static const wl_registry_listener registryListener;
 
+    // Window manager system
+    WindowManager* m_windowManager;
+    bool m_useWindowManager;
+
+    // Legacy Wayland support (for backward compatibility)
     bool m_initialized;
     wl_display* m_display;
     wl_registry* m_registry;

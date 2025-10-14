@@ -16,7 +16,7 @@ greaterThan(QT_MAJOR_VERSION, 5) {
     QT += waylandclient
 }
 
-VERSION = 1.0.6
+VERSION = 1.9.0
 
 ######################################################################
 # Wayland support
@@ -72,7 +72,11 @@ HEADERS += animationutils.h \
            panelsettings.h \
            settings.h \
            hpopupmenu.h \
-           appletslistdialog.h
+           appletslistdialog.h \
+           waylandwindow.h \
+           windowmanagers/windowmanager.h \
+           windowmanagers/gnomewindowmanager.h \
+           windowmanagers/hyprlandwindowmanager.h
 
 FORMS += panelsettings.ui \
          appletslistdialog.ui
@@ -89,7 +93,10 @@ SOURCES += applet.cpp \
            panelsettings.cpp \
            settings.cpp \
            hpopupmenu.cpp \
-           appletslistdialog.cpp
+           appletslistdialog.cpp \
+           windowmanagers/windowmanager.cpp \
+           windowmanagers/gnomewindowmanager.cpp \
+           windowmanagers/hyprlandwindowmanager.cpp
 
 ######################################################################
 # Qxt for global shortcuts (Qt5)

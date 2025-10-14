@@ -171,6 +171,19 @@ export default class HDEPanelWindowListExtension extends Extension {
             const windowGroup = (typeof w.get_group === 'function') ? w.get_group() : null;
             const groupLeader = windowGroup && (typeof windowGroup.get_group_leader === 'function') ? windowGroup.get_group_leader() : null;
             
+            // Get application icon
+            let iconName = '';
+            if (app) {
+                iconName = app.get_icon() ? app.get_icon().to_string() : '';
+            }
+            if (!iconName && wmClass) {
+                // Fallback to wm_class for icon detection
+                iconName = wmClass.toLowerCase();
+            }
+            if (!iconName) {
+                iconName = 'application-x-executable';
+            }
+            
             windows.push({
                 // Basic identification
                 id: w.get_id(),
@@ -179,6 +192,7 @@ export default class HDEPanelWindowListExtension extends Extension {
                 wm_class: wmClass,
                 wm_instance_class: wmInstanceClass,
                 role: role,
+                icon_name: iconName,
                 
                 // Workspace/Desktop information
                 workspace_index: workspaceIndex,

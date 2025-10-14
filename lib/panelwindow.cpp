@@ -188,6 +188,7 @@ PanelWindow::PanelWindow(QString id)
     const bool isX11 = qApp->platformName().toLower().contains("xcb");
 #endif
     if (!isX11) {
+        // Use timer-based positioning for Wayland
         m_waylandRepositionTimer = new QTimer(this);
         m_waylandRepositionTimer->setSingleShot(false);
         m_waylandRepositionTimer->setInterval(1000);
@@ -208,11 +209,16 @@ PanelWindow::~PanelWindow()
 void PanelWindow::showEvent(QShowEvent* e)
 {
     QWidget::showEvent(e);
-
+    
+    // Wayland positioning is handled by timer
 #if QT_VERSION < 0x060000
-    if (!QX11Info::isPlatformX11()) return;
+    if (!QX11Info::isPlatformX11()) {
+        return;
+    }
 #else
-    if (!qApp->platformName().toLower().contains("xcb")) return;
+    if (!qApp->platformName().toLower().contains("xcb")) {
+        return;
+    }
 #endif
 
     // On X11: set dock type + above, then position, then schedule struts
@@ -259,6 +265,15 @@ void PanelWindow::resizeEvent(QResizeEvent* ev)
 {
     qDebug() << "PanelWindow::resizeEvent - new size:" << ev->size()
              << "isVisible:" << isVisible() << "isHidden:" << isHidden();
+
+    // Prevent the panel from being resized to an incorrect height
+    if (ev->size().height() != 48) {
+        QTimer::singleShot(0, [this]() {
+            if (height() != 48) {
+                resize(width(), 48);
+            }
+        });
+    }
 
     // Keep the view in sync
     m_view->resize(ev->size());
@@ -708,21 +723,41 @@ void PanelWindow::forceWaylandPosition()
     const QRect available = getAvailableScreenGeometry();
     QRect anchor          = getAnchorGeometry(screen, available);
 
-    int x = (m_layoutPolicy == FillSpace && m_orientation == Horizontal)
-            ? screen.left()
-            : anchor.left() + (m_horizontalAnchor == Min ? 0 :
-                               m_horizontalAnchor == Center ? (anchor.width() - width())/2 :
-                               (anchor.width() - width()));
-
+    // For Wayland, always use full width
+    int x = screen.left();
     int y = 0;
+    int panelHeight = 48; // Standard panel height
     if (m_verticalAnchor == Min)      y = anchor.top();
-    else if (m_verticalAnchor == Max) y = anchor.bottom() - height() + 1;
-    else                              y = anchor.top() + (anchor.height() - height())/2;
+    else if (m_verticalAnchor == Max) y = anchor.bottom() - panelHeight + 1;
+    else                              y = anchor.top() + (anchor.height() - panelHeight)/2;
+    
+    // Set panel size to full screen width with proper panel height
+    int panelWidth = screen.width();
 
-    if (geometry().topLeft() != QPoint(x,y)) {
-        move(x,y);
+    qDebug() << "PanelWindow::forceWaylandPosition - screen:" << screen << "available:" << available 
+             << "anchor:" << anchor << "verticalAnchor:" << m_verticalAnchor 
+             << "current pos:" << geometry().topLeft() << "target pos:" << QPoint(x,y)
+             << "current size:" << size() << "target size:" << QSize(panelWidth, panelHeight);
+
+    // Resize and move the panel
+    QRect targetGeometry(x, y, panelWidth, panelHeight);
+    if (geometry() != targetGeometry) {
+        qDebug() << "PanelWindow::forceWaylandPosition - resizing and moving panel to:" << targetGeometry;
+        setGeometry(targetGeometry);
+        
+        // Force the panel to maintain its size and position
+        setFixedSize(panelWidth, panelHeight);
+        move(x, y);
+        
         update();
         repaint();
+    }
+    
+    // Ensure the panel is visible and on top
+    if (!isVisible()) {
+        show();
+        raise();
+        activateWindow();
     }
 }
 

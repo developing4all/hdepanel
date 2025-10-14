@@ -320,9 +320,22 @@ void DockItem::animate()
 
 void DockItem::close()
 {
+	// Close X11 windows
 	for(int i = 0; i < m_clients.size(); i++)
 	{
 		X11Support::closeWindow(m_clients[i]->handle());
+	}
+	
+	// Close Wayland windows
+	if (m_waylandClient) {
+		// Get the WaylandSupport instance from the DockApplet
+		WaylandSupport* waylandSupport = m_dockApplet->waylandSupport();
+		if (waylandSupport) {
+			QString appId = m_waylandClient->appId();
+			if (!appId.isEmpty()) {
+				waylandSupport->closeWindow(appId);
+			}
+		}
 	}
 }
 

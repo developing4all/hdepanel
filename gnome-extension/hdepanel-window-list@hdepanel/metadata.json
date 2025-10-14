@@ -1,0 +1,8 @@
+{
+  "uuid": "hdepanel-window-list@hdepanel",
+  "name": "HDEPanel Window List",
+  "description": "Provides window list information to HDEPanel via D-Bus. This allows HDEPanel to display running applications without unsafe mode.",
+  "version": 1,
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "url": "https://github.com/developing4all/hdepanel"
+}

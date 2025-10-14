@@ -96,7 +96,13 @@ void WaylandSupport::updateWindows()
         qDebug() << "WaylandSupport: Window count changed from" << lastWindowCount << "to" << windows.size();
         lastWindowCount = windows.size();
         for (const WaylandWindow& window : windows) {
-            qDebug() << "  - Window:" << window.title << "(" << window.appId << ")";
+            qDebug() << "  - Window:" << window.title 
+                     << "(" << window.appId << ")"
+                     << "[WS:" << window.workspaceIndex 
+                     << ", Monitor:" << window.monitorIndex
+                     << ", " << (window.isWayland ? "Wayland" : "X11")
+                     << ", " << (window.focused ? "Focused" : "Unfocused")
+                     << "]";
         }
     }
     emit windowsUpdated(windows);
@@ -208,13 +214,40 @@ bool WaylandSupport::activateWindow(const QString& appId)
         return false;
     }
 
-    QDBusInterface interface("org.gnome.Shell",
+    // First, try to use the extension's safe ActivateWindow method
+    QDBusInterface extensionInterface("org.hdepanel.WindowList",
+        "/org/hdepanel/WindowList",
+        "org.hdepanel.WindowList",
+        QDBusConnection::sessionBus());
+    
+    if (extensionInterface.isValid()) {
+        QDBusReply<bool> reply = extensionInterface.call("ActivateWindow", appId);
+        
+        if (reply.isValid()) {
+            if (reply.value()) {
+                qDebug() << "WaylandSupport: Successfully activated window for appId:" << appId;
+                return true;
+            } else {
+                qDebug() << "WaylandSupport: No window found for appId:" << appId;
+                return false;
+            }
+        } else {
+            qDebug() << "WaylandSupport: Extension ActivateWindow call failed:" << reply.error().message();
+            // Fall through to unsafe method
+        }
+    } else {
+        qDebug() << "WaylandSupport: Extension not available for window activation, falling back to unsafe mode";
+        // Fall through to unsafe method
+    }
+
+    // Fallback: use unsafe mode (requires extra permissions)
+    QDBusInterface shellInterface("org.gnome.Shell",
         "/org/gnome/Shell",
         "org.gnome.Shell",
         QDBusConnection::sessionBus());
 
     // First, enable unsafe mode
-    QDBusMessage unsafeMessage = interface.call("Eval", "global.context.unsafe_mode = true");
+    QDBusMessage unsafeMessage = shellInterface.call("Eval", "global.context.unsafe_mode = true");
     if (unsafeMessage.type() != QDBusMessage::ReplyMessage || unsafeMessage.arguments().size() < 2) {
         qDebug() << "WaylandSupport: Failed to enable unsafe mode for window activation";
         return false;
@@ -222,6 +255,7 @@ bool WaylandSupport::activateWindow(const QString& appId)
     bool unsafeSuccess = unsafeMessage.arguments()[0].toBool();
     if (!unsafeSuccess) {
         qDebug() << "WaylandSupport: Unsafe mode not enabled for window activation";
+        qDebug() << "WaylandSupport: Please install the HDEPanel extension from gnome-extension/hdepanel-window-list@hdepanel";
         return false;
     }
 
@@ -291,7 +325,7 @@ bool WaylandSupport::activateWindow(const QString& appId)
         })()
     )").arg(appId);
 
-    QDBusMessage message = interface.call("Eval", jsCode);
+    QDBusMessage message = shellInterface.call("Eval", jsCode);
     
     if (message.type() == QDBusMessage::ReplyMessage && message.arguments().size() >= 2) {
         bool success = message.arguments()[0].toBool();
@@ -316,9 +350,198 @@ bool WaylandSupport::activateWindow(const QString& appId)
     }
 }
 
+bool WaylandSupport::closeWindow(const QString& appId)
+{
+    if (!m_initialized) {
+        qDebug() << "WaylandSupport::closeWindow() - not initialized";
+        return false;
+    }
+    
+    // Check if we're running on GNOME (including Unity compatibility mode)
+    QString desktop = qgetenv("XDG_CURRENT_DESKTOP").toLower();
+    if (!desktop.contains("gnome") && !desktop.contains("unity")) {
+        qDebug() << "WaylandSupport: Window closing only supported on GNOME/Unity";
+        return false;
+    }
+
+    // Try to use the extension's safe CloseWindow method
+    QDBusInterface extensionInterface("org.hdepanel.WindowList",
+        "/org/hdepanel/WindowList",
+        "org.hdepanel.WindowList",
+        QDBusConnection::sessionBus());
+    
+    if (extensionInterface.isValid()) {
+        QDBusReply<bool> reply = extensionInterface.call("CloseWindow", appId);
+        
+        if (reply.isValid()) {
+            if (reply.value()) {
+                qDebug() << "WaylandSupport: Successfully closed window for appId:" << appId;
+                return true;
+            } else {
+                qDebug() << "WaylandSupport: No window found to close for appId:" << appId;
+                return false;
+            }
+        } else {
+            qDebug() << "WaylandSupport: Extension CloseWindow call failed:" << reply.error().message();
+            return false;
+        }
+    } else {
+        qDebug() << "WaylandSupport: Extension not available for window closing";
+        return false;
+    }
+}
+
+QList<WaylandWindow> WaylandSupport::getWindowsFromExtension()
+{
+    QList<WaylandWindow> windows;
+    
+    // Try to call our GNOME Shell extension
+    QDBusInterface iface("org.gnome.Shell",
+                         "/org/hdepanel/WindowList",
+                         "org.hdepanel.WindowList",
+                         QDBusConnection::sessionBus());
+    
+    if (!iface.isValid()) {
+        // Extension not installed or not enabled
+        return windows;
+    }
+    
+    QDBusReply<QString> reply = iface.call("GetWindows");
+    
+    if (!reply.isValid()) {
+        qDebug() << "WaylandSupport: HDEPanel extension call failed:" << reply.error().message();
+        return windows;
+    }
+    
+    QString jsonData = reply.value();
+    if (jsonData.isEmpty()) {
+        return windows;
+    }
+    
+    // Parse JSON array
+    QJsonParseError error;
+    QJsonDocument doc = QJsonDocument::fromJson(jsonData.toUtf8(), &error);
+    
+    if (error.error != QJsonParseError::NoError) {
+        qDebug() << "WaylandSupport: JSON parse error:" << error.errorString();
+        return windows;
+    }
+    
+    if (!doc.isArray()) {
+        qDebug() << "WaylandSupport: Expected JSON array";
+        return windows;
+    }
+    
+    QJsonArray windowsArray = doc.array();
+    
+    for (const QJsonValue& value : windowsArray) {
+        if (!value.isObject()) {
+            continue;
+        }
+        
+        QJsonObject obj = value.toObject();
+        QString title = obj["title"].toString();
+        QString appId = obj["app_id"].toString();
+        QString wmClass = obj["wm_class"].toString();
+        
+        if (title.isEmpty()) {
+            continue;
+        }
+        
+        WaylandWindow window;
+        
+        // Basic identification
+        window.title = title;
+        window.appId = appId;
+        window.wmClass = wmClass;
+        window.wmInstanceClass = obj["wm_instance_class"].toString();
+        window.role = obj["role"].toString();
+        
+        // Workspace/Desktop information
+        window.workspaceIndex = obj["workspace_index"].toInt();
+        window.workspaceName = obj["workspace_name"].toString();
+        window.onAllWorkspaces = obj["on_all_workspaces"].toBool();
+        window.isOnCurrentWorkspace = obj["is_on_current_workspace"].toBool();
+        
+        // Screen/Monitor information
+        window.monitorIndex = obj["monitor_index"].toInt();
+        
+        // Geometry
+        window.x = obj["x"].toInt();
+        window.y = obj["y"].toInt();
+        window.width = obj["width"].toInt();
+        window.height = obj["height"].toInt();
+        
+        // Window state
+        window.visible = obj["visible"].toBool();
+        window.focused = obj["focused"].toBool();
+        window.minimized = obj["minimized"].toBool();
+        window.maximized = obj["maximized"].toBool();
+        window.maximizedHorizontally = obj["maximized_horizontally"].toBool();
+        window.maximizedVertically = obj["maximized_vertically"].toBool();
+        
+        // Window flags
+        window.demandsAttention = obj["demands_attention"].toBool();
+        window.urgent = obj["urgent"].toBool();
+        window.skipTaskbar = obj["skip_taskbar"].toBool();
+        window.skipPager = obj["skip_pager"].toBool();
+        window.decorated = obj["decorated"].toBool();
+        window.resizable = obj["resizable"].toBool();
+        window.moveable = obj["moveable"].toBool();
+        
+        // Client type
+        window.isWayland = obj["is_wayland"].toBool();
+        window.isX11 = obj["is_x11"].toBool();
+        window.clientType = obj["client_type"].toString();
+        
+        // Process information
+        window.pid = obj["pid"].toInt();
+        window.sandboxedAppId = obj["sandboxed_app_id"].toString();
+        
+        // Visual properties
+        window.opacity = obj["opacity"].toDouble();
+        
+        // Group information
+        window.hasGroup = obj["has_group"].toBool();
+        window.groupLeaderId = obj["group_leader_id"].toVariant().toULongLong();
+        
+        // Timestamps
+        window.createdTime = obj["created_time"].toVariant().toULongLong();
+        window.focusTime = obj["focus_time"].toVariant().toULongLong();
+        
+        // Legacy fields for compatibility
+        window.surface = reinterpret_cast<void*>(
+            static_cast<quintptr>(obj["id"].toVariant().toULongLong()));
+        window.toplevel = nullptr;
+        
+        // Try to find icon using both app_id and wm_class
+        window.iconName = getApplicationIcon(appId, wmClass);
+        
+        windows.append(window);
+    }
+    
+    return windows;
+}
+
 QList<WaylandWindow> WaylandSupport::getWindowsFromGnomeShell()
 {
     QList<WaylandWindow> windows;
+    
+    // First, try to use our extension (safe method)
+    windows = getWindowsFromExtension();
+    
+    // If extension returned results, use them
+    if (!windows.isEmpty()) {
+        return windows;
+    }
+    
+    // Otherwise, fall back to unsafe eval method
+    static bool warnedAboutUnsafeMode = false;
+    if (!warnedAboutUnsafeMode) {
+        qDebug() << "WaylandSupport: HDEPanel extension not found, falling back to unsafe mode";
+        qDebug() << "WaylandSupport: Install the extension from gnome-extension/hdepanel-window-list@hdepanel";
+        warnedAboutUnsafeMode = true;
+    }
     
     // Check if we're running on GNOME (including Unity compatibility mode)
     QString desktop = qgetenv("XDG_CURRENT_DESKTOP").toLower();

@@ -9,17 +9,69 @@
 
 #include <wayland-client.h>
 
-// Simple representation of a "window" for panels/taskbars
+// Comprehensive representation of a "window" for panels/taskbars
 struct WaylandWindow {
+    // Basic identification
     QString title;
     QString appId;
     QString iconName;
-    bool visible;
-    bool focused;
+    QString wmClass;
+    QString wmInstanceClass;
+    QString role;
+    
+    // Workspace/Desktop information
+    int workspaceIndex;
+    QString workspaceName;
+    bool onAllWorkspaces;
+    bool isOnCurrentWorkspace;
+    
+    // Screen/Monitor information
+    int monitorIndex;
+    
+    // Geometry
     int x;
     int y;
     int width;
     int height;
+    
+    // Window state
+    bool visible;
+    bool focused;
+    bool minimized;
+    bool maximized;
+    bool maximizedHorizontally;
+    bool maximizedVertically;
+    
+    // Window flags
+    bool demandsAttention;
+    bool urgent;
+    bool skipTaskbar;
+    bool skipPager;
+    bool decorated;
+    bool resizable;
+    bool moveable;
+    
+    // Client type
+    bool isWayland;
+    bool isX11;
+    QString clientType;
+    
+    // Process information
+    int pid;
+    QString sandboxedAppId;
+    
+    // Visual properties
+    double opacity;
+    
+    // Group information
+    bool hasGroup;
+    unsigned long groupLeaderId;
+    
+    // Timestamps
+    unsigned long createdTime;
+    unsigned long focusTime;
+    
+    // Legacy fields for compatibility
     void* surface;
     void* toplevel;
 };
@@ -37,6 +89,7 @@ public:
     QList<WaylandWindow> getAllWindows();
     WaylandWindow getWindowInfo(void* surface);
     bool activateWindow(const QString& appId);
+    bool closeWindow(const QString& appId);
 
 signals:
     void windowsUpdated(const QList<WaylandWindow>& windows);
@@ -53,7 +106,8 @@ private:
     QString getApplicationIcon(const QString& appId, const QString& wmClass = QString());
     
     // GNOME Shell D-Bus integration
-    QList<WaylandWindow> getWindowsFromGnomeShell();
+    QList<WaylandWindow> getWindowsFromExtension();     // Safe method using our extension
+    QList<WaylandWindow> getWindowsFromGnomeShell();    // Fallback using unsafe eval
 
     static const wl_registry_listener registryListener;
 

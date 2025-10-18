@@ -12,6 +12,26 @@ QT += widgets gui-private dbus
 lessThan(QT_MAJOR_VERSION, 6) {
     QT += x11extras
 }
+
+# LayerShellQt
+greaterThan(QT_MAJOR_VERSION, 5) {
+    exists(/usr/include/LayerShellQt/shell.h) {
+        DEFINES += HDE_HAVE_LAYERSHELLQT
+        LIBS += -lLayerShellQtInterface
+        message("[Qt6] Using external LayerShellQtInterface")
+    } else {
+        message("[Qt6] External LayerShellQt not found; continuing without LayerShellQt")
+    }
+} else {
+    # Qt5: LayerShellQt is not supported due to plugin loading issues
+    # Users should use Qt6 for proper Wayland layer-shell support
+    message("==================================================================================")
+    message("[Qt5] LayerShellQt requires Qt6 for proper Wayland support.")
+    message("[Qt5] Please rebuild with Qt6 for optimal Wayland experience.")
+    message("[Qt5] Building without LayerShellQt - will use fallback positioning.")
+    message("==================================================================================")
+}
+
 greaterThan(QT_MAJOR_VERSION, 5) {
     QT += waylandclient
 }
@@ -69,6 +89,8 @@ HEADERS += animationutils.h \
            textgraphicsitem.h \
            x11support.h \
            waylandsupport.h \
+           waylandlayershell.h \
+           layershellqtintegration.h \
            panelsettings.h \
            settings.h \
            hpopupmenu.h \
@@ -76,7 +98,8 @@ HEADERS += animationutils.h \
            waylandwindow.h \
            windowmanagers/windowmanager.h \
            windowmanagers/gnomewindowmanager.h \
-           windowmanagers/hyprlandwindowmanager.h
+           windowmanagers/hyprlandwindowmanager.h \
+           windowmanagers/wayfirewindowmanager.h
 
 FORMS += panelsettings.ui \
          appletslistdialog.ui
@@ -90,13 +113,16 @@ SOURCES += applet.cpp \
            textgraphicsitem.cpp \
            x11support.cpp \
            waylandsupport.cpp \
+           waylandlayershell.cpp \
+           layershellqtintegration.cpp \
            panelsettings.cpp \
            settings.cpp \
            hpopupmenu.cpp \
            appletslistdialog.cpp \
            windowmanagers/windowmanager.cpp \
            windowmanagers/gnomewindowmanager.cpp \
-           windowmanagers/hyprlandwindowmanager.cpp
+           windowmanagers/hyprlandwindowmanager.cpp \
+           windowmanagers/wayfirewindowmanager.cpp
 
 ######################################################################
 # Qxt for global shortcuts (Qt5)

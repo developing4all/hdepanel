@@ -87,6 +87,7 @@ private slots:
 public slots:
     void fontChanged(){}
     void setFocused();
+    void refreshIcons();
 
 private:
     void addMenuItems();

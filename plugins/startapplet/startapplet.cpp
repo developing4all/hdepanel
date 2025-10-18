@@ -26,6 +26,9 @@ StartApplet::StartApplet(PanelWindow* panelWindow)
 #if QT_VERSION >= 0x050000
     m_iconItem->setImage(QImage(QIcon::fromTheme("start-here").pixmap(22,22).toImage()));
 #endif
+
+    // Refresh icon when theme changes
+    QObject::connect(qApp, SIGNAL(iconThemeChanged(const QString&)), this, SLOT(refreshIcons()));
 }
 
 StartApplet::~StartApplet()
@@ -46,6 +49,14 @@ void StartApplet::setPanelWindow(PanelWindow *panelWindow)
     }
     
     // Icon item doesn't need updating as it's just an image
+}
+
+void StartApplet::refreshIcons()
+{
+#if QT_VERSION >= 0x050000
+    if (m_iconItem)
+        m_iconItem->setImage(QImage(QIcon::fromTheme("start-here").pixmap(22,22).toImage()));
+#endif
 }
 
 QSize StartApplet::desiredSize()

@@ -42,6 +42,7 @@
 #include <QLinearGradient>
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
+#include "layershellqtintegration.h"
 #include <typeinfo>
  
 #if QT_VERSION < 0x060000
@@ -160,13 +161,36 @@ PanelWindow::PanelWindow(QString id)
     setAttribute(Qt::WA_TranslucentBackground);
     setAutoFillBackground(false);
      
-    // Window flags / attributes
-    setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
-    setAttribute(Qt::WA_X11NetWmWindowTypeDock, true);
+    // Window flags / attributes - simplified for Wayland testing
+    setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint);
     setAttribute(Qt::WA_ShowWithoutActivating);
-    setAttribute(Qt::WA_NoSystemBackground);
-    setAttribute(Qt::WA_TranslucentBackground);
     setMinimumSize(100, 48);
+    
+    // Set a specific window title for identification
+    setWindowTitle("HDE Panel - Desktop Panel");
+    
+    // Simplified window setup for Wayland testing
+    
+    // Initialize Wayland layer-shell if on Wayland
+    if (LayerShellQtIntegration::isWayland()) {
+        // Try LayerShellQt first (preferred method)
+        m_layerShellQt = new LayerShellQtIntegration(this);
+        if (m_layerShellQt->isAvailable()) {
+            qDebug() << "PanelWindow: LayerShellQt is available - using for positioning";
+            m_layerShellQt->enableLayerShell();
+        } else {
+            qDebug() << "PanelWindow: LayerShellQt not available, falling back to custom implementation";
+            m_waylandLayerShell = new WaylandLayerShell(this);
+            if (m_waylandLayerShell->initialize()) {
+                qDebug() << "PanelWindow: Wayland layer-shell initialized successfully";
+            } else {
+                qDebug() << "PanelWindow: Failed to initialize Wayland layer-shell";
+                // Clean up failed initialization
+                delete m_waylandLayerShell;
+                m_waylandLayerShell = nullptr;
+            }
+        }
+    }
  
     // Settings & plugins
     readSettings();
@@ -179,6 +203,56 @@ PanelWindow::PanelWindow(QString id)
     connect(&m_strutDebounce, &QTimer::timeout, this, [this]{
         applyX11Struts(geometry());
     });
+    
+    // Wayland positioning timer - continuously force position
+#if QT_VERSION < 0x060000
+    if (!QX11Info::isPlatformX11()) {
+        m_waylandPositionTimer.setInterval(100); // Force position every 100ms
+        connect(&m_waylandPositionTimer, &QTimer::timeout, this, [this]() {
+            const QList<QScreen*> screens = QGuiApplication::screens();
+            if (!screens.isEmpty()) {
+                const QRect screenGeometry = screens.first()->geometry();
+                const int panelY = screenGeometry.height() - height(); // Bottom of screen
+                const int panelWidth = screenGeometry.width();
+                const int panelHeight = height();
+                
+                // Force position continuously
+                setGeometry(0, panelY, panelWidth, panelHeight);
+                move(0, panelY);
+                
+                if (geometry().y() != panelY) {
+                    qDebug() << "PanelWindow: Forcing position - current y:" << geometry().y() << "target y:" << panelY;
+                }
+            }
+        });
+        // m_waylandPositionTimer.start(); // Disabled for testing
+    }
+#else
+    if (!qApp->platformName().toLower().contains("xcb")) {
+        m_waylandPositionTimer.setInterval(100); // Force position every 100ms
+        connect(&m_waylandPositionTimer, &QTimer::timeout, this, [this]() {
+            const QList<QScreen*> screens = QGuiApplication::screens();
+            if (!screens.isEmpty()) {
+                const QRect screenGeometry = screens.first()->geometry();
+                const int panelY = screenGeometry.height() - height(); // Bottom of screen
+                const int panelWidth = screenGeometry.width();
+                const int panelHeight = height();
+                
+                // Force position continuously
+                setGeometry(0, panelY, panelWidth, panelHeight);
+                move(0, panelY);
+                
+                // Skip wmctrl since it's not working with our panel window
+                // Rely on Qt positioning methods only
+                
+                if (geometry().y() != panelY) {
+                    qDebug() << "PanelWindow: Forcing position - current y:" << geometry().y() << "target y:" << panelY;
+                }
+            }
+        });
+        // m_waylandPositionTimer.start(); // Disabled for testing
+    }
+#endif
  
 #if QT_VERSION >= 0x050000
     // Wayland fallback: gently reassert position
@@ -189,11 +263,15 @@ PanelWindow::PanelWindow(QString id)
 #endif
     if (!isX11) {
         // Use timer-based positioning for Wayland
+        qDebug() << "PanelWindow: Creating Wayland reposition timer for Qt5";
         m_waylandRepositionTimer = new QTimer(this);
         m_waylandRepositionTimer->setSingleShot(false);
-        m_waylandRepositionTimer->setInterval(1000);
+        m_waylandRepositionTimer->setInterval(50); // more aggressive positioning
         connect(m_waylandRepositionTimer, &QTimer::timeout, this, &PanelWindow::forceWaylandPosition);
-        m_waylandRepositionTimer->start();
+        // Timer will be started/stopped based on layer shell availability
+        qDebug() << "PanelWindow: Wayland reposition timer created (will start if needed)";
+    } else {
+        qDebug() << "PanelWindow: X11 detected, not creating Wayland timer";
     }
 #endif
 }
@@ -201,28 +279,171 @@ PanelWindow::PanelWindow(QString id)
 PanelWindow::~PanelWindow()
 {
     removeApplets();
-    delete m_view;
-    m_view = nullptr;
-    m_scene = nullptr;
+    
+    // Stop timers before cleanup
+    m_strutDebounce.stop();
+    m_waylandPositionTimer.stop();
+    if (m_waylandRepositionTimer) {
+        m_waylandRepositionTimer->stop();
+    }
+    
+    // Clean up Wayland layer shell
+    if (m_waylandLayerShell) {
+        delete m_waylandLayerShell;
+        m_waylandLayerShell = nullptr;
+    }
+    
+    // Clean up graphics items
+    if (m_scene) {
+        m_scene->clear();
+        delete m_scene;
+        m_scene = nullptr;
+    }
+    
+    if (m_view) {
+        delete m_view;
+        m_view = nullptr;
+    }
 }
  
 void PanelWindow::showEvent(QShowEvent* e)
 {
     QWidget::showEvent(e);
     
-    // Wayland positioning is handled by timer
-#if QT_VERSION < 0x060000
-    if (!QX11Info::isPlatformX11()) {
+    // Handle Wayland positioning with layer-shell
+    if (LayerShellQtIntegration::isWayland()) {
+        // Use Wayland layer-shell for proper panel behavior
+        // Try LayerShellQt first (preferred method)
+        qDebug() << "PanelWindow: Checking LayerShellQt - m_layerShellQt:" << (m_layerShellQt ? "exists" : "null") 
+                 << "isAvailable:" << (m_layerShellQt ? m_layerShellQt->isAvailable() : false);
+        if (m_layerShellQt && m_layerShellQt->isAvailable()) {
+            qDebug() << "PanelWindow: Using LayerShellQt for positioning";
+            
+            // Set appropriate window flags first
+            setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
+            setAttribute(Qt::WA_ShowWithoutActivating);
+            
+            // Show the window first, then configure
+            show();
+            raise();
+            activateWindow();
+            setVisible(true);
+            setWindowState(Qt::WindowActive);
+            setFocus();
+            
+            // Now configure the window for layer shell after it's shown
+            // Set layer and anchor based on current position setting
+            int layer = (m_verticalAnchor == Min) ? 2 : 1; // LayerTop : LayerBottom
+            int anchorMask = (m_verticalAnchor == Min) ? 
+                (1 | 4 | 8) : // AnchorTop | AnchorLeft | AnchorRight
+                (2 | 4 | 8);  // AnchorBottom | AnchorLeft | AnchorRight
+            
+            m_layerShellQt->configureWindow(windowHandle(), 
+                                           layer,
+                                           anchorMask,
+                                           48, // exclusive zone
+                                           QMargins(0, 0, 0, 0), // margins
+                                           0); // keyboard interactivity
+            
+            // Set size
+            m_layerShellQt->setSize(windowHandle(), QSize(1920, 48));
+            
+            qDebug() << "PanelWindow: Layer-shell configured for" << (m_verticalAnchor == Min ? "top" : "bottom") << "positioning";
+            qDebug() << "PanelWindow: Qt window visibility - visible:" << isVisible() << "geometry:" << geometry() << "windowState:" << windowState();
+            
+            // Stop timer when using layer shell
+            if (m_waylandRepositionTimer && m_waylandRepositionTimer->isActive()) {
+                m_waylandRepositionTimer->stop();
+                qDebug() << "PanelWindow: Stopped Wayland reposition timer (using layer shell)";
+            }
+        } else if (m_waylandLayerShell && m_waylandLayerShell->isAvailable()) {
+            qDebug() << "PanelWindow: Using custom Wayland layer-shell for positioning";
+            
+            // Set up layer-shell for the Qt window with improved positioning
+            m_waylandLayerShell->setWindow(windowHandle());
+            
+            // Set layer and anchor based on current position setting
+            if (m_verticalAnchor == Min) {
+                // Top position
+                m_waylandLayerShell->setLayer(WaylandLayerShell::Layer::Top);
+                uint32_t anchorMask = static_cast<uint32_t>(WaylandLayerShell::Anchor::Top) | 
+                                     static_cast<uint32_t>(WaylandLayerShell::Anchor::Left) | 
+                                     static_cast<uint32_t>(WaylandLayerShell::Anchor::Right);
+                m_waylandLayerShell->setAnchorMask(anchorMask);
+            } else {
+                // Bottom position (default)
+                m_waylandLayerShell->setLayer(WaylandLayerShell::Layer::Bottom);
+                uint32_t anchorMask = static_cast<uint32_t>(WaylandLayerShell::Anchor::Bottom) | 
+                                     static_cast<uint32_t>(WaylandLayerShell::Anchor::Left) | 
+                                     static_cast<uint32_t>(WaylandLayerShell::Anchor::Right);
+                m_waylandLayerShell->setAnchorMask(anchorMask);
+            }
+            
+            m_waylandLayerShell->setNamespace("hdepanel");
+            m_waylandLayerShell->setKeyboardFocus(WaylandLayerShell::KeyboardFocus::OnDemand);
+            m_waylandLayerShell->setExclusiveZone(48);
+            m_waylandLayerShell->setSize(QSize(1920, 48));
+            
+            // Set appropriate window flags for Wayland layer shell
+            setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
+            setAttribute(Qt::WA_ShowWithoutActivating);
+            
+            show();
+            raise();
+            activateWindow();
+            setVisible(true);
+            setWindowState(Qt::WindowActive);
+            setFocus();
+            
+            qDebug() << "PanelWindow: Custom layer-shell configured for" << (m_verticalAnchor == Min ? "top" : "bottom") << "positioning";
+            qDebug() << "PanelWindow: Qt window visibility - visible:" << isVisible() 
+                     << "geometry:" << geometry() << "windowState:" << windowState();
+            
+            // Stop timer when using layer shell
+            if (m_waylandRepositionTimer && m_waylandRepositionTimer->isActive()) {
+                m_waylandRepositionTimer->stop();
+                qDebug() << "PanelWindow: Stopped Wayland reposition timer (using custom layer shell)";
+            }
+        } else {
+            qDebug() << "PanelWindow: Layer-shell not available, using XCB-like positioning";
+            
+            // Set Wayland-specific window properties for dock-like behavior
+            setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint);
+            setAttribute(Qt::WA_ShowWithoutActivating);
+            setAttribute(Qt::WA_X11NetWmWindowTypeDock, true);
+            
+            // Additional Wayland properties for better positioning
+            setProperty("_kde_net_wm_window_type", "_NET_WM_WINDOW_TYPE_DOCK");
+            setProperty("_kde_net_wm_desktop", 0xFFFFFFFF); // All desktops
+            
+            // Use the same positioning logic as XCB for consistent behavior
+            updatePosition();
+            
+            // Ensure the panel is visible
+            show();
+            raise();
+            activateWindow();
+            setVisible(true);
+            setWindowState(Qt::WindowActive);
+            setFocus();
+            
+            qDebug() << "PanelWindow: XCB-like positioning applied, panel visible:" << isVisible() << "geometry:" << geometry();
+            
+            // Start timer when not using layer shell
+            if (m_waylandRepositionTimer && !m_waylandRepositionTimer->isActive()) {
+                m_waylandRepositionTimer->start();
+                qDebug() << "PanelWindow: Started Wayland reposition timer (no layer shell)";
+            }
+            
+            // On Qt5 Wayland, also try to reserve space using struts
+            // Note: Struts don't work on Wayland, but we try anyway in case of XWayland
+            scheduleApplyStruts();
+        }
         return;
     }
-#else
-    if (!qApp->platformName().toLower().contains("xcb")) {
-        return;
-    }
-#endif
 
     // On X11: set dock type + above, then position, then schedule struts
-    #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     Display *dpy = QX11Info::display();
 #else
     auto native = qGuiApp->nativeInterface<QNativeInterface::QX11Application>();
@@ -250,9 +471,7 @@ void PanelWindow::showEvent(QShowEvent* e)
 
     XSync(dpy, False);
 
-    // Place first, apply struts after a short delay to ensure mapping
-    updateLayout();
-    updatePosition();
+    // Layout is already done, just schedule struts after a short delay to ensure mapping
     scheduleApplyStruts(); // single, debounced
 
     qDebug() << "PanelWindow::showEvent - applied dock type; scheduled struts";
@@ -279,9 +498,10 @@ void PanelWindow::resizeEvent(QResizeEvent* ev)
     m_view->resize(ev->size());
     m_view->setSceneRect(QRectF(QPointF(0,0), QSizeF(ev->size())));
 
-    // Layout then re-position; strut will be scheduled once
+    // Only update layout, not position - position should be stable
     updateLayout();
-    updatePosition();
+    
+    // Only schedule struts if the panel moved, not on every resize
     scheduleApplyStrutsIfMoved();
 
     qDebug() << "PanelWindow::resizeEvent - done; geom:" << geometry();
@@ -291,6 +511,9 @@ void PanelWindow::resizeEvent(QResizeEvent* ev)
  
 void PanelWindow::readSettings()
 {
+    // Force QSettings to reload the file
+    Settings::s_settings->sync();
+    
     setFontName(Settings::value(m_id, "fontName", "default").toString());
     setScreen(Settings::value(m_id, "screen", 0).toInt());
 
@@ -302,15 +525,32 @@ void PanelWindow::readSettings()
     bool vposIsString = (vposVariant.type() == QVariant::String);
 #endif
     if (vposIsString) {
-        // Old string format (for backward compatibility)
+        // String format: "Top", "Bottom", or legacy numeric strings
         const QString vpos = vposVariant.toString();
-        m_verticalAnchor = (vpos == "Top") ? Min : Max;
-        // Migrate to new format
-        Settings::setValue(m_id, "verticalPosition", (vpos == "Top") ? 0 : 1);
+        if (vpos == "Top") {
+            m_verticalAnchor = Min;
+        } else if (vpos == "Bottom") {
+            m_verticalAnchor = Max;
+        } else {
+            // Handle legacy string representation of numbers (e.g., "0", "1")
+            bool ok;
+            int vposIndex = vpos.toInt(&ok);
+            if (ok) {
+                m_verticalAnchor = (vposIndex == 0) ? Min : Max;
+                // Migrate legacy numeric strings to descriptive strings
+                QString positionString = (m_verticalAnchor == Min) ? "Top" : "Bottom";
+                Settings::setValue(m_id, "verticalPosition", positionString);
+            } else {
+                m_verticalAnchor = Max; // Default to bottom
+            }
+        }
     } else {
-        // New index format: 0=Top, 1=Bottom
+        // Legacy integer format: 0=Top, 1=Bottom
         int vposIndex = vposVariant.toInt();
         m_verticalAnchor = (vposIndex == 0) ? Min : Max;
+        // Migrate legacy integer format to descriptive strings
+        QString positionString = (m_verticalAnchor == Min) ? "Top" : "Bottom";
+        Settings::setValue(m_id, "verticalPosition", positionString);
     }
 
     // Horizontal - support both old string format and new index format
@@ -386,6 +626,15 @@ void PanelWindow::loadApplet(QString applet_id, QDir &plugDir)
 void PanelWindow::removeApplets()
 {
     qDebug() << "removing apllets";
+    
+    // Disconnect all applets from the scene first
+    for (Applet* applet : m_applets) {
+        if (applet && m_scene) {
+            m_scene->removeItem(applet);
+        }
+    }
+    
+    // Then delete them
     while (!m_applets.isEmpty()) {
         if (Applet* a = m_applets.takeLast()) {
             a->close();
@@ -442,6 +691,57 @@ void PanelWindow::setVerticalAnchor(Anchor a)
     m_verticalAnchor = a;
     updatePosition();
     scheduleApplyStruts();
+    
+    // Update Wayland layer shell configuration if using layer shell
+    updateWaylandLayerShellConfiguration();
+}
+
+void PanelWindow::updateWaylandLayerShellConfiguration()
+{
+    qDebug() << "PanelWindow::updateWaylandLayerShellConfiguration() - Updating layer shell for vertical anchor:" << m_verticalAnchor;
+    
+    // Determine layer and anchor based on vertical position
+    int layer;
+    int anchorMask;
+    
+    if (m_verticalAnchor == Min) {
+        // Top position
+        layer = 2; // LayerTop
+        anchorMask = 1 | 4 | 8; // AnchorTop | AnchorLeft | AnchorRight
+    } else {
+        // Bottom position (default)
+        layer = 1; // LayerBottom
+        anchorMask = 2 | 4 | 8; // AnchorBottom | AnchorLeft | AnchorRight
+    }
+    
+    // Update LayerShellQt configuration if available
+    if (m_layerShellQt && m_layerShellQt->isAvailable()) {
+        qDebug() << "PanelWindow::updateWaylandLayerShellConfiguration() - Updating LayerShellQt";
+        m_layerShellQt->configureWindow(windowHandle(), layer, anchorMask, 48, QMargins(0, 0, 0, 0), 0);
+    }
+    
+    // Update custom Wayland layer shell configuration if available
+    if (m_waylandLayerShell && m_waylandLayerShell->isAvailable()) {
+        qDebug() << "PanelWindow::updateWaylandLayerShellConfiguration() - Updating custom Wayland layer shell";
+        
+        // Note: Layer cannot be changed after surface creation in Wayland layer shell protocol
+        // We can only update the anchor mask, which should be sufficient for positioning
+        uint32_t waylandAnchorMask = (m_verticalAnchor == Min) ?
+            (static_cast<uint32_t>(WaylandLayerShell::Anchor::Top) | 
+             static_cast<uint32_t>(WaylandLayerShell::Anchor::Left) | 
+             static_cast<uint32_t>(WaylandLayerShell::Anchor::Right)) :
+            (static_cast<uint32_t>(WaylandLayerShell::Anchor::Bottom) | 
+             static_cast<uint32_t>(WaylandLayerShell::Anchor::Left) | 
+             static_cast<uint32_t>(WaylandLayerShell::Anchor::Right));
+        
+        m_waylandLayerShell->setAnchorMask(waylandAnchorMask);
+        m_waylandLayerShell->commit();
+        
+        qDebug() << "PanelWindow::updateWaylandLayerShellConfiguration() - Updated anchor mask:" << waylandAnchorMask;
+    }
+    
+    qDebug() << "PanelWindow::updateWaylandLayerShellConfiguration() - Updated layer:" << layer 
+             << "anchorMask:" << anchorMask;
 }
  
 void PanelWindow::setOrientation(Orientation o) { m_orientation = o; }
@@ -600,6 +900,17 @@ int PanelWindow::detectGnomeTopOffsetPx() const {
 
 
 void PanelWindow::updatePosition() {
+    // If layer-shell is in use, still allow fallback to reassert y on Qt5 (compositor sometimes centers)
+    if ((m_layerShellQt && m_layerShellQt->isAvailable()) || 
+        (m_waylandLayerShell && m_waylandLayerShell->isAvailable())) {
+#if QT_VERSION >= 0x060000
+        qDebug() << "PanelWindow::updatePosition() - Skipping (Qt6 layer-shell handles it)";
+        return;
+#else
+        // On Qt5 Wayland we keep computing target rect so forceWaylandPosition can use it
+#endif
+    }
+    
     const QRect screen = currentScreenGeometry();
 
     // 1) What *others* reserve (excludes our own window)
@@ -630,18 +941,22 @@ void PanelWindow::updatePosition() {
     }
 
     // 2) GNOME top bar (constant or X11 probe, not workarea)
-    const int gnomeTop = detectGnomeTopOffsetPx();
+    // const int gnomeTop = detectGnomeTopOffsetPx(); // Unused for now
 
     // width for FillSpace
     if (m_layoutPolicy == FillSpace && m_orientation == Horizontal) {
         if (width() != screen.width()) resize(screen.width(), height());
     }
 
-    setGeometry(x, y, width(), height());
-
-    // Apply *our* strut (only our height). This will change workarea,
-    // but our future placements no longer depend on workarea.
-    applyX11Struts(geometry());
+    // Only update geometry if position or size has actually changed
+    QRect newGeometry(x, y, width(), height());
+    if (geometry() != newGeometry) {
+        setGeometry(newGeometry);
+        
+        // Apply *our* strut (only our height). This will change workarea,
+        // but our future placements no longer depend on workarea.
+        applyX11Struts(geometry());
+    }
 }
 
  
@@ -711,12 +1026,22 @@ void PanelWindow::applyX11Struts(const QRect& panelGeom)
  
 void PanelWindow::forceWaylandPosition()
 {
+    static int callCount = 0;
+    callCount++;
+    
 #if QT_VERSION < 0x060000
     const bool isX11 = QX11Info::isPlatformX11();
 #else
     const bool isX11 = qApp->platformName().toLower().contains("xcb");
 #endif
-    if (isX11 || !isVisible()) return;
+    if (isX11) {
+        if (callCount == 1) qDebug() << "PanelWindow::forceWaylandPosition - X11 detected, stopping timer";
+        return;
+    }
+    if (!isVisible()) {
+        if (callCount % 100 == 1) qDebug() << "PanelWindow::forceWaylandPosition - call #" << callCount << " - panel not visible";
+        return;
+    }
 
     // Reassert position based on our rules (best-effort under Wayland)
     const QRect screen    = currentScreenGeometry();

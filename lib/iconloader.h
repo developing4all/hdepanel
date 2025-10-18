@@ -81,6 +81,7 @@ public:
 	}
 
 	QImage loadIcon(const QString& themeName, const QString& iconName, int size);
+	void clearCache();
 
 private:
 	QImage loadIconFromTheme(const QString& themeName, const QString& iconName, int size);

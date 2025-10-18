@@ -105,6 +105,9 @@ public:
 		return m_panelFont;
 	}
 
+signals:
+    void iconThemeChanged(const QString& themeName);
+
 public slots:
     void addPanel(int standard = 0);
     void removePanel(const QString panel_id);
@@ -127,6 +130,8 @@ private:
 	QVector<PanelWindow*> m_panelWindows;
 
     void showPanel(const QString& panel_id);
+    QString detectSystemIconTheme() const;
+    QString findThemeDirectory(const QString& themeName) const;
 };
 
 #endif

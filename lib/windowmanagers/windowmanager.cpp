@@ -25,6 +25,7 @@
 #include "windowmanager.h"
 #include "gnomewindowmanager.h"
 #include "hyprlandwindowmanager.h"
+#include "wayfirewindowmanager.h"
 #include "../waylandsupport.h"
 #include <QDebug>
 #include <QCoreApplication>
@@ -83,7 +84,7 @@ WindowManager* WindowManagerFactory::createWindowManager(QObject* parent)
             
         case WindowManager::Type::Wayfire:
             qDebug() << "WindowManagerFactory: Creating Wayfire window manager";
-            return nullptr; // TODO: Implement WayfireWindowManager
+            return new WayfireWindowManager(parent);
             
         case WindowManager::Type::Labwc:
             qDebug() << "WindowManagerFactory: Creating Labwc window manager";

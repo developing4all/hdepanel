@@ -41,6 +41,7 @@ public:
 public slots:
     void clicked();
     void fontChanged(){}
+    void refreshIcons();
 
 protected:
     void layoutChanged();

@@ -95,6 +95,9 @@ StartWindow::StartWindow(QWidget *parent) :
     addMenuItems();
 
     setProfileImage();
+
+    // Update icons when theme changes
+    QObject::connect(qApp, SIGNAL(iconThemeChanged(const QString&)), this, SLOT(refreshIcons()));
 }
 
 void StartWindow::readFavorites()
@@ -145,13 +148,19 @@ void StartWindow::readFavorites()
     }
 }
 
+void StartWindow::refreshIcons()
+{
+    ui->exitButton->setIcon(QIcon::fromTheme("application-exit"));
+    ui->settingsButton->setIcon(QIcon::fromTheme("preferences-system"));
+    ui->profilePicture->setPixmap(QIcon::fromTheme("system-users").pixmap(64,64));
+    updateMenuList();
+}
+
 void StartWindow::showContextMenuForWidget(const QPoint &pos)
 {
-    qDebug() << "showContextMenuForWidget called";
     
     if(!m_contextMenu)
     {
-        qDebug() << "ERROR: m_contextMenu is null!";
         return;
     }
     
@@ -159,13 +168,11 @@ void StartWindow::showContextMenuForWidget(const QPoint &pos)
 
     if(ui->itemsList->count() == 0)
     {
-        qDebug() << "No items in list";
         return;
     }
 
     if((ui->menuList->currentItem() != 0) && (ui->menuList->currentItem()->text() == tr("Favorites")))
     {
-        qDebug() << "Showing Favorites context menu";
         m_contextMenu->addAction( QIcon::fromTheme("emblem-favorite"), tr("Remove from favorite"), this, SLOT(removeFromFavorite()));
         m_contextMenu->addSeparator();
         m_contextMenu->addAction( QIcon::fromTheme("go-up"), tr("Move Up"), this, SLOT(moveFavoriteUp()));
@@ -175,11 +182,9 @@ void StartWindow::showContextMenuForWidget(const QPoint &pos)
     }
     else
     {
-        qDebug() << "Showing Add to Favorite context menu";
         m_contextMenu->addAction( QIcon::fromTheme("emblem-favorite"), tr("Add to favorite"), this, SLOT(addToFavorite()));
     }
 
-    qDebug() << "Executing context menu at" << ui->itemsList->mapToGlobal(pos);
     m_contextMenu->exec( ui->itemsList->mapToGlobal(pos));
 }
 
@@ -400,8 +405,6 @@ void StartWindow::addMenuItems()
 
 bool StartWindow::init()
 {
-    qDebug() << "StartWindow::init() called";
-    
     connect(DesktopApplications::instance(), SIGNAL(applicationUpdated(DesktopApplication)), this, SLOT(applicationUpdated(DesktopApplication)));
     connect(DesktopApplications::instance(), SIGNAL(applicationRemoved(QString)), this, SLOT(applicationRemoved(QString)));
 

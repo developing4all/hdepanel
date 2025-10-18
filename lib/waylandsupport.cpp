@@ -61,13 +61,36 @@ WaylandSupport::WaylandSupport(QObject* parent)
 
 WaylandSupport::~WaylandSupport()
 {
+    // Stop and delete timer first
     if (m_updateTimer) {
         m_updateTimer->stop();
         delete m_updateTimer;
         m_updateTimer = nullptr;
     }
+    
+    // Clean up window manager
+    if (m_windowManager) {
+        delete m_windowManager;
+        m_windowManager = nullptr;
+    }
+    
+    // Clean up Wayland resources
+    if (m_xdg_wm_base) {
+        // xdg_wm_base_destroy is not available in the current Wayland headers
+        // The resource will be cleaned up when the display is disconnected
+        m_xdg_wm_base = nullptr;
+    }
+    if (m_compositor) {
+        wl_compositor_destroy(m_compositor);
+        m_compositor = nullptr;
+    }
+    if (m_registry) {
+        wl_registry_destroy(m_registry);
+        m_registry = nullptr;
+    }
     if (m_display) {
         wl_display_disconnect(m_display);
+        m_display = nullptr;
     }
 }
 
@@ -165,26 +188,26 @@ QList<WaylandWindow> WaylandSupport::getAllWindows()
             return windows;
         }
     } else if (desktop.contains("plasma")) {
-        qDebug() << "WaylandSupport: Using KDE Plasma";
-        exit(0);
+        // KDE Plasma detected but window management not implemented - return empty list silently
+        return windows;
     } else if (desktop.contains("weston")) {
-        qDebug() << "WaylandSupport: Using Weston";
-        exit(0);
+        // Weston detected but window management not implemented - return empty list silently
+        return windows;
     } else if (desktop.contains("hypr")) {
-        qDebug() << "WaylandSupport: Using Hyprland";
-        exit(0);
+        // Hyprland detected but window management not implemented - return empty list silently
+        return windows;
     } else if (desktop.contains("river")) {
-        qDebug() << "WaylandSupport: Using River";
-        exit(0);
+        // River detected but window management not implemented - return empty list silently
+        return windows;
     } else if (desktop.contains("wayfire")) {
-        qDebug() << "WaylandSupport: Using Wayfire";
-        exit(0);
+        // Wayfire detected but window management not implemented - return empty list silently
+        return windows;
     } else if (desktop.contains("labwc")) {
-        qDebug() << "WaylandSupport: Using Labwc";
-        exit(0);
+        // Labwc detected but window management not implemented - return empty list silently
+        return windows;
     } else {
-        qDebug() << "WaylandSupport: Using Unknown";
-        exit(0);
+        // Unknown compositor detected but window management not implemented - return empty list silently
+        return windows;
     }
 
     return windows;

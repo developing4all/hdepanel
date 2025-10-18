@@ -95,6 +95,7 @@ public:
 	void launch(const QString& path);
 	QString getApplicationIcon(const QString& appId, const QString& wmClass = QString());
 	QList<DesktopApplication> searchApplications(const QString& appId, const QString& wmClass = QString());
+	void refreshApplications();
 
 signals:
 	void applicationUpdated(const DesktopApplication& app);

@@ -334,6 +334,11 @@ void DesktopApplications::refresh()
 	m_tasksWaitCondition.wakeOne();
 }
 
+void DesktopApplications::refreshApplications()
+{
+	refresh();
+}
+
 void DesktopApplications::traverse(const QDir& dir)
 {
 	if(!dir.exists())

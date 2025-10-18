@@ -23,12 +23,14 @@
  * END_COMMON_COPYRIGHT_HEADER */
  #pragma once
 
- #include <QWidget>
- #include <QVector>
- #include <QStringList>
- #include <QRect>
+#include <QWidget>
+#include <QVector>
+#include <QStringList>
+#include <QRect>
 #include <QTimer>
 #include <QGraphicsItem>
+#include "waylandlayershell.h"
+#include "layershellqtintegration.h"
 
 class QGraphicsScene;
  class QGraphicsView;
@@ -69,6 +71,7 @@ class QGraphicsScene;
 	 // Used by settings dialog
 	 inline Anchor verticalAnchor() const { return m_verticalAnchor; }
 	 inline Anchor horizontalAnchor() const { return m_horizontalAnchor; }
+ 	 inline const QString& id() const { return m_id; }
  	 // Context menu / settings UI
 	 void showPanelContextMenu(const QPoint& point);
 	 bool init();
@@ -105,6 +108,7 @@ class QGraphicsScene;
   
 	 // Wayland positioning
 	 void forceWaylandPosition();
+	 void updateWaylandLayerShellConfiguration();
  
  private:
 	 // Identity / settings
@@ -126,10 +130,13 @@ class QGraphicsScene;
  
 	 // Debounce strut application to avoid repeated XChangeProperty calls
 	 QTimer        m_strutDebounce;
+	 QTimer        m_waylandPositionTimer;
 	 QRect         m_lastStrutGeom;              // last geometry we applied struts for
  
 	 // Wayland helpers
 	 QTimer*       m_waylandRepositionTimer = nullptr;
+	 class WaylandLayerShell* m_waylandLayerShell = nullptr;
+	 class LayerShellQtIntegration* m_layerShellQt = nullptr;
  
 	 friend class PanelWindowGraphicsItem;
  

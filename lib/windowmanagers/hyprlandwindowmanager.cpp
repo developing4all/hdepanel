@@ -29,7 +29,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
-#include <QRegExp>
+#include <QRegularExpression>
 
 HyprlandWindowManager::HyprlandWindowManager(QObject* parent)
     : WindowManager(parent)
@@ -195,9 +195,10 @@ QString HyprlandWindowManager::getVersion() const
     
     // Parse version from plain text output
     // Format: "Hyprland, built from branch  at commit 918d8340afd652b011b937d29d5eea0be08467f5"
-    QRegExp commitRegex("commit ([a-f0-9]+)");
-    if (commitRegex.indexIn(output) != -1) {
-        return commitRegex.cap(1);
+    QRegularExpression commitRegex("commit ([a-f0-9]+)");
+    QRegularExpressionMatch match = commitRegex.match(output);
+    if (match.hasMatch()) {
+        return match.captured(1);
     }
     
     return QString();
@@ -212,9 +213,10 @@ int HyprlandWindowManager::getCurrentWorkspace() const
     
     // Parse workspace ID from plain text output
     // Format: "workspace ID 1 (1) on monitor eDP-1:"
-    QRegExp workspaceRegex("workspace ID (\\d+)");
-    if (workspaceRegex.indexIn(output) != -1) {
-        return workspaceRegex.cap(1).toInt();
+    QRegularExpression workspaceRegex("workspace ID (\\d+)");
+    QRegularExpressionMatch match = workspaceRegex.match(output);
+    if (match.hasMatch()) {
+        return match.captured(1).toInt();
     }
     
     return 1; // Default to workspace 1

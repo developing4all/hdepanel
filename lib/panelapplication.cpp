@@ -30,6 +30,9 @@
 #include <QAction>
 #include <QDateTime>
 #include <QTimer>
+#include <QProcess>
+#include <QFile>
+#include <QDir>
 
 PanelApplication* PanelApplication::m_instance = NULL;
 
@@ -88,9 +91,15 @@ void PanelApplication::deletePanels()
 {
     qDebug() << "Deleting Panels";
 
+    // Stop all timers and clean up gracefully
     while(!m_panelWindows.isEmpty())
     {
-        delete m_panelWindows.takeLast();
+        PanelWindow* panel = m_panelWindows.takeLast();
+        if (panel) {
+            // Hide the panel first to stop any ongoing operations
+            panel->hide();
+            delete panel;
+        }
     }
     m_panelWindows.clear();
 }
@@ -106,11 +115,11 @@ bool PanelApplication::x11EventFilter(XEvent* event)
 
 void PanelApplication::addPanel(int standard)
 {
-    QStringList panels = Settings::value( "panels", QStringList() ).toStringList();
+    QStringList panels = Settings::value( "", "panels", QStringList() ).toStringList();
     QString panel_id = "panel_" + QString::number(QDateTime::currentMSecsSinceEpoch());
     panels << panel_id;
-
-    Settings::setValue( "panels", panels );
+    Settings::setValue( "", "panels", panels );
+    if (Settings::s_settings) Settings::s_settings->sync();
 
     if(standard > 0)
     {
@@ -128,6 +137,28 @@ void PanelApplication::addPanel(int standard)
 void PanelApplication::removePanel(const QString panel_id)
 {
     qDebug() << "Removing panel: " << panel_id;
+
+    // 1) Update settings first (so it's persisted even if UI deletion is deferred)
+    QStringList panels = Settings::value("", "panels", QStringList()).toStringList();
+    panels.removeAll(panel_id);
+    Settings::setValue("", "panels", panels);
+    if (Settings::s_settings) {
+        Settings::s_settings->beginGroup(panel_id);
+        Settings::s_settings->remove("");
+        Settings::s_settings->endGroup();
+        Settings::s_settings->sync();
+    }
+
+    // 2) Defer window deletion to avoid deleting during its own slot/context menu handling
+    for (int i = 0; i < m_panelWindows.size(); ++i) {
+        PanelWindow* panel = m_panelWindows[i];
+        if (panel && panel->id() == panel_id) {
+            panel->hide();
+            m_panelWindows.removeAt(i);
+            panel->deleteLater();
+            break;
+        }
+    }
 }
 
 
@@ -142,10 +173,19 @@ void PanelApplication::init()
 #if QT_VERSION >= 0x050000
     installNativeEventFilter(&myXEv);
 #endif
+    // Try to detect system icon theme
+    QString systemIconTheme = detectSystemIconTheme();
+    if (!systemIconTheme.isEmpty()) {
+        m_defaultIconThemeName = systemIconTheme;
+        // Set Qt's icon theme to the detected directory name
+        QIcon::setThemeName(m_defaultIconThemeName);
+    }
+    
     // This should be changed in any panel
-    setIconThemeName(Settings::value("iconThemeName", QVariant("default")).toString());
+    // Read the same key used by settings dialog
+    setIconThemeName(Settings::value("General", "iconThemeName", QVariant("default")).toString());
 
-    QStringList panels = Settings::value("panels", QStringList() ).toStringList();
+    QStringList panels = Settings::value("", "panels", QStringList() ).toStringList();
 
     if(panels.empty())
     {
@@ -181,22 +221,11 @@ void PanelApplication::showPanel(const QString& panel_id)
     
     panelWindow->show();
     
-    // Update position after window is shown and layer surface is configured
-    panelWindow->updatePosition();
-    
-    // Force position multiple times to ensure it sticks
-    QTimer::singleShot(100, [panelWindow]() {
+    // Only one additional position update after showing, with a small delay
+    // to ensure the window is fully mapped and ready
+    QTimer::singleShot(50, [panelWindow]() {
         panelWindow->updatePosition();
     });
-    
-    QTimer::singleShot(500, [panelWindow]() {
-        panelWindow->updatePosition();
-    });
-    
-    QTimer::singleShot(1000, [panelWindow]() {
-        panelWindow->updatePosition();
-    });
-    
     
     m_panelWindows.append(panelWindow);
     //QObject::connect(this, SIGNAL(aboutToQuit()), panelWindow, SLOT(deleteLater()) );
@@ -204,9 +233,125 @@ void PanelApplication::showPanel(const QString& panel_id)
 
 void PanelApplication::setIconThemeName(const QString& iconThemeName)
 {
-	m_iconThemeName = iconThemeName;
-	if(m_iconThemeName != "default")
-		QIcon::setThemeName(m_iconThemeName);
-	else
-		QIcon::setThemeName(m_defaultIconThemeName);
+    QString normalizedThemeName = iconThemeName;
+    if (iconThemeName == "default") {
+        normalizedThemeName = m_defaultIconThemeName;
+    } else {
+        // Normalize the theme name to its actual directory name
+        QString actualDirName = findThemeDirectory(iconThemeName);
+        if (!actualDirName.isEmpty()) {
+            normalizedThemeName = actualDirName;
+        } else {
+            qWarning() << "Could not find directory for theme" << iconThemeName << ", falling back to default.";
+            normalizedThemeName = m_defaultIconThemeName;
+        }
+    }
+
+    m_iconThemeName = normalizedThemeName;
+    QIcon::setThemeName(m_iconThemeName);
+
+    // Clear IconLoader cache to force reload with new theme
+    if(m_iconLoader) {
+        m_iconLoader->clearCache();
+    }
+
+    // Refresh desktop applications to reload icons with new theme
+    if(m_desktopApplications) {
+        m_desktopApplications->refreshApplications();
+    }
+    emit iconThemeChanged(m_iconThemeName); // Emit signal after theme change
+}
+
+QString PanelApplication::findThemeDirectory(const QString& themeName) const
+{
+    // Search for the actual directory name that corresponds to the theme name
+    // The theme name might be the display name (from Name= in index.theme)
+    // but we need the actual directory name (case-sensitive)
+    foreach(const QString& themePath, QIcon::themeSearchPaths()) {
+        QDir themeDir(themePath);
+        foreach(const QFileInfo& item, themeDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+            QString indexFile;
+            QString mainSection;
+            
+            if (QFile::exists(item.absoluteFilePath() + "/index.desktop")) {
+                indexFile = item.absoluteFilePath() + "/index.desktop";
+                mainSection = "KDE Icon Theme";
+            } else if (QFile::exists(item.absoluteFilePath() + "/index.theme")) {
+                indexFile = item.absoluteFilePath() + "/index.theme";
+                mainSection = "Icon Theme";
+            }
+            
+            if (!indexFile.isEmpty()) {
+                QSettings settings(indexFile, QSettings::IniFormat);
+                settings.beginGroup(mainSection);
+                QString name = settings.value("Name").toString();
+                
+                       // Check if the Name field matches what we're looking for
+                       if (name.compare(themeName, Qt::CaseInsensitive) == 0) {
+                           return item.fileName(); // Return the actual directory name
+                       }
+            }
+        }
+    }
+    
+    return QString();
+}
+
+QString PanelApplication::detectSystemIconTheme() const
+{
+    QString detectedTheme;
+    
+    // Try GTK settings first (most common on Wayland)
+    QProcess gsettings;
+    gsettings.start("gsettings", QStringList() << "get" << "org.gnome.desktop.interface" << "icon-theme");
+    gsettings.waitForFinished(1000);
+           if (gsettings.exitCode() == 0) {
+               QString output = gsettings.readAllStandardOutput().trimmed();
+               if (output.startsWith("'") && output.endsWith("'")) {
+                   detectedTheme = output.mid(1, output.length() - 2);
+               }
+           }
+    
+    // Try KDE settings as fallback
+    if (detectedTheme.isEmpty()) {
+        QProcess kreadconfig;
+        kreadconfig.start("kreadconfig5", QStringList() << "--file" << "kdeglobals" << "--group" << "Icons" << "--key" << "Theme");
+        kreadconfig.waitForFinished(1000);
+           if (kreadconfig.exitCode() == 0) {
+               detectedTheme = kreadconfig.readAllStandardOutput().trimmed();
+           }
+    }
+    
+    // Check system default theme if no explicit theme is set
+    if (detectedTheme.isEmpty()) {
+        QSettings defaultTheme("/usr/share/icons/default/index.theme", QSettings::IniFormat);
+        defaultTheme.beginGroup("Icon Theme");
+        QString inherits = defaultTheme.value("Inherits").toString();
+        if (!inherits.isEmpty()) {
+            detectedTheme = inherits;
+        }
+    }
+    
+    // Convert theme name to actual directory name
+    // This is necessary because the theme's display name (from Name= in index.theme)
+    // might not match the actual directory name (case sensitive filesystem)
+    if (!detectedTheme.isEmpty()) {
+        QString actualDirName = findThemeDirectory(detectedTheme);
+        if (!actualDirName.isEmpty()) {
+            return actualDirName;
+        }
+    }
+    
+    // Verify the theme actually exists (fallback if findThemeDirectory didn't find it)
+    if (!detectedTheme.isEmpty()) {
+        foreach(const QString& themePath, QIcon::themeSearchPaths()) {
+            QString themeDir = themePath + "/" + detectedTheme;
+            if (QDir(themeDir).exists() && 
+                (QFile::exists(themeDir + "/index.theme") || QFile::exists(themeDir + "/index.desktop"))) {
+                return detectedTheme;
+            }
+        }
+    }
+    
+    return QString();
 }

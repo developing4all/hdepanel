@@ -66,12 +66,15 @@ static QStringList listIconThemes() {
                     QSettings settings(fileName, QSettings::IniFormat);
                     settings.beginGroup(mainSection);
                     QString mName = settings.value("Name").toString();
+                    QString mDirName = item.fileName(); // The actual directory name
                     //QString mDesc = settings.value("Comment").toString();
                     //QString mDepth = settings.value("DisplayDepth", 32).toString();
                     QStringList mDirectories = settings.value("Directories").toStringList();
-                    if(!mName.isEmpty() && !mDirectories.isEmpty())
+                    bool mHidden = settings.value("Hidden", false).toBool();
+                    if(!mName.isEmpty() && !mDirectories.isEmpty() && !mHidden)
                     {
-                        themes << mName.toLower();
+                        // Use the directory name, not the display name, as that's what the filesystem uses
+                        themes << mDirName;
                     }
                 }
             }
@@ -92,15 +95,15 @@ PanelSettings::PanelSettings(QString panel_id, QWidget *parent) :
 
     // Manually connect signals that are missing from the UI file
     connect(ui->theme, QOverload<int>::of(&QComboBox::activated),
-            [this](int) { on_theme_activated(ui->theme->currentText()); });
+            [this](int) { handleThemeActivated(ui->theme->currentText()); });
     connect(ui->verticalPosition, QOverload<int>::of(&QComboBox::activated),
             this, &PanelSettings::on_verticalPosition_activated);
     connect(ui->horizontalPosition, QOverload<int>::of(&QComboBox::activated),
             this, &PanelSettings::on_horizontalPosition_activated);
     connect(ui->screen, QOverload<int>::of(&QComboBox::activated),
-            [this](int) { on_screen_activated(ui->screen->currentText()); });
+            [this](int) { handleScreenActivated(ui->screen->currentText()); });
     connect(ui->font, QOverload<int>::of(&QFontComboBox::currentIndexChanged),
-            [this](int) { on_font_activated(ui->font->currentFont().family()); });
+            [this](int) { handleFontActivated(ui->font->currentFont().family()); });
     connect(ui->fontSize, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &PanelSettings::on_fontSize_valueChanged);
 
@@ -127,7 +130,6 @@ void PanelSettings::setPanelWindow(PanelWindow *panel)
     if (ui->verticalPosition) {
         // Load position as index: 0=Top, 1=Bottom
         int verticalPos = Settings::value(m_panel_id, "verticalPosition", 1).toInt();
-        qDebug() << "PanelSettings::setPanelWindow() - Setting vertical position index to:" << verticalPos;
         ui->verticalPosition->setCurrentIndex(verticalPos);
     }
     if (ui->horizontalPosition) {
@@ -189,7 +191,7 @@ void PanelSettings::readSettings()
 #endif
 }
 
-void PanelSettings::on_theme_activated(const QString &theme)
+void PanelSettings::handleThemeActivated(const QString &theme)
 {
     ((PanelApplication *)qApp)->setIconThemeName(theme);
     Settings::setValue("General", "iconThemeName", theme);
@@ -197,19 +199,21 @@ void PanelSettings::on_theme_activated(const QString &theme)
 
 void PanelSettings::on_verticalPosition_activated(int index)
 {
-    qDebug() << "PanelSettings::on_verticalPosition_activated() - Called with index:" << index;
-
     // index: 0=Top, 1=Bottom
     PanelWindow::Anchor verticalAnchor = (index == 0) ? PanelWindow::Min : PanelWindow::Max;
 
-    qDebug() << "PanelSettings::on_verticalPosition_activated() - Setting vertical anchor to:" << verticalAnchor;
     m_panel->setVerticalAnchor(verticalAnchor);
-    Settings::setValue(m_panel_id, "verticalPosition", index);
+    
+    // Save as descriptive string instead of numeric value
+    QString positionString = (index == 0) ? "Top" : "Bottom";
+    Settings::setValue(m_panel_id, "verticalPosition", positionString);
+    
+    // Force sync to ensure settings are written immediately
+    Settings::s_settings->sync();
 }
 
 void PanelSettings::on_horizontalPosition_activated(int index)
 {
-    qDebug() << "PanelSettings::on_horizontalPosition_activated() - Called with index:" << index;
 
     // index: 0=Left, 1=Center, 2=Right
     PanelWindow::Anchor horizontalAnchor = PanelWindow::Center; // Default to center
@@ -225,14 +229,14 @@ void PanelSettings::on_horizontalPosition_activated(int index)
     Settings::setValue(m_panel_id, "horizontalPosition", index);
 }
 
-void PanelSettings::on_screen_activated(const QString &screen)
+void PanelSettings::handleScreenActivated(const QString &screen)
 {
 //    qDebug() << screen;
     m_panel->setScreen(screen.toInt());
     Settings::setValue(m_panel_id, "screen", screen);
 }
 
-void PanelSettings::on_font_activated(const QString &font_name)
+void PanelSettings::handleFontActivated(const QString &font_name)
 {
     return fontChanged(font_name + " " + QString::number(ui->fontSize->value()));
 }

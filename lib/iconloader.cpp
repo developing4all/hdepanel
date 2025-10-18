@@ -40,17 +40,22 @@ struct IconDirectory
 
 void IconTheme::init(const QString& themeName)
 {
-	m_themeName = themeName;
+    m_themeName = themeName;
 
-	foreach(const QString& searchPath, IconLoader::instance()->iconSearchPaths())
-	{
-		QFile file(searchPath + "/" + m_themeName + "/index.theme");
+    foreach(const QString& searchPath, IconLoader::instance()->iconSearchPaths())
+    {
+        QString themePath = searchPath + "/" + m_themeName + "/index.theme";
+        QFile file(themePath);
 
-		if(!file.exists())
-			continue;
+        if(!file.exists())
+        {
+            continue;
+        }
 
 		if(!file.open(QIODevice::ReadOnly | QIODevice::Text))
+		{
 			continue;
+		}
 
 		QTextStream in(&file);
 		QString context;
@@ -151,6 +156,13 @@ QImage IconTheme::loadIcon(const QString& iconName, int size)
 	return result;
 }
 
+void IconLoader::clearCache()
+{
+	m_iconThemesMutex.lock();
+	m_iconThemes.clear();
+	m_iconThemesMutex.unlock();
+}
+
 IconLoader* IconLoader::m_instance = NULL;
 
 IconLoader::IconLoader()
@@ -180,13 +192,17 @@ IconLoader::~IconLoader()
 
 QImage IconLoader::loadIcon(const QString& themeName, const QString& iconName, int size)
 {
-	QImage result = loadIconFromTheme(themeName, iconName, size);
+    QImage result = loadIconFromTheme(themeName, iconName, size);
+
+    if(result.isNull())
+    {
+        result.load("/usr/share/pixmaps/" + iconName);
+    }
 
 	if(result.isNull())
-		result.load("/usr/share/pixmaps/" + iconName);
-
-	if(result.isNull())
+	{
 		result.load(iconName);
+	}
 
 	if(!result.isNull() && (result.width() != size || result.height() != size))
 		result = result.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation);

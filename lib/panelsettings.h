@@ -46,15 +46,15 @@ public:
 private slots:
     void on_resetButton_clicked();
 
-    void on_theme_activated(const QString &theme);
+    void handleThemeActivated(const QString &theme);
 
     void on_verticalPosition_activated(int index);
 
     void on_horizontalPosition_activated(int index);
 
-    void on_screen_activated(const QString &screen);
+    void handleScreenActivated(const QString &screen);
 
-    void on_font_activated(const QString &font_name);
+    void handleFontActivated(const QString &font_name);
 
     void on_fontSize_valueChanged(int size);
 

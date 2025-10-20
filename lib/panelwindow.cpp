@@ -225,7 +225,6 @@ PanelWindow::PanelWindow(QString id)
                 }
             }
         });
-        // m_waylandPositionTimer.start(); // Disabled for testing
     }
 #else
     if (!qApp->platformName().toLower().contains("xcb")) {
@@ -250,7 +249,6 @@ PanelWindow::PanelWindow(QString id)
                 }
             }
         });
-        // m_waylandPositionTimer.start(); // Disabled for testing
     }
 #endif
  
@@ -263,15 +261,11 @@ PanelWindow::PanelWindow(QString id)
 #endif
     if (!isX11) {
         // Use timer-based positioning for Wayland
-        qDebug() << "PanelWindow: Creating Wayland reposition timer for Qt5";
         m_waylandRepositionTimer = new QTimer(this);
         m_waylandRepositionTimer->setSingleShot(false);
         m_waylandRepositionTimer->setInterval(50); // more aggressive positioning
         connect(m_waylandRepositionTimer, &QTimer::timeout, this, &PanelWindow::forceWaylandPosition);
         // Timer will be started/stopped based on layer shell availability
-        qDebug() << "PanelWindow: Wayland reposition timer created (will start if needed)";
-    } else {
-        qDebug() << "PanelWindow: X11 detected, not creating Wayland timer";
     }
 #endif
 }
@@ -348,17 +342,11 @@ void PanelWindow::showEvent(QShowEvent* e)
             // Set size
             m_layerShellQt->setSize(windowHandle(), QSize(1920, 48));
             
-            qDebug() << "PanelWindow: Layer-shell configured for" << (m_verticalAnchor == Min ? "top" : "bottom") << "positioning";
-            qDebug() << "PanelWindow: Qt window visibility - visible:" << isVisible() << "geometry:" << geometry() << "windowState:" << windowState();
-            
             // Stop timer when using layer shell
             if (m_waylandRepositionTimer && m_waylandRepositionTimer->isActive()) {
                 m_waylandRepositionTimer->stop();
-                qDebug() << "PanelWindow: Stopped Wayland reposition timer (using layer shell)";
             }
         } else if (m_waylandLayerShell && m_waylandLayerShell->isAvailable()) {
-            qDebug() << "PanelWindow: Using custom Wayland layer-shell for positioning";
-            
             // Set up layer-shell for the Qt window with improved positioning
             m_waylandLayerShell->setWindow(windowHandle());
             
@@ -634,6 +622,13 @@ void PanelWindow::removeApplets()
         }
     }
     
+    // Call applet close to ensure internal resources are released
+    for (Applet* applet : m_applets) {
+        if (applet) {
+            applet->close();
+        }
+    }
+
     // Then delete them
     while (!m_applets.isEmpty()) {
         if (Applet* a = m_applets.takeLast()) {

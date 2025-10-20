@@ -73,6 +73,7 @@ private:
 
 class TextGraphicsItem;
 class DesktopApplication;
+class DesktopEntryData;
 
 class ApplicationsMenuApplet: public Applet
 {
@@ -96,11 +97,18 @@ private slots:
     void actionTriggered();
     void applicationUpdated(const DesktopApplication& app);
     void applicationRemoved(const QString& path);
+    void onDataStoreApplicationAdded(const DesktopEntryData& entryData);
+    void onDataStoreApplicationUpdated(const DesktopEntryData& entryData);
+    void onDataStoreApplicationRemoved(const QString& desktopFile);
 
 public slots:
     void fontChanged();
 
 private:
+    void populateMenuFromDataStore();
+    void addApplicationToMenu(const DesktopEntryData& entryData);
+    void removeApplicationFromMenu(const QString& desktopFile);
+    
 #if QT_VERSION < 0x050000
     ApplicationsMenuStyle m_style;
 #endif

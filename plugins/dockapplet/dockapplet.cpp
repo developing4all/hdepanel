@@ -506,7 +506,6 @@ void DockApplet::updateX11ClientList()
 	for (int i = 0; i < windows.size(); i++) {
         QString windowName = X11Support::getWindowName(windows[i]);
         QString windowClass = X11Support::getWindowPropertyUTF8String(windows[i], "WM_CLASS");
-        qDebug() << "DockApplet::updateX11ClientList - Processing window" << QString::number(windows[i], 16) << "name:" << windowName << "class:" << windowClass;
 
         // Skip system services and utilities
         QString windowNameLower = windowName.toLower();
@@ -581,7 +580,6 @@ void DockApplet::updateX11ClientList()
                 continue;
             }
 
-            qDebug() << "DockApplet::updateX11ClientList - Creating new client for window" << QString::number(windows[i], 16) << "name:" << windowName;
             m_clients[windows[i]] = new Client(this, windows[i]);
         }
         
@@ -601,8 +599,6 @@ void DockApplet::updateX11ClientList()
             unsigned long handle = client->handle();
             if (!windows.contains(handle))
             {
-                qDebug() << "DockApplet::updateX11ClientList - Window" << QString::number(handle, 16) << "no longer in window list, removing client";
-                qDebug() << "DockApplet::updateX11ClientList - Removing client for window" << QString::number(handle, 16);
                 delete m_clients[handle];
                 m_clients.remove(handle);
                 clientRemoved = true;
@@ -681,19 +677,13 @@ void DockApplet::windowClosed(unsigned long window)
 #if QT_VERSION >= 0x050000
     //if (qApp->platformName().toLower().contains("xcb") == false) return; 
 #endif
-    
-    qDebug() << "DockApplet::windowClosed - Window" << QString::number(window, 16) << "closed";
-    
     if (m_clients.contains(window)) {
-        qDebug() << "DockApplet::windowClosed - Removing client for window" << QString::number(window, 16);
         // Remove the client
         delete m_clients[window];
         m_clients.remove(window);
         
         // Update layout
         updateLayout();
-    } else {
-        qDebug() << "DockApplet::windowClosed - Window" << QString::number(window, 16) << "not found in clients";
     }
 }
 

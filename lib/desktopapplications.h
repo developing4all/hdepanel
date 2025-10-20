@@ -37,8 +37,12 @@
 #include <QtCore/QDateTime>
 #include <QtGui/QImage>
 
+class DesktopEntryData;
+
 class DesktopApplication
 {
+	friend class DesktopApplications;
+	friend class DesktopDataStore;
 public:
 	DesktopApplication()
 		: m_isNoDisplay(false)
@@ -96,6 +100,7 @@ public:
 	QString getApplicationIcon(const QString& appId, const QString& wmClass = QString());
 	QList<DesktopApplication> searchApplications(const QString& appId, const QString& wmClass = QString());
 	void refreshApplications();
+	DesktopApplication convertFromDesktopEntryData(const DesktopEntryData& entryData);
 
 signals:
 	void applicationUpdated(const DesktopApplication& app);

@@ -1,5 +1,6 @@
 #include "waylandsupport.h"
 #include "desktopapplications.h"
+#include "desktopdatastore.h"
 #include "windowmanager.h"
 #include <QDebug>
 #include <QFile>
@@ -216,12 +217,26 @@ QList<WaylandWindow> WaylandSupport::getAllWindows()
 
 QString WaylandSupport::getApplicationIcon(const QString& appId, const QString& wmClass)
 {
-    DesktopApplications* desktopApps = DesktopApplications::instance();
-    if (desktopApps) {
-        return desktopApps->getApplicationIcon(appId, wmClass);
+    DesktopDataStore* dataStore = DesktopDataStore::instance();
+    if (dataStore) {
+        // Search for applications by executable name or WM class
+        QList<DesktopEntryData> matches = dataStore->searchByExecutable(appId);
+        if (matches.isEmpty() && !wmClass.isEmpty()) {
+            // Try searching by WM class in the startupWMClass field
+            QList<DesktopEntryData> allEntries = dataStore->getAllDesktopEntries();
+            foreach (const DesktopEntryData& entry, allEntries) {
+                if (entry.startupWMClass == wmClass) {
+                    matches.append(entry);
+                    break;
+                }
+            }
+        }
+        if (!matches.isEmpty()) {
+            return matches.first().icon;
+        }
     }
     
-    // Fallback if DesktopApplications is not available
+    // Fallback if DesktopDataStore is not available
     QString fallbackIcon = !appId.isEmpty() ? appId.toLower() : wmClass.toLower();
     return fallbackIcon.isEmpty() ? "application-x-executable" : fallbackIcon;
 }

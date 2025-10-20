@@ -65,7 +65,11 @@ public:
     static QAbstractEventDispatcher::EventFilter prevEventFilter;
     static bool eventFilter(void* message);
 #else
+#  if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+    virtual bool nativeEventFilter(const QByteArray & eventType, void * message, qintptr * result);
+#  else
     virtual bool nativeEventFilter(const QByteArray & eventType, void * message, long * result);
+#  endif
 #endif // QT_VERSION < QT_VERSION_CHECK(5,0,0)
 #endif // Q_OS_MAC
 
@@ -78,7 +82,8 @@ private:
     static bool registerShortcut(quint32 nativeKey, quint32 nativeMods);
     static bool unregisterShortcut(quint32 nativeKey, quint32 nativeMods);
 
-    static QHash<QPair<quint32, quint32>, QxtGlobalShortcut*> shortcuts;
+    // Use a function-returned static to avoid destruction order issues at exit
+    static QHash<QPair<quint32, quint32>, QxtGlobalShortcut*>& shortcuts();
 };
 
 #endif // QXTGLOBALSHORTCUT_P_H

@@ -3,6 +3,8 @@
 
 #include "../lib/dpisupport.h"
 #include "../lib/desktopapplications.h"
+#include "../lib/desktopdatastore.h"
+#include "../lib/settings.h"
 
 #include <QMenu>
 #include <QStyleFactory>
@@ -104,8 +106,7 @@ void StartWindow::readFavorites()
 {
     m_favorites->clear();
 
-    QSettings setting(this);
-    QStringList favorites = setting.value("favorites", QStringList()).toStringList();
+    QStringList favorites = Settings::value("Main", "favorites", QStringList()).toStringList();
     
     // Add some sensible defaults on first run if favorites is empty
     if(favorites.isEmpty())
@@ -135,7 +136,7 @@ void StartWindow::readFavorites()
         // Save the defaults
         if(!favorites.isEmpty())
         {
-            setting.setValue("favorites", favorites);
+            Settings::setValue("Main", "favorites", favorites);
         }
     }
 
@@ -232,14 +233,13 @@ void StartWindow::setProfileImage()
 void StartWindow::addToFavorite()
 {
     QListWidgetItem *item = ui->itemsList->currentItem();
-    QSettings setting(this);
-    QStringList favorites = setting.value("favorites", QStringList()).toStringList();
+    QStringList favorites = Settings::value("Main", "favorites", QStringList()).toStringList();
     //qDebug() << "favorites: " << favorites;
     QString itemsfile = item->data(Qt::UserRole).toString();
     if(!favorites.contains(itemsfile))
     {
         favorites << itemsfile;
-        setting.setValue("favorites", favorites);
+        Settings::setValue("Main", "favorites", favorites);
         readFavorites();
     }
 
@@ -249,14 +249,13 @@ void StartWindow::addToFavorite()
 void StartWindow::removeFromFavorite()
 {
     QListWidgetItem *item = ui->itemsList->currentItem();
-    QSettings setting(this);
-    QStringList favorites = setting.value("favorites", QStringList()).toStringList();
+    QStringList favorites = Settings::value("Main", "favorites", QStringList()).toStringList();
     //qDebug() << "favorites: " << favorites;
     QString itemsfile = item->data(Qt::UserRole).toString();
     if(favorites.contains(itemsfile))
     {
         favorites.removeAll(itemsfile);
-        setting.setValue("favorites", favorites);
+        Settings::setValue("Main", "favorites", favorites);
         readFavorites();
         //qDebug() << "Removed: " << itemsfile;
         on_menuList_itemActivated(ui->menuList->currentItem());
@@ -269,14 +268,13 @@ void StartWindow::moveFavoriteUp()
     if(!item) return;
     
     QString itemsfile = item->data(Qt::UserRole).toString();
-    QSettings setting(this);
-    QStringList favorites = setting.value("favorites", QStringList()).toStringList();
+    QStringList favorites = Settings::value("Main", "favorites", QStringList()).toStringList();
     
     int index = favorites.indexOf(itemsfile);
     if(index > 0)  // Can only move up if not already at the top
     {
         favorites.move(index, index - 1);
-        setting.setValue("favorites", favorites);
+        Settings::setValue("Main", "favorites", favorites);
         on_menuList_itemActivated(ui->menuList->currentItem());
         
         // Select the item at its new position
@@ -290,14 +288,13 @@ void StartWindow::moveFavoriteDown()
     if(!item) return;
     
     QString itemsfile = item->data(Qt::UserRole).toString();
-    QSettings setting(this);
-    QStringList favorites = setting.value("favorites", QStringList()).toStringList();
+    QStringList favorites = Settings::value("Main", "favorites", QStringList()).toStringList();
     
     int index = favorites.indexOf(itemsfile);
     if(index >= 0 && index < favorites.size() - 1)  // Can only move down if not already at the bottom
     {
         favorites.move(index, index + 1);
-        setting.setValue("favorites", favorites);
+        Settings::setValue("Main", "favorites", favorites);
         on_menuList_itemActivated(ui->menuList->currentItem());
         
         // Select the item at its new position
@@ -307,8 +304,7 @@ void StartWindow::moveFavoriteDown()
 
 void StartWindow::sortFavoritesAlphabetically()
 {
-    QSettings setting(this);
-    QStringList favorites = setting.value("favorites", QStringList()).toStringList();
+    QStringList favorites = Settings::value("Main", "favorites", QStringList()).toStringList();
     
     if(favorites.isEmpty()) return;
     
@@ -331,7 +327,7 @@ void StartWindow::sortFavoritesAlphabetically()
         sortedFavorites << nameToPath[name];
     }
     
-    setting.setValue("favorites", sortedFavorites);
+    Settings::setValue("Main", "favorites", sortedFavorites);
     on_menuList_itemActivated(ui->menuList->currentItem());
 }
 
@@ -405,16 +401,41 @@ void StartWindow::addMenuItems()
 
 bool StartWindow::init()
 {
-    connect(DesktopApplications::instance(), SIGNAL(applicationUpdated(DesktopApplication)), this, SLOT(applicationUpdated(DesktopApplication)));
-    connect(DesktopApplications::instance(), SIGNAL(applicationRemoved(QString)), this, SLOT(applicationRemoved(QString)));
-
-    QList<DesktopApplication> apps = DesktopApplications::instance()->applications();
-    foreach(const DesktopApplication& app, apps)
-    {
-        applicationUpdated(app);
+    // Connect to DesktopDataStore signals to get notified when applications are loaded
+    // Note: Each StartWindow instance gets these signals, so each panel will update independently
+    DesktopDataStore* dataStore = DesktopDataStore::instance();
+    if (dataStore) {
+        connect(dataStore, SIGNAL(desktopEntryAdded(DesktopEntryData)), this, SLOT(onDesktopEntryAdded(DesktopEntryData)));
+        connect(dataStore, SIGNAL(desktopEntryUpdated(DesktopEntryData)), this, SLOT(onDesktopEntryUpdated(DesktopEntryData)));
+        connect(dataStore, SIGNAL(desktopEntryRemoved(QString)), this, SLOT(onDesktopEntryRemoved(QString)));
     }
+    
+    // DesktopApplications signals are no longer needed since we use DesktopDataStore signals directly
+
+    // Don't wait for applications to load - let them load in background
+    // The signals will update the UI as applications become available
+    
+    // Initialize with empty menu - applications will be added via signals
     updateMenuList();
 
+    // Context menu setup
+    m_contextMenu = new QMenu(tr("Context menu"), ui->itemsList);
+    ui->itemsList->setContextMenuPolicy(Qt::CustomContextMenu);
+    
+    connect(ui->itemsList, SIGNAL(customContextMenuRequested(const QPoint &)),
+            this, SLOT(showContextMenuForWidget(const QPoint &)));
+
+    return true;
+}
+
+void StartWindow::initAsync()
+{
+    // Initialize the UI immediately without waiting for applications
+    qDebug() << "StartWindow::initAsync: Initializing UI immediately";
+    
+    // Set up the basic UI structure
+    updateMenuList();
+    
     // Context menu setup
     qDebug() << "Setting up context menu for itemsList";
     m_contextMenu = new QMenu(tr("Context menu"), ui->itemsList);
@@ -427,13 +448,26 @@ bool StartWindow::init()
     if(!connected) {
         qDebug() << "WARNING: Failed to connect context menu signal!";
     }
+    
+    // Connect to DesktopDataStore signals to get notified when applications are loaded
+    DesktopDataStore* dataStore = DesktopDataStore::instance();
+    if (dataStore) {
+        connect(dataStore, SIGNAL(desktopEntryAdded(DesktopEntryData)), this, SLOT(onDesktopEntryAdded(DesktopEntryData)));
+        connect(dataStore, SIGNAL(desktopEntryUpdated(DesktopEntryData)), this, SLOT(onDesktopEntryUpdated(DesktopEntryData)));
+        connect(dataStore, SIGNAL(desktopEntryRemoved(QString)), this, SLOT(onDesktopEntryRemoved(QString)));
+    }
 
-    return true;
+    qDebug() << "StartWindow::initAsync: Background application loading started";
 }
 
 
 void StartWindow::applicationUpdated(const DesktopApplication& app)
 {
+    if (app.name().contains("cursor", Qt::CaseInsensitive) || 
+        app.path().contains("cursor", Qt::CaseInsensitive)) {
+        qDebug() << "StartWindow::applicationUpdated: Processing Cursor app - Name:" << app.name() << "Path:" << app.path() << "Icon:" << app.iconName();
+    }
+    
     applicationRemoved(app.path());
 
     if(app.isNoDisplay())
@@ -444,6 +478,11 @@ void StartWindow::applicationUpdated(const DesktopApplication& app)
     action->setData(app.path());
     action->setText(app.name());
     action->setIcon(QIcon(QPixmap::fromImage(app.iconImage())));
+    
+    if (app.name().contains("cursor", Qt::CaseInsensitive) || 
+        app.path().contains("cursor", Qt::CaseInsensitive)) {
+        qDebug() << "StartWindow::applicationUpdated: Created Cursor action - Text:" << action->text() << "Icon isNull:" << action->icon().isNull();
+    }
 
     if(action->icon().isNull())
     {
@@ -506,7 +545,10 @@ void StartWindow::applicationRemoved(const QString& path)
 {
     if(m_actions.contains(path))
     {
-        delete m_actions[path];
+        QAction *action = m_actions[path];
+        if (action) {
+            delete action;
+        }
         m_actions.remove(path);
     }
 
@@ -517,14 +559,41 @@ void StartWindow::applicationRemoved(const QString& path)
     }
 }
 
+void StartWindow::onDesktopEntryAdded(const DesktopEntryData& entryData)
+{
+    // Convert DesktopEntryData to DesktopApplication and add it
+    if (entryData.type == "Application" && entryData.shouldShow() && entryData.isValid) {
+        DesktopApplication app = DesktopDataStore::instance()->convertToDesktopApplication(entryData);
+        applicationUpdated(app);
+    }
+}
+
+void StartWindow::onDesktopEntryUpdated(const DesktopEntryData& entryData)
+{
+    // Convert DesktopEntryData to DesktopApplication and update it
+    if (entryData.type == "Application" && entryData.shouldShow() && entryData.isValid) {
+        DesktopApplication app = DesktopDataStore::instance()->convertToDesktopApplication(entryData);
+        applicationUpdated(app);
+    }
+}
+
+void StartWindow::onDesktopEntryRemoved(const QString& desktopFile)
+{
+    // Remove the application
+    applicationRemoved(desktopFile);
+}
+
 void StartWindow::actionTriggered()
 {
-    DesktopApplications::instance()->launch(static_cast<QAction*>(sender())->data().toString());
+    DesktopDataStore::instance()->launchApplication(static_cast<QAction*>(sender())->data().toString());
 }
 
 void StartWindow::on_menuList_itemActivated(QListWidgetItem *item)
 {
     ui->itemsList->clear();
+    if(!item)
+        return;
+        
     if(!item->data(Qt::UserRole).isNull())
     {
         QMenu *menu = getSubMenu(item->data(Qt::UserRole).toString());
@@ -533,17 +602,21 @@ void StartWindow::on_menuList_itemActivated(QListWidgetItem *item)
 
         foreach(QAction *action, menu->actions())
         {
-            QListWidgetItem *newItem = new QListWidgetItem(action->icon(), action->text(), ui->itemsList );
-            newItem->setToolTip( action->toolTip() );
-            newItem->setData(Qt::UserRole, action->data());
+            if (action) {
+                QListWidgetItem *newItem = new QListWidgetItem(action->icon(), action->text(), ui->itemsList );
+                newItem->setToolTip( action->toolTip() );
+                newItem->setData(Qt::UserRole, action->data());
+            }
         }
     }
     else if(item->text() == tr("All"))
     {
         foreach (QAction *action, m_actions) {
-            QListWidgetItem *newItem = new QListWidgetItem(action->icon(), action->text(), ui->itemsList );
-            newItem->setToolTip( action->toolTip() );
-            newItem->setData(Qt::UserRole, action->data());
+            if (action) {
+                QListWidgetItem *newItem = new QListWidgetItem(action->icon(), action->text(), ui->itemsList );
+                newItem->setToolTip( action->toolTip() );
+                newItem->setData(Qt::UserRole, action->data());
+            }
         }
     }    else if(item->text() == tr("Favorites"))
     {
@@ -563,9 +636,11 @@ void StartWindow::on_menuList_itemActivated(QListWidgetItem *item)
         else
         {
             foreach (QAction *action, m_favorites->actions()) {
-                QListWidgetItem *newItem = new QListWidgetItem(action->icon(), action->text(), ui->itemsList );
-                newItem->setToolTip( action->toolTip() );
-                newItem->setData(Qt::UserRole, action->data());
+                if (action) {
+                    QListWidgetItem *newItem = new QListWidgetItem(action->icon(), action->text(), ui->itemsList );
+                    newItem->setToolTip( action->toolTip() );
+                    newItem->setData(Qt::UserRole, action->data());
+                }
             }
         }
 
@@ -573,8 +648,7 @@ void StartWindow::on_menuList_itemActivated(QListWidgetItem *item)
     else if(item->text() == tr("Recently Used"))
     {
         // Load recently used applications from settings
-        QSettings settings(this);
-        QStringList recentApps = settings.value("recentlyUsed", QStringList()).toStringList();
+        QStringList recentApps = Settings::value("Main", "recentlyUsed", QStringList()).toStringList();
         
         // Display up to 10 most recent apps
         int count = 0;
@@ -583,10 +657,13 @@ void StartWindow::on_menuList_itemActivated(QListWidgetItem *item)
             
             if(m_actions.contains(appfile) && m_actions[appfile] != 0)
             {
-                QListWidgetItem *newItem = new QListWidgetItem(m_actions[appfile]->icon(), m_actions[appfile]->text(), ui->itemsList);
-                newItem->setToolTip(m_actions[appfile]->toolTip());
-                newItem->setData(Qt::UserRole, m_actions[appfile]->data());
-                count++;
+                QAction *action = m_actions[appfile];
+                if (action) {
+                    QListWidgetItem *newItem = new QListWidgetItem(action->icon(), action->text(), ui->itemsList);
+                    newItem->setToolTip(action->toolTip());
+                    newItem->setData(Qt::UserRole, action->data());
+                    count++;
+                }
             }
         }
     }
@@ -601,8 +678,7 @@ void StartWindow::on_itemsList_itemActivated(QListWidgetItem *item)
         QString appfile = item->data(Qt::UserRole).toString();
         
         // Track this as recently used
-        QSettings settings(this);
-        QStringList recentApps = settings.value("recentlyUsed", QStringList()).toStringList();
+        QStringList recentApps = Settings::value("Main", "recentlyUsed", QStringList()).toStringList();
         
         // Remove if already in list (to move to top)
         recentApps.removeAll(appfile);
@@ -616,10 +692,10 @@ void StartWindow::on_itemsList_itemActivated(QListWidgetItem *item)
         }
         
         // Save updated list
-        settings.setValue("recentlyUsed", recentApps);
+        Settings::setValue("Main", "recentlyUsed", recentApps);
         
         // Launch the application
-        DesktopApplications::instance()->launch(appfile);
+        DesktopDataStore::instance()->launchApplication(appfile);
         hide();
     }
 }
@@ -673,13 +749,17 @@ void StartWindow::setFocused()
 
     ui->searchEdit->clear();
     ui->menuList->setCurrentRow(0);
-    on_menuList_itemActivated(ui->menuList->currentItem());
+    
+    // Only call itemActivated if there are items in the menu list
+    if (ui->menuList->count() > 0) {
+        on_menuList_itemActivated(ui->menuList->currentItem());
+    }
 }
 
 
 void StartWindow::focusOutEvent(QFocusEvent *)
 {
-    if(m_contextMenu->isVisible())
+    if(m_contextMenu && m_contextMenu->isVisible())
         return;
 
     hide();

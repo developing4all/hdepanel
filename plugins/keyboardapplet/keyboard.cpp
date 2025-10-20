@@ -39,15 +39,22 @@ QString Keyboard::getCurrentLayout()
 
     Display* dpy = XOpenDisplay(nullptr);
     if (!dpy) return layout;
-    XkbDescRec* _kbdDescPtr = XkbAllocKeyboard();
-    XkbGetNames(dpy, XkbSymbolsNameMask, _kbdDescPtr);
-    Atom symName = _kbdDescPtr -> names -> symbols;
-    QString layoutString = XGetAtomName(dpy, symName);
-    if(layoutString.split("+").count() == 3)
-    {
-        layout = layoutString.split("+")[1];
+    XkbDescRec* kbd = XkbAllocKeyboard();
+    if (kbd) {
+        if (XkbGetNames(dpy, XkbSymbolsNameMask, kbd) == Success && kbd->names && kbd->names->symbols) {
+            Atom symName = kbd->names->symbols;
+            char* name = XGetAtomName(dpy, symName);
+            if (name) {
+                const QString layoutString = QString::fromLatin1(name);
+                if(layoutString.split("+").count() == 3) {
+                    layout = layoutString.split("+")[1];
+                }
+                XFree(name);
+            }
+        }
+        XkbFreeKeyboard(kbd, XkbAllNamesMask, True);
     }
-
+    XCloseDisplay(dpy);
     return layout;
 }
 

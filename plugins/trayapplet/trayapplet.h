@@ -99,6 +99,10 @@ private:
 	int m_iconSize;
 	int m_spacing;
     class SniWatcher* m_sniWatcher; // Wayland: DBus-based tray
+    bool m_destroying = false;
+
+public:
+    bool isDestroying() const { return m_destroying; }
 };
 
 

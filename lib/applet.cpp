@@ -112,20 +112,23 @@ void Applet::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QW
     Q_UNUSED(option)
     Q_UNUSED(widget)
 
-	if(m_size.width() < 32)
+    if(m_size.width() < 32 || m_size.height() <= 0)
 		return; // Too small to draw a background (don't want to deal with weird corner cases).
 
 	if(!m_interactive)
 		return; // Currently, background is only used for highlight on interactive applets.
 
 	painter->setPen(Qt::NoPen);
-	qreal radius = (m_size.width()*m_size.width() + m_size.height()*m_size.height()) / (4.0*m_size.height());
+    qreal radius = (m_size.width()*m_size.width() + m_size.height()*m_size.height()) / (4.0*m_size.height());
 	QPointF center(m_size.width()/2.0, m_size.height() + radius - m_size.height()/2.0);
 	static const qreal radiusInc = 10.0;
 	QRadialGradient gradient(center, radius + radiusInc, center);
 	QColor highlightColor(255, 255, 255, static_cast<int>(150*m_highlightIntensity));
-	gradient.setColorAt(0.0, highlightColor);
-	gradient.setColorAt((radius - m_size.height()/2.0)/(radius + radiusInc), highlightColor);
+    gradient.setColorAt(0.0, highlightColor);
+    // Ensure the stop position is within [0, 1]
+    qreal stop = (radius - m_size.height()/2.0) / (radius + radiusInc);
+    if (stop < 0.0) stop = 0.0; else if (stop > 1.0) stop = 1.0;
+    gradient.setColorAt(stop, highlightColor);
 	gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
 	painter->setBrush(QBrush(gradient));
 	painter->drawRect(boundingRect());

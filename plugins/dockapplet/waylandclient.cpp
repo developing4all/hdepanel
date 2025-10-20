@@ -29,6 +29,7 @@
 #include "dockapplet.h"
 #include "dockitem.h"
 #include "waylandsupport.h"
+#include "../../lib/unifiediconservice.h"
 #include <QtCore/QDebug>
 #include <QtCore/QTimer>
 #include <QGraphicsScene>
@@ -93,7 +94,7 @@ void WaylandClient::updateFromWindow(const WaylandWindow& window)
     // Set name, app ID, and icon from the window data
     m_name = window.title;
     m_appId = window.appId;
-    m_icon = QIcon::fromTheme(window.iconName);
+    m_icon = UnifiedIconService::instance()->loadApplicationIcon(window.appId, QString(), 32);
     
     // Title change detection removed for cleaner output
     
@@ -125,7 +126,7 @@ void WaylandClient::updateIcon()
     // Use the icon name from the Wayland window
     // This will be set in updateFromWindow()
     if (m_icon.isNull()) {
-        m_icon = QIcon::fromTheme("application-x-executable");
+        m_icon = UnifiedIconService::instance()->loadIcon("application-x-executable", 32);
     }
 }
 

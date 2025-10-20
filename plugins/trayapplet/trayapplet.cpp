@@ -59,9 +59,20 @@ TrayItem::TrayItem(TrayApplet* trayApplet, unsigned long window)
 
 TrayItem::~TrayItem()
 {
-	X11Support::reparentWindow(m_window, X11Support::rootWindow());
+    // Guard X11 calls during shutdown or on non-X11 platforms
+#if QT_VERSION >= 0x050000
+    const bool isX11 = qApp && qApp->platformName().toLower().contains("xcb");
+#else
+    const bool isX11 = true;
+#endif
+    if (isX11 && m_window) {
+        X11Support::reparentWindow(m_window, X11Support::rootWindow());
+    }
 
-	m_trayApplet->unregisterTrayItem(this);
+    // Avoid double-removal during TrayApplet destruction
+    if (m_trayApplet && !m_trayApplet->isDestroying()) {
+        m_trayApplet->unregisterTrayItem(this);
+    }
 }
 
 void TrayItem::setPosition(const QPoint& position)
@@ -124,6 +135,7 @@ TrayApplet::TrayApplet(PanelWindow* panelWindow)
 TrayApplet::~TrayApplet()
 {
     qDebug() << "Deleting tray";
+    m_destroying = true;
     close();
 }
 
@@ -141,10 +153,11 @@ void TrayApplet::close()
 #endif
 		X11Support::freeSystemTray();
 
-	while(!m_trayItems.isEmpty())
-	{
-		delete m_trayItems.takeLast();
-	}
+    // Delete tray items safely
+    while(!m_trayItems.isEmpty()) {
+        TrayItem* item = m_trayItems.takeLast();
+        if (item) delete item;
+    }
 }
 
 bool TrayApplet::init()
@@ -190,7 +203,10 @@ void TrayApplet::registerTrayItem(TrayItem* trayItem)
 
 void TrayApplet::unregisterTrayItem(TrayItem* trayItem)
 {
-	m_trayItems.remove(m_trayItems.indexOf(trayItem));
+    int idx = m_trayItems.indexOf(trayItem);
+    if (idx >= 0 && idx < m_trayItems.size()) {
+        m_trayItems.removeAt(idx);
+    }
 	m_panelWindow->updateLayout();
 }
 

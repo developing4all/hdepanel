@@ -49,7 +49,6 @@
 
 class IconLoader;
 class X11Support;
-class DesktopApplications;
 
 #if QT_VERSION >= 0x050000
 class MyXcbEventFilter : public QAbstractNativeEventFilter
@@ -120,7 +119,6 @@ private:
 	static PanelApplication* m_instance;
 	IconLoader* m_iconLoader;
 	X11Support* m_x11support;
-	DesktopApplications* m_desktopApplications;
 
 	QString m_fontName;
 	QString m_iconThemeName;

@@ -78,7 +78,11 @@ QSize StartApplet::desiredSize()
 bool StartApplet::init()
 {
     setInteractive(true);
-    return m_start->init();
+    
+    // Initialize StartWindow - it will set up signal connections and start loading applications in background
+    bool result = m_start->init();
+    
+    return result;
 }
 
 

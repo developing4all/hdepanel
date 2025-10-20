@@ -14,6 +14,7 @@
 #include <QWidget>
 
 class QMenu;
+class DesktopEntryData;
 
 namespace Ui {
 class StartWindow;
@@ -56,6 +57,7 @@ public:
     ~StartWindow();
 
     bool init();
+    void initAsync();
     void close(){}
 
 protected:
@@ -67,6 +69,9 @@ private slots:
     void actionTriggered();
     void applicationUpdated(const DesktopApplication& app);
     void applicationRemoved(const QString& path);
+    void onDesktopEntryAdded(const DesktopEntryData& entryData);
+    void onDesktopEntryUpdated(const DesktopEntryData& entryData);
+    void onDesktopEntryRemoved(const QString& desktopFile);
     void showContextMenuForWidget(const QPoint &pos);
     void addToFavorite();
     void removeFromFavorite();

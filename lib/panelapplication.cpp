@@ -26,6 +26,8 @@
 
 #include "panelapplication.h"
 #include "settings.h"
+#include "unifiediconservice.h"
+#include "desktopdatastore.h"
 
 #include <QAction>
 #include <QDateTime>
@@ -71,15 +73,12 @@ PanelApplication::PanelApplication(int& argc, char** argv)
     m_x11support = new X11Support();
     installEventFilter(m_x11support);
 #endif
-    m_desktopApplications = new DesktopApplications();
-
-    //QObject::connect(this, SIGNAL(aboutToQuit()), this, SLOT(deletePanels()) );
 }
 
 PanelApplication::~PanelApplication()
 {
     deletePanels();
-    delete m_desktopApplications;
+
     if (m_x11support)
         delete m_x11support;
     delete m_iconLoader;
@@ -173,6 +172,13 @@ void PanelApplication::init()
 #if QT_VERSION >= 0x050000
     installNativeEventFilter(&myXEv);
 #endif
+    
+    // Start loading desktop entries once at application startup
+    DesktopDataStore* dataStore = DesktopDataStore::instance();
+    if (dataStore) {
+        dataStore->loadAllDesktopEntries();
+    }
+    
     // Try to detect system icon theme
     QString systemIconTheme = detectSystemIconTheme();
     if (!systemIconTheme.isEmpty()) {
@@ -183,7 +189,7 @@ void PanelApplication::init()
     
     // This should be changed in any panel
     // Read the same key used by settings dialog
-    setIconThemeName(Settings::value("General", "iconThemeName", QVariant("default")).toString());
+    setIconThemeName(Settings::value("Main", "iconThemeName", QVariant("default")).toString());
 
     QStringList panels = Settings::value("", "panels", QStringList() ).toStringList();
 
@@ -250,15 +256,9 @@ void PanelApplication::setIconThemeName(const QString& iconThemeName)
     m_iconThemeName = normalizedThemeName;
     QIcon::setThemeName(m_iconThemeName);
 
-    // Clear IconLoader cache to force reload with new theme
-    if(m_iconLoader) {
-        m_iconLoader->clearCache();
-    }
+    // Clear unified icon service cache to force reload with new theme
+    UnifiedIconService::instance()->setThemeName(m_iconThemeName);
 
-    // Refresh desktop applications to reload icons with new theme
-    if(m_desktopApplications) {
-        m_desktopApplications->refreshApplications();
-    }
     emit iconThemeChanged(m_iconThemeName); // Emit signal after theme change
 }
 

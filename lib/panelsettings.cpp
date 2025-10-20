@@ -194,7 +194,7 @@ void PanelSettings::readSettings()
 void PanelSettings::handleThemeActivated(const QString &theme)
 {
     ((PanelApplication *)qApp)->setIconThemeName(theme);
-    Settings::setValue("General", "iconThemeName", theme);
+    Settings::setValue("Main", "iconThemeName", theme);
 }
 
 void PanelSettings::on_verticalPosition_activated(int index)

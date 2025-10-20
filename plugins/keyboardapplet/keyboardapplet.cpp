@@ -33,6 +33,7 @@
 #include <QApplication>
 #include <QPainter>
 #include <QGraphicsSceneContextMenuEvent>
+#include <QGraphicsScene>
 
 /*
 #include <qxt/QxtCore/qxtglobal.h>
@@ -66,16 +67,41 @@ KeyboardApplet::KeyboardApplet(PanelWindow *panelWindow)
 
 KeyboardApplet::~KeyboardApplet()
 {
-    delete m_textItem;
+    m_destroying = true;
+    close();
+    // m_textItem is a QGraphicsItem child; it will be deleted with the applet
+    m_textItem = nullptr;
+}
+void KeyboardApplet::close()
+{
+    // Proactively delete global shortcuts to unregister native filters before app shutdown
+    if (forwardShortcut) {
+        disconnect(forwardShortcut, nullptr, this, nullptr);
+        delete forwardShortcut;
+        forwardShortcut = nullptr;
+    }
+    if (backwardShortcut) {
+        disconnect(backwardShortcut, nullptr, this, nullptr);
+        delete backwardShortcut;
+        backwardShortcut = nullptr;
+    }
+
+    // Detach from scene to avoid dangling scene pointers during teardown
+    if (scene()) {
+        scene()->removeItem(this);
+    }
+    setParentItem(nullptr);
 }
 
 void KeyboardApplet::setPanelWindow(PanelWindow* panelWindow)
 {
     Applet::setPanelWindow(panelWindow);
-
-    m_textItem = new TextGraphicsItem(this);
-    m_textItem->setColor(Qt::white);
-    m_textItem->setFont(m_panelWindow->font());
+    if (!m_textItem) {
+        m_textItem = new TextGraphicsItem(this);
+        m_textItem->setColor(Qt::white);
+    }
+    if (m_panelWindow)
+        m_textItem->setFont(m_panelWindow->font());
 }
 
 bool KeyboardApplet::init()

@@ -65,7 +65,7 @@ public:
     KeyboardApplet(PanelWindow* panelWindow = 0);
     ~KeyboardApplet();
 
-    void close(){}
+    void close();
     virtual void setPanelWindow(PanelWindow* panelWindow);
 
     bool init();
@@ -129,6 +129,8 @@ private:
     QxtGlobalShortcut *forwardShortcut;
 
     TextGraphicsItem* m_textItem;
+
+    bool m_destroying = false;
 
 };
 

@@ -25,6 +25,7 @@
 #include "gnomewindowmanager.h"
 #include "../waylandsupport.h"
 #include "../desktopapplications.h"
+#include "../desktopdatastore.h"
 #include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -228,10 +229,28 @@ QList<WaylandWindow> GNOMEWindowManager::getWindowsFromExtension()
         // Set icon name - try to get from JSON first, then fallback to app detection
         window.iconName = obj["icon_name"].toString();
         if (window.iconName.isEmpty()) {
-            // Fallback to app detection using DesktopApplications
-            DesktopApplications* desktopApps = DesktopApplications::instance();
-            if (desktopApps) {
-                window.iconName = desktopApps->getApplicationIcon(appId, wmClass);
+            // Fallback to app detection using DesktopDataStore
+            DesktopDataStore* dataStore = DesktopDataStore::instance();
+            if (dataStore) {
+                // Search for applications by executable name or WM class
+                QList<DesktopEntryData> matches = dataStore->searchByExecutable(appId);
+                if (matches.isEmpty() && !wmClass.isEmpty()) {
+                    // Try searching by WM class in the startupWMClass field
+                    QList<DesktopEntryData> allEntries = dataStore->getAllDesktopEntries();
+                    foreach (const DesktopEntryData& entry, allEntries) {
+                        if (entry.startupWMClass == wmClass) {
+                            matches.append(entry);
+                            break;
+                        }
+                    }
+                }
+                if (!matches.isEmpty()) {
+                    window.iconName = matches.first().icon;
+                } else {
+                    // Final fallback
+                    QString fallbackIcon = !appId.isEmpty() ? appId.toLower() : wmClass.toLower();
+                    window.iconName = fallbackIcon.isEmpty() ? "application-x-executable" : fallbackIcon;
+                }
             } else {
                 // Final fallback
                 QString fallbackIcon = !appId.isEmpty() ? appId.toLower() : wmClass.toLower();

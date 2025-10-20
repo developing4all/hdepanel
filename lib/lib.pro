@@ -82,8 +82,10 @@ contains(DEFINES, HDE_HAVE_WAYLAND) {
 HEADERS += animationutils.h \
            applet.h \
            desktopapplications.h \
+           desktopdatastore.h \
            dpisupport.h \
            iconloader.h \
+           unifiediconservice.h \
            panelapplication.h \
            panelwindow.h \
            textgraphicsitem.h \
@@ -106,8 +108,10 @@ FORMS += panelsettings.ui \
 
 SOURCES += applet.cpp \
            desktopapplications.cpp \
+           desktopdatastore.cpp \
            dpisupport.cpp \
            iconloader.cpp \
+           unifiediconservice.cpp \
            panelapplication.cpp \
            panelwindow.cpp \
            textgraphicsitem.cpp \

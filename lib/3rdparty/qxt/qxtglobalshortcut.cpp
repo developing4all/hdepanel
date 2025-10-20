@@ -39,7 +39,12 @@ int QxtGlobalShortcutPrivate::ref = 0;
 QAbstractEventDispatcher::EventFilter QxtGlobalShortcutPrivate::prevEventFilter = 0;
 #   endif
 #endif // Q_OS_MAC
-QHash<QPair<quint32, quint32>, QxtGlobalShortcut*> QxtGlobalShortcutPrivate::shortcuts;
+// Avoid static destructor ordering issues by using a function-local static
+QHash<QPair<quint32, quint32>, QxtGlobalShortcut*>& QxtGlobalShortcutPrivate::shortcuts()
+{
+    static QHash<QPair<quint32, quint32>, QxtGlobalShortcut*>* map = new QHash<QPair<quint32, quint32>, QxtGlobalShortcut*>();
+    return *map;
+}
 
 QxtGlobalShortcutPrivate::QxtGlobalShortcutPrivate() : enabled(true), key(Qt::Key(0)), mods(Qt::NoModifier)
 {
@@ -81,7 +86,7 @@ bool QxtGlobalShortcutPrivate::setShortcut(const QKeySequence& shortcut)
     const quint32 nativeMods = nativeModifiers(mods);
     const bool res = registerShortcut(nativeKey, nativeMods);
     if (res)
-        shortcuts.insert(qMakePair(nativeKey, nativeMods), &qxt_p());
+        shortcuts().insert(qMakePair(nativeKey, nativeMods), &qxt_p());
     else
         qWarning() << "QxtGlobalShortcut failed to register:" << QKeySequence(key + mods).toString();
     return res;
@@ -92,10 +97,10 @@ bool QxtGlobalShortcutPrivate::unsetShortcut()
     bool res = false;
     const quint32 nativeKey = nativeKeycode(key);
     const quint32 nativeMods = nativeModifiers(mods);
-    if (shortcuts.value(qMakePair(nativeKey, nativeMods)) == &qxt_p())
+    if (shortcuts().value(qMakePair(nativeKey, nativeMods)) == &qxt_p())
         res = unregisterShortcut(nativeKey, nativeMods);
     if (res)
-        shortcuts.remove(qMakePair(nativeKey, nativeMods));
+        shortcuts().remove(qMakePair(nativeKey, nativeMods));
     else
         qWarning() << "QxtGlobalShortcut failed to unregister:" << QKeySequence(key + mods).toString();
     key = Qt::Key(0);
@@ -105,7 +110,7 @@ bool QxtGlobalShortcutPrivate::unsetShortcut()
 
 void QxtGlobalShortcutPrivate::activateShortcut(quint32 nativeKey, quint32 nativeMods)
 {
-    QxtGlobalShortcut* shortcut = shortcuts.value(qMakePair(nativeKey, nativeMods));
+    QxtGlobalShortcut* shortcut = shortcuts().value(qMakePair(nativeKey, nativeMods));
     if (shortcut && shortcut->isEnabled())
         emit shortcut->activated();
 }

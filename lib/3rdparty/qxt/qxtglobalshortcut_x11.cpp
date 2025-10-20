@@ -35,9 +35,13 @@
 #   include <QX11Info>
 #else
 #   include <QApplication>
-#include <QtX11Extras/QX11Info>
-//#   include <qpa/qplatformnativeinterface.h>
 #   include <xcb/xcb.h>
+#   if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+#       include <QGuiApplication>
+#       include <QtCore/qnativeinterface.h>
+#   else
+#       include <QtX11Extras/QX11Info>
+#   endif
 #endif
 
 #include <X11/Xlib.h>
@@ -97,13 +101,16 @@ public:
 #if QT_VERSION < QT_VERSION_CHECK(5,0,0)
         m_display = QX11Info::display();
 #else
-        /*
-        QPlatformNativeInterface *native = qApp->platformNativeInterface();
-        void *display = native->nativeResourceForScreen(QByteArray("display"),
-                                                        QGuiApplication::primaryScreen());
-        m_display = reinterpret_cast<Display *>(display);
-        */
+#   if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+        if (QGuiApplication::instance()) {
+            auto *x11 = qApp->nativeInterface<QNativeInterface::QX11Application>();
+            m_display = x11 ? x11->display() : nullptr;
+        } else {
+            m_display = nullptr;
+        }
+#   else
         m_display = QX11Info::display();
+#   endif
 #endif
     }
 
@@ -167,8 +174,13 @@ bool QxtGlobalShortcutPrivate::eventFilter(void *message)
         unsigned int keycode = key->keycode;
         unsigned int keystate = key->state;
 #else
+#  if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+bool QxtGlobalShortcutPrivate::nativeEventFilter(const QByteArray & eventType,
+    void *message, qintptr *result)
+#  else
 bool QxtGlobalShortcutPrivate::nativeEventFilter(const QByteArray & eventType,
     void *message, long *result)
+#  endif
 {
     Q_UNUSED(result);
 

@@ -42,6 +42,8 @@
 #include "../../lib/textgraphicsitem.h"
 #include "../../lib/panelwindow.h"
 #include "../../lib/desktopapplications.h"
+#include "../../lib/desktopdatastore.h"
+#include "../../lib/unifiediconservice.h"
 #include "../../lib/dpisupport.h"
 
 #include "../../lib/panelwindow.h"
@@ -65,7 +67,7 @@ SubMenu::SubMenu(QMenu* parent, const QString& title, const QString& category, c
     m_menu->setStyle(parent->style());
     m_menu->setFont(parent->font());
     m_menu->setTitle(title);
-    m_menu->setIcon(QIcon::fromTheme(icon));
+    m_menu->setIcon(UnifiedIconService::instance()->loadIcon(icon, 32));
     m_menu->menuAction()->setIconVisibleInMenu(true);
     m_category = category;
 }
@@ -122,7 +124,7 @@ void ApplicationsMenuApplet::setPanelWindow(PanelWindow *panelWindow)
     m_textItem->setText(tr("Applications"));
 #if QT_VERSION >= 0x050000
     // TODO: add oslogo to act like M$_WIN
-    m_textItem->setImage(QImage(QIcon::fromTheme("start-here").pixmap(22,22).toImage()));
+    m_textItem->setImage(UnifiedIconService::instance()->loadIconAsImage("start-here", 22));
 #endif
 }
 
@@ -151,17 +153,19 @@ bool ApplicationsMenuApplet::init()
 {
     setInteractive(true);
 
-    connect(DesktopApplications::instance(), SIGNAL(applicationUpdated(DesktopApplication)), this, SLOT(applicationUpdated(DesktopApplication)));
-    connect(DesktopApplications::instance(), SIGNAL(applicationRemoved(QString)), this, SLOT(applicationRemoved(QString)));
-
-    QList<DesktopApplication> apps = DesktopApplications::instance()->applications();
-    foreach(const DesktopApplication& app, apps)
-    {
-        applicationUpdated(app);
+    // Initialize data store with desktop applications
+    DesktopDataStore* dataStore = DesktopDataStore::instance();
+    
+    if (dataStore) {
+        // Connect to data store signals for updates
+        connect(dataStore, &DesktopDataStore::desktopEntryAdded, this, &ApplicationsMenuApplet::onDataStoreApplicationAdded);
+        connect(dataStore, &DesktopDataStore::desktopEntryUpdated, this, &ApplicationsMenuApplet::onDataStoreApplicationUpdated);
+        connect(dataStore, &DesktopDataStore::desktopEntryRemoved, this, &ApplicationsMenuApplet::onDataStoreApplicationRemoved);
     }
 
+
     m_menu->addSeparator();
-    m_menu->addAction(QIcon::fromTheme("application-exit"), tr("Quit"), qApp, SLOT(quit()));
+    m_menu->addAction(UnifiedIconService::instance()->loadIcon("application-exit", 32), tr("Quit"), qApp, SLOT(quit()));
 
     return true;
 }
@@ -208,7 +212,7 @@ bool ApplicationsMenuApplet::isHighlighted()
 
 void ApplicationsMenuApplet::actionTriggered()
 {
-    DesktopApplications::instance()->launch(static_cast<QAction*>(sender())->data().toString());
+    DesktopDataStore::instance()->launchApplication(static_cast<QAction*>(sender())->data().toString());
 }
 
 void ApplicationsMenuApplet::applicationUpdated(const DesktopApplication& app)
@@ -222,7 +226,10 @@ void ApplicationsMenuApplet::applicationUpdated(const DesktopApplication& app)
     action->setIconVisibleInMenu(true);
     action->setData(app.path());
     action->setText(app.name());
-    action->setIcon(QIcon(QPixmap::fromImage(app.iconImage())));
+    
+    QIcon icon = UnifiedIconService::instance()->loadApplicationIcon(app, 32);
+    
+    action->setIcon(icon);
 
     connect(action, SIGNAL(triggered()), this, SLOT(actionTriggered()));
 
@@ -284,6 +291,119 @@ void ApplicationsMenuApplet::applicationRemoved(const QString& path)
         if(m_subMenus[i].menu()->actions().isEmpty())
             m_menu->removeAction(m_subMenus[i].menu()->menuAction());
     }
+}
+
+void ApplicationsMenuApplet::populateMenuFromDataStore()
+{
+    DesktopDataStore* dataStore = DesktopDataStore::instance();
+    if (!dataStore) {
+        qDebug() << "ApplicationsMenuApplet: Data store is null!";
+        return;
+    }
+    
+    // Get all desktop entries from data store
+    QList<DesktopEntryData> entries = dataStore->getAllDesktopEntries();
+    
+    foreach (const DesktopEntryData& entryData, entries) {
+        if (entryData.name.contains("cursor", Qt::CaseInsensitive) || 
+            entryData.desktopFile.contains("cursor", Qt::CaseInsensitive)) {
+        }
+        addApplicationToMenu(entryData);
+    }
+}
+
+void ApplicationsMenuApplet::addApplicationToMenu(const DesktopEntryData& entryData)
+{
+    if (!entryData.shouldShow() || !entryData.isValid) {
+        return;
+    }
+    
+    // Only show Application type entries
+    if (entryData.type != "Application") {
+        return;
+    }
+    
+    // Remove existing action if it exists
+    removeApplicationFromMenu(entryData.desktopFile);
+    
+    QAction* action = new QAction(m_menu);
+    action->setIconVisibleInMenu(true);
+    action->setData(entryData.desktopFile);
+    action->setText(entryData.getDisplayName());
+    
+    // Use unified icon service for consistent icon loading
+    QIcon icon = UnifiedIconService::instance()->loadIcon(entryData.icon, 32);
+    action->setIcon(icon);
+    
+    connect(action, SIGNAL(triggered()), this, SLOT(actionTriggered()));
+    
+    // Add to relevant menu based on categories
+    int subMenuIndex = m_subMenus.size() - 1; // By default put it in "Other"
+    for (int i = 0; i < m_subMenus.size() - 1; i++) { // Without "Other"
+        if (entryData.categories.contains(m_subMenus[i].category())) {
+            subMenuIndex = i;
+            break;
+        }
+    }
+    
+    QMenu* menu = m_subMenus[subMenuIndex].menu();
+    QList<QAction*> actions = menu->actions();
+    QAction* before = NULL;
+    
+    // Insert in alphabetical order
+    for (int i = 0; i < actions.size(); i++) {
+        if (entryData.getDisplayName() < actions[i]->text()) {
+            before = actions[i];
+            break;
+        }
+    }
+    
+    menu->insertAction(before, action);
+    m_actions[entryData.desktopFile] = action;
+    
+    // Show the submenu if it has items
+    if (menu->actions().size() == 1) {
+        m_menu->addAction(menu->menuAction());
+    }
+}
+
+void ApplicationsMenuApplet::removeApplicationFromMenu(const QString& desktopFile)
+{
+    if (m_actions.contains(desktopFile)) {
+        QAction* action = m_actions[desktopFile];
+        
+        // Find which submenu contains this action
+        for (int i = 0; i < m_subMenus.size(); i++) {
+            QMenu* menu = m_subMenus[i].menu();
+            if (menu->actions().contains(action)) {
+                menu->removeAction(action);
+                
+                // Hide the submenu if it's empty
+                if (menu->actions().isEmpty()) {
+                    m_menu->removeAction(menu->menuAction());
+                }
+                break;
+            }
+        }
+        
+        delete action;
+        m_actions.remove(desktopFile);
+    }
+}
+
+void ApplicationsMenuApplet::onDataStoreApplicationAdded(const DesktopEntryData& entryData)
+{
+    addApplicationToMenu(entryData);
+}
+
+void ApplicationsMenuApplet::onDataStoreApplicationUpdated(const DesktopEntryData& entryData)
+{
+    addApplicationToMenu(entryData);
+}
+
+void ApplicationsMenuApplet::onDataStoreApplicationRemoved(const QString& desktopFile)
+{
+    removeApplicationFromMenu(desktopFile);
 }
 
 Applet* ApplicationsMenuAppletPlugin::createApplet(PanelWindow* panelWindow) {return new ApplicationsMenuApplet(panelWindow);}

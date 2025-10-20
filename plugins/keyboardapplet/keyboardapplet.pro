@@ -17,6 +17,7 @@ INCLUDEPATH    += ../../lib/3rdparty/qxt
 #INCLUDEPATH += /usr/include/qxt/QxtCore/
 
 LIBS += -L../../ -lhdepanel
+LIBS += -lX11
 
 HEADERS += \
     ../../lib/applet.h \
@@ -29,7 +30,9 @@ HEADERS += \
 SOURCES += \
     keyboardapplet.cpp \
     keyboardlayoutdialog.cpp \
-    keyboard.cpp
+    keyboard.cpp \
+    ../../lib/3rdparty/qxt/qxtglobalshortcut.cpp \
+    ../../lib/3rdparty/qxt/qxtglobalshortcut_x11.cpp
 
 
 #LIBS += -lX11 -lGL -lXdamage -lXcomposite

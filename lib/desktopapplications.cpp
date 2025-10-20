@@ -25,6 +25,7 @@
  * END_COMMON_COPYRIGHT_HEADER */
 
 #include "desktopapplications.h"
+#include "desktopdatastore.h"
 
 #include <QtCore/QTimer>
 #include <QtCore/QFileSystemWatcher>
@@ -33,11 +34,14 @@
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
 #include <QtCore/QTextStream>
+#include <QtCore/QDebug>
 #include <climits>
 #include <QtCore/QProcess>
 #include <QtCore/QLocale>
+#include <QtCore/QCoreApplication>
 #include <QtGui/QIcon>
-#include "iconloader.h"
+#include <QtGui/QGuiApplication>
+#include "unifiediconservice.h"
 #include "dpisupport.h"
 
 bool DesktopApplication::init(const QString& path)
@@ -101,11 +105,16 @@ bool DesktopApplication::init(const QString& path)
 			m_iconName = value;
 		}
         if(key == "Categories")
-#if QT_VERSION >= 0x060000
-            m_categories = value.split(';', Qt::SkipEmptyParts);
-#else
-            m_categories = value.split(";", QString::SkipEmptyParts);
-#endif
+        {
+            QStringList categories = value.split(';');
+            m_categories.clear();
+            for (const QString& category : categories) {
+                QString trimmed = category.trimmed();
+                if (!trimmed.isEmpty()) {
+                    m_categories.append(trimmed);
+                }
+            }
+        }
 	}
 	
 	// Use localized name if available, otherwise fall back to default name
@@ -151,6 +160,32 @@ void DesktopApplication::launch() const
 
 DesktopApplications* DesktopApplications::m_instance = NULL;
 
+// Helper function to convert DesktopEntryData to DesktopApplication
+DesktopApplication DesktopApplications::convertFromDesktopEntryData(const DesktopEntryData& entryData)
+{
+    DesktopApplication app;
+    
+    // Set basic properties
+    app.m_path = entryData.desktopFile;
+    app.m_name = entryData.getDisplayName();
+    app.m_iconName = entryData.icon;
+    app.m_categories = entryData.categories;
+    app.m_isNoDisplay = entryData.noDisplay || entryData.hidden;
+    
+    // Set exec from entryData
+    app.m_exec = entryData.exec;
+    
+    // Load icon image on-demand if we have a QGuiApplication
+    if (!entryData.icon.isEmpty() && qobject_cast<QGuiApplication*>(QCoreApplication::instance())) {
+        QImage iconImage = UnifiedIconService::instance()->loadIconAsImage(entryData.icon, 32);
+        if (!iconImage.isNull()) {
+            app.m_iconImage = iconImage;
+        }
+    }
+    
+    return app;
+}
+
 DesktopApplications::DesktopApplications()
 	: m_abortWorker(false)
 {
@@ -174,8 +209,14 @@ DesktopApplications::DesktopApplications()
 DesktopApplications::~DesktopApplications()
 {
 	m_abortWorker = true;
-	m_tasksWaitCondition.wakeOne();
-	wait();
+	m_tasksWaitCondition.wakeAll(); // Wake all waiting threads
+	
+	// Wait for thread to finish with timeout
+	if (!wait(5000)) // 5 second timeout
+	{
+		terminate();
+		wait(1000); // Give it 1 more second to terminate gracefully
+	}
 
 	delete m_watcher;
 	delete m_updateTimer;
@@ -185,14 +226,43 @@ DesktopApplications::~DesktopApplications()
 
 QList<DesktopApplication> DesktopApplications::applications()
 {
-	QMutexLocker lock(&m_applicationsMutex);
-	return m_applications.values();
+	// Get applications from DesktopDataStore instead of internal m_applications
+	DesktopDataStore* dataStore = DesktopDataStore::instance();
+	if (!dataStore) {
+		qDebug() << "DesktopApplications::applications() - DataStore is null, returning empty list";
+		return QList<DesktopApplication>();
+	}
+	
+	// Get currently loaded desktop entries (non-blocking)
+	QList<DesktopEntryData> entries = dataStore->getAllDesktopEntries();
+	
+	// Convert DesktopEntryData to DesktopApplication
+	QList<DesktopApplication> apps;
+	foreach (const DesktopEntryData& entry, entries) {
+		// Only include Application type entries that should be shown
+		if (entry.type == "Application" && entry.shouldShow() && entry.isValid) {
+			apps.append(convertFromDesktopEntryData(entry));
+		}
+	}
+	
+	return apps;
 }
 
 DesktopApplication DesktopApplications::applicationFromPath(const QString& path)
 {
-	QMutexLocker lock(&m_applicationsMutex);
-	return m_applications[path];
+	// Get application from DesktopDataStore instead of internal m_applications
+	DesktopDataStore* dataStore = DesktopDataStore::instance();
+	if (!dataStore) {
+		return DesktopApplication();
+	}
+	
+	// Get the specific desktop entry
+	DesktopEntryData entry = dataStore->getDesktopEntry(path);
+	if (entry.isValid && entry.type == "Application") {
+		return convertFromDesktopEntryData(entry);
+	}
+	
+	return DesktopApplication();
 }
 
 void DesktopApplications::launch(const QString& path)
@@ -203,29 +273,52 @@ void DesktopApplications::launch(const QString& path)
 
 void DesktopApplications::run()
 {
-	forever
+	while (!m_abortWorker)
 	{
 		// Extract next task.
 		bool isImageTask = false;
 		QString path;
 		{
 			QMutexLocker lock(&m_tasksMutex);
+			
+			// Wait for tasks with timeout to prevent infinite blocking
 			if(m_fileTasks.isEmpty() && m_imageTasks.isEmpty())
-				m_tasksWaitCondition.wait(&m_tasksMutex);
+			{
+				// Wait for up to 1 second, then check abort condition
+				if (!m_tasksWaitCondition.wait(&m_tasksMutex, 1000))
+				{
+					// Timeout occurred, check if we should abort
+					if (m_abortWorker)
+						return;
+					continue; // Try again
+				}
+			}
+			
+			// Double-check abort condition after waiting
 			if(m_abortWorker)
 				return;
+				
 			if(!m_fileTasks.isEmpty())
 			{
 				path = m_fileTasks.first();
 				m_fileTasks.removeFirst();
 			}
-			else
+			else if(!m_imageTasks.isEmpty())
 			{
 				isImageTask = true;
 				path = m_imageTasks.first();
 				m_imageTasks.removeFirst();
 			}
+			else
+			{
+				// No tasks available, continue to next iteration
+				continue;
+			}
 		}
+
+		// Additional safety check before processing
+		if (m_abortWorker)
+			return;
 
 		if(!isImageTask)
 		{
@@ -253,16 +346,23 @@ void DesktopApplications::run()
 		}
 		else
 		{
+			// Additional safety check before image processing
+			if (m_abortWorker)
+				return;
+				
 			// Image task.
 			m_applicationsMutex.lock();
 			QString iconName;
 			if(m_applications.contains(path))
+			{
 				iconName = m_applications[path].iconName();
+			}
 			m_applicationsMutex.unlock();
 
 			if(!iconName.isEmpty())
 			{
-				QImage iconImage = IconLoader::instance()->loadIcon(QIcon::themeName(), iconName, adjustHardcodedPixelSize(32));
+				// Use unified icon service for consistent icon loading
+				QImage iconImage = UnifiedIconService::instance()->loadIconAsImage(iconName, adjustHardcodedPixelSize(32));
 
 				m_applicationsMutex.lock();
 				if(m_applications.contains(path))
@@ -313,22 +413,23 @@ void DesktopApplications::refresh()
 	foreach(const QString& path, dirs)
 	{
 		QDir dir(path);
+		QString appsPath = dir.absoluteFilePath("applications");
 		if(dir.exists())
-			traverse(QDir(dir.absoluteFilePath("applications")));
+			traverse(QDir(appsPath));
 	}
 
-	QStringList removeList;
-	foreach(const DesktopApplication& app, m_applications)
-	{
-		if(!app.exists())
-			removeList.append(app.path());
-	}
+		QStringList removeList;
+		foreach(const DesktopApplication& app, m_applications)
+		{
+			if(!app.exists())
+				removeList.append(app.path());
+		}
 
-	foreach(const QString& path, removeList)
-	{
-		m_applications.remove(path);
-		emit applicationRemoved(path);
-	}
+		foreach(const QString& path, removeList)
+		{
+			m_applications.remove(path);
+			emit applicationRemoved(path);
+		}
 
 	m_tasksMutex.unlock();
 	m_tasksWaitCondition.wakeOne();
@@ -370,21 +471,17 @@ QString DesktopApplications::getApplicationIcon(const QString& appId, const QStr
     // Search for matching applications
     QList<DesktopApplication> matches = searchApplications(appId, wmClass);
     
-    if (matches.isEmpty()) {
-        // Fallback: use the appId or wmClass itself as the icon name
-        QString fallbackIcon = !appId.isEmpty() ? appId.toLower() : wmClass.toLower();
-        return fallbackIcon;
+    if (!matches.isEmpty()) {
+        // Return the icon from the first match
+        QString icon = matches.first().iconName();
+        if (!icon.isEmpty()) {
+            return icon;
+        }
     }
     
-    // Return the icon from the first match
-    QString icon = matches.first().iconName();
-    if (!icon.isEmpty()) {
-        return icon;
-    }
-    
-    // If no icon found, use fallback
+    // Fallback: use the appId or wmClass itself as the icon name
     QString fallbackIcon = !appId.isEmpty() ? appId.toLower() : wmClass.toLower();
-    return fallbackIcon;
+    return fallbackIcon.isEmpty() ? "application-x-executable" : fallbackIcon;
 }
 
 QList<DesktopApplication> DesktopApplications::searchApplications(const QString& appId, const QString& wmClass)

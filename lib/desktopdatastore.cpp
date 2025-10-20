@@ -27,12 +27,34 @@ DesktopEntryLoader::~DesktopEntryLoader()
 
 void DesktopEntryLoader::loadAllDesktopEntries()
 {
+    QTime loadTimer;
+    loadTimer.start();
+    
     QStringList searchPaths = getSearchPaths();
     
+    int totalFiles = 0;
     foreach (const QString& path, searchPaths) {
+        QTime dirTimer;
+        dirTimer.start();
+        int filesBefore = totalFiles;
         loadDesktopEntriesFromDirectory(path);
+        totalFiles = countFilesInDirectory(path);
     }
     emit loadingCompleted();
+}
+
+int DesktopEntryLoader::countFilesInDirectory(const QString& directoryPath) const
+{
+    QDir dir(directoryPath);
+    if (!dir.exists()) {
+        return 0;
+    }
+    
+    QStringList filters;
+    filters << "*.desktop";
+    
+    QFileInfoList fileList = dir.entryInfoList(filters, QDir::Files | QDir::Readable);
+    return fileList.size();
 }
 
 QStringList DesktopEntryLoader::getSearchPaths() const
@@ -623,6 +645,9 @@ void DesktopDataStore::addDesktopEntry(const DesktopEntryData& entryData)
         return;
     }
     
+    // Check if this is a new entry or an update
+    bool isNewEntry = !m_desktopEntries.contains(entryData.desktopFile);
+    
     // Store the entry without loading the icon image immediately
     // Icons will be loaded on-demand when needed
     m_desktopEntries[entryData.desktopFile] = entryData;
@@ -649,7 +674,12 @@ void DesktopDataStore::addDesktopEntry(const DesktopEntryData& entryData)
     // Schedule index rebuild
     m_updateTimer->start();
     
-    emit desktopEntryAdded(entryData);
+    // Only emit signal for new entries to avoid duplicate processing
+    if (isNewEntry) {
+        emit desktopEntryAdded(entryData);
+    } else {
+        emit desktopEntryUpdated(entryData);
+    }
 }
 
 void DesktopDataStore::updateDesktopEntry(const QString& desktopFile, const DesktopEntryData& entryData)

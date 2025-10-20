@@ -434,33 +434,89 @@ QImage UnifiedIconService::loadIconInternal(const QString& iconName, int size, c
         return fallback.pixmap(size, size).toImage();
     }
     
-    // Try custom IconLoader first
+    QTime iconTimer;
+    iconTimer.start();
+    
+    // Try custom IconLoader first (current theme only - fast)
     QImage result = tryCustomIconLoader(iconName, size);
     if (!result.isNull()) {
         return result;
     }
     
-    // Try Qt icon theme system
-    result = tryQtIconTheme(iconName, size);
+    // PERFORMANCE FIX: Try common icon paths directly without expensive theme operations
+    result = tryCommonIconPaths(iconName, size);
     if (!result.isNull()) {
         return result;
     }
     
-    // Try direct file search in XDG data directories
-    result = tryDirectFileSearch(iconName, size);
-    if (!result.isNull()) {
-        return result;
-    }
-    
-    // Try different sizes
-    result = tryDifferentSizes(iconName, size);
-    if (!result.isNull()) {
-        return result;
-    }
-    
-    // Final fallback
+    // Final fallback - only use Qt for the fallback icon
     QIcon fallback = QIcon::fromTheme(fallbackIcon);
     return fallback.pixmap(size, size).toImage();
+}
+
+QImage UnifiedIconService::tryCommonIconPaths(const QString& iconName, int size)
+{
+    // PERFORMANCE FIX: Check only the most common icon paths without expensive operations
+    // This avoids the slow QIcon::setThemeName() and extensive file system scans
+    
+    QStringList commonPaths;
+    
+    // Add XDG_DATA_DIRS paths
+    QStringList xdgDataDirs = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
+    foreach (const QString& dataDir, xdgDataDirs) {
+        // Try exact size first
+        commonPaths << dataDir + "/icons/hicolor/" + QString::number(size) + "x" + QString::number(size) + "/apps/" + iconName + ".png";
+        commonPaths << dataDir + "/icons/hicolor/" + QString::number(size) + "x" + QString::number(size) + "/apps/" + iconName + ".svg";
+        commonPaths << dataDir + "/icons/hicolor/" + QString::number(size) + "x" + QString::number(size) + "/apps/" + iconName + ".xpm";
+        
+        // Try common icon sizes (16, 24, 32, 48, 64, 128, 256) - very common for applications
+        QList<int> commonSizes = {16, 24, 32, 48, 64, 128, 256};
+        foreach (int commonSize, commonSizes) {
+            if (commonSize != size) { // Don't duplicate the exact size
+                commonPaths << dataDir + "/icons/hicolor/" + QString::number(commonSize) + "x" + QString::number(commonSize) + "/apps/" + iconName + ".png";
+                commonPaths << dataDir + "/icons/hicolor/" + QString::number(commonSize) + "x" + QString::number(commonSize) + "/apps/" + iconName + ".svg";
+                commonPaths << dataDir + "/icons/hicolor/" + QString::number(commonSize) + "x" + QString::number(commonSize) + "/apps/" + iconName + ".xpm";
+            }
+        }
+        
+        // Scalable icons (SVG) - very common for modern applications
+        commonPaths << dataDir + "/icons/hicolor/scalable/apps/" + iconName + ".svg";
+    }
+    
+    // Add /usr/share/pixmaps (very common location)
+    commonPaths << "/usr/share/pixmaps/" + iconName + ".png";
+    commonPaths << "/usr/share/pixmaps/" + iconName + ".svg";
+    commonPaths << "/usr/share/pixmaps/" + iconName + ".xpm";
+    
+    // Add ~/.local/share/icons/ (user-installed icons)
+    QString homeDir = QDir::homePath();
+    commonPaths << homeDir + "/.local/share/icons/" + iconName + ".png";
+    commonPaths << homeDir + "/.local/share/icons/" + iconName + ".svg";
+    commonPaths << homeDir + "/.local/share/icons/" + iconName + ".xpm";
+    
+    // Add current theme paths (if we have a theme name)
+    if (!m_themeName.isEmpty()) {
+        foreach (const QString& dataDir, xdgDataDirs) {
+            commonPaths << dataDir + "/icons/" + m_themeName + "/" + QString::number(size) + "x" + QString::number(size) + "/apps/" + iconName + ".png";
+            commonPaths << dataDir + "/icons/" + m_themeName + "/" + QString::number(size) + "x" + QString::number(size) + "/apps/" + iconName + ".svg";
+        }
+    }
+    
+    // Try each path
+    foreach (const QString& path, commonPaths) {
+        if (QFile::exists(path)) {
+            QImage image(path);
+            if (!image.isNull()) {
+                // Scale to exact size if needed
+                if (image.width() != size || image.height() != size) {
+                    image = image.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                }
+                return image;
+            }
+        }
+    }
+    
+    return QImage();
 }
 
 QImage UnifiedIconService::tryCustomIconLoader(const QString& iconName, int size)
@@ -469,29 +525,20 @@ QImage UnifiedIconService::tryCustomIconLoader(const QString& iconName, int size
         return QImage();
     }
     
-    // Try current theme first
+    // PERFORMANCE FIX: Only try current theme to avoid expensive fallback theme operations
+    // IconLoader::loadIcon() with different themes is also expensive (100+ ms per call)
     QImage result = IconLoader::instance()->loadIcon(m_themeName, iconName, adjustHardcodedPixelSize(size));
     if (!result.isNull()) {
         return result;
     }
     
-    // If current theme fails, try common fallback themes
-    QStringList fallbackThemes = {"default", "hicolor", "HighContrast", "gnome"};
-    for (const QString& theme : fallbackThemes) {
-        if (theme != m_themeName) {
-            result = IconLoader::instance()->loadIcon(theme, iconName, adjustHardcodedPixelSize(size));
-            if (!result.isNull()) {
-                return result;
-            }
-        }
-    }
-    
+    // Skip fallback themes - they're too expensive
     return QImage();
 }
 
 QImage UnifiedIconService::tryQtIconTheme(const QString& iconName, int size)
 {
-    // Try current theme first
+    // Try current theme only - no fallback themes to avoid expensive QIcon::setThemeName() calls
     QIcon icon = QIcon::fromTheme(iconName);
     if (!icon.isNull()) {
         QPixmap pixmap = icon.pixmap(adjustHardcodedPixelSize(size));
@@ -500,25 +547,9 @@ QImage UnifiedIconService::tryQtIconTheme(const QString& iconName, int size)
         }
     }
     
-    // Try fallback themes
-    QStringList fallbackThemes = {"Yaru", "Yaru-dark", "Adwaita", "HighContrast", "hicolor", "gnome", "default"};
-    for (const QString& theme : fallbackThemes) {
-        if (theme != m_themeName) {
-            QIcon::setThemeName(theme);
-            icon = QIcon::fromTheme(iconName);
-            if (!icon.isNull()) {
-                QPixmap pixmap = icon.pixmap(adjustHardcodedPixelSize(size));
-                if (!pixmap.isNull()) {
-                    // Restore original theme
-                    QIcon::setThemeName(m_themeName);
-                    return pixmap.toImage();
-                }
-            }
-        }
-    }
-    
-    // Restore original theme
-    QIcon::setThemeName(m_themeName);
+    // PERFORMANCE FIX: Don't try any fallback themes with QIcon::setThemeName()
+    // This is extremely expensive (1000+ ms per call) because it reloads the entire theme
+    // Let the CustomIconLoader handle fallback themes instead
     return QImage();
 }
 
@@ -540,21 +571,18 @@ QImage UnifiedIconService::tryDifferentSizes(const QString& iconName, int prefer
         }
     }
     
-    // Try different themes and sizes
-    QStringList themes = {m_themeName, "Yaru", "Yaru-dark", "Adwaita", "HighContrast", "hicolor", "gnome", "default"};
-    
-    for (const QString& theme : themes) {
-        for (int size : orderedSizes) {
-            QImage result = IconLoader::instance()->loadIcon(theme, iconName, adjustHardcodedPixelSize(size));
-            if (!result.isNull()) {
-                // Scale to preferred size if needed
-                if (result.width() != adjustHardcodedPixelSize(preferredSize) || 
-                    result.height() != adjustHardcodedPixelSize(preferredSize)) {
-                    result = result.scaled(adjustHardcodedPixelSize(preferredSize), adjustHardcodedPixelSize(preferredSize), 
-                                         Qt::KeepAspectRatio, Qt::SmoothTransformation);
-                }
-                return result;
+    // PERFORMANCE FIX: Only try current theme to avoid expensive theme switching
+    // The IconLoader::loadIcon() with different themes is also expensive
+    for (int size : orderedSizes) {
+        QImage result = IconLoader::instance()->loadIcon(m_themeName, iconName, adjustHardcodedPixelSize(size));
+        if (!result.isNull()) {
+            // Scale to preferred size if needed
+            if (result.width() != adjustHardcodedPixelSize(preferredSize) || 
+                result.height() != adjustHardcodedPixelSize(preferredSize)) {
+                result = result.scaled(adjustHardcodedPixelSize(preferredSize), adjustHardcodedPixelSize(preferredSize), 
+                                     Qt::KeepAspectRatio, Qt::SmoothTransformation);
             }
+            return result;
         }
     }
     
@@ -911,4 +939,18 @@ QStringList UnifiedIconService::generateFallbackNames(const QString& appName, co
     names.removeDuplicates();
     
     return names;
+}
+
+QStringList UnifiedIconService::getFallbackThemes() const
+{
+    QStringList availableThemesList = availableThemes();
+    QStringList commonFallbacks = {"hicolor", "gnome", "default"};
+    
+    foreach(const QString& fallback, commonFallbacks) {
+        if (!availableThemesList.contains(fallback)) {
+            availableThemesList.append(fallback);
+        }
+    }
+    
+    return availableThemesList;
 }

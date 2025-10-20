@@ -103,6 +103,7 @@ private:
     DesktopEntryData parseDesktopFile(const QString& filePath);
     void loadDesktopEntriesFromDirectory(const QString& directoryPath);
     QStringList getSearchPaths() const;
+    int countFilesInDirectory(const QString& directoryPath) const;
 };
 
 class DesktopDataStore : public QObject

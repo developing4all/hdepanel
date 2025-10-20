@@ -169,17 +169,24 @@ void PanelApplication::reinit()
 
 void PanelApplication::init()
 {
+    QTime initTimer;
+    initTimer.start();
+    
 #if QT_VERSION >= 0x050000
     installNativeEventFilter(&myXEv);
 #endif
     
     // Start loading desktop entries once at application startup
+    QTime dataStoreTimer;
+    dataStoreTimer.start();
     DesktopDataStore* dataStore = DesktopDataStore::instance();
     if (dataStore) {
         dataStore->loadAllDesktopEntries();
     }
     
     // Try to detect system icon theme
+    QTime themeTimer;
+    themeTimer.start();
     QString systemIconTheme = detectSystemIconTheme();
     if (!systemIconTheme.isEmpty()) {
         m_defaultIconThemeName = systemIconTheme;
@@ -203,10 +210,11 @@ void PanelApplication::init()
         //qDebug() << "panels: " << panels;
     }
 
+    QTime panelTimer;
+    panelTimer.start();
     foreach (const QString &panel_id, panels) {
         showPanel(panel_id);
     }
-
 }
 
 void PanelApplication::showPanel(const QString& panel_id)

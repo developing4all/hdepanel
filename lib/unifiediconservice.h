@@ -217,6 +217,12 @@ private:
     bool isNegativeOnDisk(const QString& name, int size) const;
     void markNegativeOnDisk(const QString& name, int size) const;
     void clearDiskCacheForTheme(const QString& theme) const;
+    
+    // Helper method to get fallback themes list
+    QStringList getFallbackThemes() const;
+    
+    // Fast icon loading from common paths without expensive theme operations
+    QImage tryCommonIconPaths(const QString& iconName, int size);
 };
 
 #endif // UNIFIEDICONSERVICE_H

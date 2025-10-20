@@ -8,6 +8,7 @@
 
 #include <QMenu>
 #include <QStyleFactory>
+#include <QSet>
 #include <QMap>
 #include <QAction>
 
@@ -17,6 +18,29 @@
 #include <QFocusEvent>
 #include <QDebug>
 #include <QSettings>
+#include <QStyledItemDelegate>
+#include <QPainter>
+
+// Simple delegate to render separators as thin lines
+class SeparatorDelegate : public QStyledItemDelegate
+{
+public:
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        if (index.data(Qt::UserRole + 1).toString() == "separator") {
+            // Draw a thin separator line
+            painter->fillRect(option.rect, QColor(0, 0, 0, 0)); // Transparent background
+            
+            // Draw a thin line in the center
+            int centerY = option.rect.center().y();
+            painter->setPen(QPen(QColor(128, 128, 128, 100), 1)); // Light gray line
+            painter->drawLine(option.rect.left() + 10, centerY, option.rect.right() - 10, centerY);
+        } else {
+            // Use default rendering for normal items
+            QStyledItemDelegate::paint(painter, option, index);
+        }
+    }
+};
 
 #if QT_VERSION < 0x050000
 int ApplicationsMenuStyle::pixelMetric(PixelMetric metric, const QStyleOption* option, const QWidget* widget) const
@@ -85,6 +109,9 @@ StartWindow::StartWindow(QWidget *parent) :
     ui->menuList->setFocusProxy(this);
     //ui->menuList->setSpacing(3);
     ui->itemsList->setSpacing(3);
+    
+    // Set custom delegate for separator rendering
+    ui->menuList->setItemDelegate(new SeparatorDelegate());
 
     ui->profilePicture->setFocusProxy(this);
     ui->searchEdit->setFocusProxy(this);
@@ -363,7 +390,8 @@ void StartWindow::updateMenuList()
     // Add separator after Recently Used
     QListWidgetItem *separator = new QListWidgetItem(ui->menuList);
     separator->setFlags(Qt::NoItemFlags); // Make it non-selectable
-    separator->setSizeHint(QSize(separator->sizeHint().width(), 5));
+    separator->setSizeHint(QSize(itemWidth, itemHeight)); // Use unified height
+    separator->setData(Qt::UserRole + 1, "separator"); // Mark as separator for custom styling
     separator->setBackground(QBrush(QColor(255, 255, 255, 0)));
     
     foreach(SubMenu submenu, m_subMenus)
@@ -401,6 +429,13 @@ void StartWindow::addMenuItems()
 
 bool StartWindow::init()
 {
+    // Check if already initialized to prevent duplicate connections
+    static QSet<StartWindow*> initializedInstances;
+    if (initializedInstances.contains(this)) {
+        return true;
+    }
+    initializedInstances.insert(this);
+    
     // Connect to DesktopDataStore signals to get notified when applications are loaded
     // Note: Each StartWindow instance gets these signals, so each panel will update independently
     DesktopDataStore* dataStore = DesktopDataStore::instance();
@@ -463,11 +498,6 @@ void StartWindow::initAsync()
 
 void StartWindow::applicationUpdated(const DesktopApplication& app)
 {
-    if (app.name().contains("cursor", Qt::CaseInsensitive) || 
-        app.path().contains("cursor", Qt::CaseInsensitive)) {
-        qDebug() << "StartWindow::applicationUpdated: Processing Cursor app - Name:" << app.name() << "Path:" << app.path() << "Icon:" << app.iconName();
-    }
-    
     applicationRemoved(app.path());
 
     if(app.isNoDisplay())
@@ -478,11 +508,6 @@ void StartWindow::applicationUpdated(const DesktopApplication& app)
     action->setData(app.path());
     action->setText(app.name());
     action->setIcon(QIcon(QPixmap::fromImage(app.iconImage())));
-    
-    if (app.name().contains("cursor", Qt::CaseInsensitive) || 
-        app.path().contains("cursor", Qt::CaseInsensitive)) {
-        qDebug() << "StartWindow::applicationUpdated: Created Cursor action - Text:" << action->text() << "Icon isNull:" << action->icon().isNull();
-    }
 
     if(action->icon().isNull())
     {
@@ -571,6 +596,7 @@ void StartWindow::onDesktopEntryAdded(const DesktopEntryData& entryData)
 void StartWindow::onDesktopEntryUpdated(const DesktopEntryData& entryData)
 {
     // Convert DesktopEntryData to DesktopApplication and update it
+    // Note: This is the same as onDesktopEntryAdded since applicationUpdated() handles both add and update
     if (entryData.type == "Application" && entryData.shouldShow() && entryData.isValid) {
         DesktopApplication app = DesktopDataStore::instance()->convertToDesktopApplication(entryData);
         applicationUpdated(app);

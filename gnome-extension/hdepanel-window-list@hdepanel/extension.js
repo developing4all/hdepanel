@@ -134,8 +134,18 @@ export default class HDEPanelWindowListExtension extends Extension {
             // Get window geometry
             const rect = w.get_frame_rect();
             
-            // Get window state
-            const maximized = w.get_maximized();
+            // Get window state (with compatibility check for GNOME 49+)
+            let maximized = 0;
+            if (typeof w.get_maximized === 'function') {
+                maximized = w.get_maximized();
+            } else if (typeof w.get_maximized_horizontally === 'function' && typeof w.get_maximized_vertically === 'function') {
+                // GNOME 49+ uses separate methods
+                maximized = (w.get_maximized_horizontally() ? Meta.MaximizeFlags.HORIZONTAL : 0) |
+                           (w.get_maximized_vertically() ? Meta.MaximizeFlags.VERTICAL : 0);
+            } else {
+                // Fallback: try to check maximized state via other properties
+                maximized = 0;
+            }
             const isMaximizedHorizontally = (maximized & Meta.MaximizeFlags.HORIZONTAL) !== 0;
             const isMaximizedVertically = (maximized & Meta.MaximizeFlags.VERTICAL) !== 0;
             
@@ -314,7 +324,7 @@ export default class HDEPanelWindowListExtension extends Extension {
     }
 
     _isSystemWindow(w, appId) {
-        if (w.is_skip_taskbar())
+        if (typeof w.is_skip_taskbar === 'function' && w.is_skip_taskbar())
             return true;
 
         const t = w.get_window_type();

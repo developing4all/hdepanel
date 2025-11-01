@@ -129,7 +129,7 @@ docs/
 # Qt Translation Files #
 #######################
 # Note: We commit .qm files for easier deployment
-# *.qm
+*.qm
 *.ts.bak
 
 # Qt Resource Files #

@@ -26,6 +26,7 @@
 
 #include <QApplication>
 #include <QDebug>
+#include <QtCore/QProcessEnvironment>
 
 #include <QtXml>
 
@@ -114,7 +115,24 @@ QStringList Keyboard::getLayoutsList()
 
 void Keyboard::setLayout(QString layout)
 {
-    // Using system call for now
-    // maybe we should change later to use the xkb library
-    system("setxkbmap " + layout.toLatin1());
+    // Check if we're running on Wayland
+    QString sessionType = qgetenv("XDG_SESSION_TYPE");
+    QString waylandDisplay = qgetenv("WAYLAND_DISPLAY");
+    
+    if (sessionType == "wayland" || !waylandDisplay.isEmpty()) {
+        // For Wayland, use gsettings to change keyboard layout
+        // This works with GNOME Shell and other gsettings-compatible compositors
+        QString gsettingsCmd = QString("gsettings set org.gnome.desktop.input-sources sources \"[('xkb', '%1')]\"").arg(layout);
+        int result = system(gsettingsCmd.toLatin1());
+        if (result == 0) {
+            qDebug() << "Keyboard layout changed to" << layout << "via gsettings (Wayland)";
+        } else {
+            qWarning() << "Failed to change keyboard layout via gsettings, falling back to setxkbmap";
+            system("setxkbmap " + layout.toLatin1());
+        }
+    } else {
+        // For X11, use setxkbmap
+        qDebug() << "Changing keyboard layout to" << layout << "via setxkbmap (X11)";
+        system("setxkbmap " + layout.toLatin1());
+    }
 }

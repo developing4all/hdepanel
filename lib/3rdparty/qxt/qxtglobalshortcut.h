@@ -32,8 +32,8 @@
 #define QXTGLOBALSHORTCUT_H
 
 #include "qxtglobal.h"
-#include <QObject>
-#include <QKeySequence>
+#include <QtCore/QObject>
+#include <QtGui/QKeySequence>
 class QxtGlobalShortcutPrivate;
 
 class QXT_GUI_EXPORT QxtGlobalShortcut : public QObject

@@ -287,6 +287,16 @@ QList<WaylandWindow> GNOMEWindowManager::getWindowsFromGnomeShell()
             .filter(w => w.meta_window && w.meta_window.get_title)
             .map(w => {
                 const mw = w.meta_window;
+                // Get maximized state with GNOME 49+ compatibility
+                let maximized = 0;
+                if (typeof mw.get_maximized === 'function') {
+                    maximized = mw.get_maximized();
+                } else if (typeof mw.get_maximized_horizontally === 'function' && typeof mw.get_maximized_vertically === 'function') {
+                    // GNOME 49+ uses separate methods
+                    // Meta.MaximizeFlags: HORIZONTAL = 1, VERTICAL = 2
+                    maximized = (mw.get_maximized_horizontally() ? 1 : 0) |
+                               (mw.get_maximized_vertically() ? 2 : 0);
+                }
                 return {
                     id: mw.get_id(),
                     title: mw.get_title() || '',
@@ -295,7 +305,7 @@ QList<WaylandWindow> GNOMEWindowManager::getWindowsFromGnomeShell()
                     visible: !mw.minimized && mw.showing_on_its_workspace(),
                     focused: mw.has_focus(),
                     minimized: mw.minimized,
-                    maximized: mw.get_maximized() !== 0,
+                    maximized: maximized !== 0,
                     is_wayland: mw.get_client_type() === 1
                 };
             })

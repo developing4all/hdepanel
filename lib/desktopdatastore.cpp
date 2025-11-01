@@ -27,19 +27,20 @@ DesktopEntryLoader::~DesktopEntryLoader()
 
 void DesktopEntryLoader::loadAllDesktopEntries()
 {
-    QTime loadTimer;
+    QElapsedTimer loadTimer;
     loadTimer.start();
     
     QStringList searchPaths = getSearchPaths();
     
     int totalFiles = 0;
     foreach (const QString& path, searchPaths) {
-        QTime dirTimer;
+        QElapsedTimer dirTimer;
         dirTimer.start();
-        int filesBefore = totalFiles;
         loadDesktopEntriesFromDirectory(path);
         totalFiles = countFilesInDirectory(path);
+        qDebug() << "DesktopEntryLoader::loadAllDesktopEntries() - Directory" << path << "took" << dirTimer.elapsed() << "ms (" << totalFiles << "files)";
     }
+    qDebug() << "DesktopEntryLoader::loadAllDesktopEntries() - Total loading took" << loadTimer.elapsed() << "ms";
     emit loadingCompleted();
 }
 

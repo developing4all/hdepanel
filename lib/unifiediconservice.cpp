@@ -434,7 +434,7 @@ QImage UnifiedIconService::loadIconInternal(const QString& iconName, int size, c
         return fallback.pixmap(size, size).toImage();
     }
     
-    QTime iconTimer;
+    QElapsedTimer iconTimer;
     iconTimer.start();
     
     // Try custom IconLoader first (current theme only - fast)

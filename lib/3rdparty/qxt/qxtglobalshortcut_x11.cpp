@@ -34,7 +34,7 @@
 #if QT_VERSION < QT_VERSION_CHECK(5,0,0)
 #   include <QX11Info>
 #else
-#   include <QApplication>
+#   include <QtWidgets/QApplication>
 #   include <xcb/xcb.h>
 #   if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
 #       include <QGuiApplication>

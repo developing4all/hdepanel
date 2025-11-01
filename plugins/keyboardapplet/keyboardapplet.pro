@@ -23,7 +23,9 @@ HEADERS += \
     ../../lib/applet.h \
     keyboardapplet.h \
     keyboardlayoutdialog.h \
-    keyboard.h
+    keyboard.h \
+    ../../lib/3rdparty/qxt/qxtglobalshortcut.h \
+    ../../lib/3rdparty/qxt/qxtglobalshortcut_p.h
 
 
 

@@ -32,6 +32,7 @@
 #include <QAction>
 #include <QDateTime>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <QProcess>
 #include <QFile>
 #include <QDir>
@@ -169,7 +170,7 @@ void PanelApplication::reinit()
 
 void PanelApplication::init()
 {
-    QTime initTimer;
+    QElapsedTimer initTimer;
     initTimer.start();
     
 #if QT_VERSION >= 0x050000
@@ -177,7 +178,7 @@ void PanelApplication::init()
 #endif
     
     // Start loading desktop entries once at application startup
-    QTime dataStoreTimer;
+    QElapsedTimer dataStoreTimer;
     dataStoreTimer.start();
     DesktopDataStore* dataStore = DesktopDataStore::instance();
     if (dataStore) {
@@ -185,7 +186,7 @@ void PanelApplication::init()
     }
     
     // Try to detect system icon theme
-    QTime themeTimer;
+    QElapsedTimer themeTimer;
     themeTimer.start();
     QString systemIconTheme = detectSystemIconTheme();
     if (!systemIconTheme.isEmpty()) {
@@ -210,7 +211,7 @@ void PanelApplication::init()
         //qDebug() << "panels: " << panels;
     }
 
-    QTime panelTimer;
+    QElapsedTimer panelTimer;
     panelTimer.start();
     foreach (const QString &panel_id, panels) {
         showPanel(panel_id);

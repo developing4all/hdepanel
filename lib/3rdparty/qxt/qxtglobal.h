@@ -32,7 +32,7 @@
 #ifndef QXTGLOBAL_H
 #define QXTGLOBAL_H
 
-#include <QtGlobal>
+#include <QtCore/qglobal.h>
 
 #define QXT_VERSION 0x000700
 #define QXT_VERSION_STR "0.7.0"

@@ -33,6 +33,7 @@
 #include <QtCore/QObject>
 #include <QtGui/QIcon>
 #include <QtGui/QPixmap>
+#include <QtCore/QTimer>
 #if QT_VERSION >= 0x050000
 #include <QApplication>
 #if QT_VERSION < 0x060000
@@ -87,6 +88,11 @@ public:
 	static QIcon getWindowIcon(unsigned long window);
     static bool getWindowMinimizedState(unsigned long window);
 	static bool getWindowUrgency(unsigned long window);
+
+    // Select X11 input events for a window on the *same* X connection used by Qt/X11Support.
+    // This is required for XCB_PROPERTY_NOTIFY (title/icon/urgency changes) to reach our event filter.
+    static void selectInput(unsigned long window, long eventMask);
+
 	static void registerForWindowPropertyChanges(unsigned long window);
     static void registerForWindowStructureNotify(unsigned long window);
 	static void registerForTrayIconUpdates(unsigned long window);
@@ -118,6 +124,9 @@ public:
                   int bottomStartX, int bottomEndX
                   );
 
+private slots:
+    void pollX11Events();
+
 signals:
 	void windowClosed(unsigned long window);
 	void windowReconfigured(unsigned long window, int x, int y, int width, int height);
@@ -134,6 +143,10 @@ private:
 	static X11Support* m_instance;
 	int m_damageEventBase;
 	QMap<QString, unsigned long> m_cachedAtoms;
+
+    // For Qt6 builds (and any case where Qt doesn't deliver X11 events for our masks),
+    // we poll our own X11 connection to receive PropertyNotify/Configure/Destroy events.
+    QTimer* m_x11PollTimer = nullptr;
 };
 
 #endif

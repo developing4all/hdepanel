@@ -37,11 +37,10 @@ Client::Client(DockApplet* dockApplet, unsigned long handle)
 	m_dockApplet = dockApplet;
 	m_handle = handle;
 
-    Display* dpy = XOpenDisplay(nullptr);
-    if (dpy) {
-        XSelectInput(dpy, m_handle, PropertyChangeMask | StructureNotifyMask);
-        updateVisibility();
-    }
+    // Select events on the same X connection used by Qt/X11Support, otherwise
+    // PropertyNotify (title changes like Firefox tab) won't reach our event filter.
+    X11Support::selectInput(m_handle, PropertyChangeMask | StructureNotifyMask);
+    updateVisibility();
 	updateName();
 	updateIcon();
 	updateUrgency();

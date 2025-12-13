@@ -28,6 +28,8 @@
 
 #include "x11support.h"
 
+#include <cstdint>
+
 // TODO: Keep all the X11 stuff with scary defines below normal headers.
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
@@ -36,6 +38,7 @@
 
 #include <X11/extensions/Xrender.h>
 
+#include <QtCore/QTimer>
 
 static XErrorHandler oldX11ErrorHandler = NULL;
 
@@ -133,6 +136,18 @@ X11Support::X11Support()
     }
     int damageErrorBase = 0;
     XDamageQueryExtension(x11DisplayCompat(), &m_damageEventBase, &damageErrorBase);
+
+#if QT_VERSION >= 0x060000
+    // Qt6 no longer exposes QX11Info, and our X11Support uses its own XOpenDisplay()
+    // connection. To reliably receive PropertyNotify (title/icon changes), we poll and
+    // dispatch events from that connection ourselves.
+    if (qApp && qApp->platformName().toLower().contains("xcb")) {
+        m_x11PollTimer = new QTimer(this);
+        m_x11PollTimer->setInterval(20);
+        connect(m_x11PollTimer, &QTimer::timeout, this, &X11Support::pollX11Events);
+        m_x11PollTimer->start();
+    }
+#endif
 }
 
 X11Support::~X11Support()
@@ -192,8 +207,15 @@ void X11Support::onX11Event(XEvent* event)
 		emit windowReconfigured(event->xconfigure.window, event->xconfigure.x, event->xconfigure.y, event->xconfigure.width, event->xconfigure.height);
 	if (event->type == PropertyNotify)
 		emit windowPropertyChanged(event->xproperty.window, event->xproperty.atom);
-    if (event->type == ClientMessage)
-        emit clientMessageReceived(event->xclient.window, event->xclient.message_type, event->xclient.data.l);
+    if (event->type == ClientMessage) {
+        // Normalize payload to 5x 32-bit words to match xcb_client_message_event_t::data32.
+        // TrayApplet interprets this pointer as u_int32_t*, so passing long[5] (64-bit) breaks it.
+        thread_local std::uint32_t data32[5];
+        for (int i = 0; i < 5; ++i) {
+            data32[i] = static_cast<std::uint32_t>(event->xclient.data.l[i] & 0xFFFFFFFFu);
+        }
+        emit clientMessageReceived(event->xclient.window, event->xclient.message_type, data32);
+    }
 }
 
 unsigned long X11Support::rootWindow()
@@ -206,6 +228,36 @@ unsigned long X11Support::atom(const QString& name)
     if(!m_instance->m_cachedAtoms.contains(name))
         m_instance->m_cachedAtoms[name] = XInternAtom(x11DisplayCompat(), name.toLatin1().data(), False);
 	return m_instance->m_cachedAtoms[name];
+}
+
+void X11Support::selectInput(unsigned long window, long eventMask)
+{
+    if (!x11DisplayCompat() || window == 0)
+        return;
+
+    // IMPORTANT: must be on the same X11 connection as Qt (QX11Info::display() on Qt5),
+    // otherwise PropertyNotify events will be delivered to a different client connection.
+    long combinedMask = eventMask;
+    XWindowAttributes attrs;
+    if (XGetWindowAttributes(x11DisplayCompat(), static_cast<Window>(window), &attrs)) {
+        combinedMask |= attrs.your_event_mask;
+    }
+    XSelectInput(x11DisplayCompat(), static_cast<Window>(window), combinedMask);
+    XFlush(x11DisplayCompat());
+}
+
+void X11Support::pollX11Events()
+{
+#if QT_VERSION >= 0x060000
+    if (!x11DisplayCompat())
+        return;
+
+    while (XPending(x11DisplayCompat()) > 0) {
+        XEvent ev;
+        XNextEvent(x11DisplayCompat(), &ev);
+        onX11Event(&ev);
+    }
+#endif
 }
 
 void X11Support::removeWindowProperty(unsigned long window, const QString& name)
@@ -633,17 +685,17 @@ bool X11Support::getWindowUrgency(unsigned long window)
 
 void X11Support::registerForWindowPropertyChanges(unsigned long window)
 {
-    XSelectInput(x11DisplayCompat(), window, PropertyChangeMask);
+    selectInput(window, PropertyChangeMask);
 }
 
 void X11Support::registerForWindowStructureNotify(unsigned long window)
 {
-    XSelectInput(x11DisplayCompat(), window, StructureNotifyMask);
+    selectInput(window, StructureNotifyMask);
 }
 
 void X11Support::registerForTrayIconUpdates(unsigned long window)
 {
-    XSelectInput(x11DisplayCompat(), window, StructureNotifyMask);
+    selectInput(window, StructureNotifyMask);
 
 	// Apparently, there is no need to destroy damage object, as it's gone automatically when window is destroyed.
     XDamageCreate(x11DisplayCompat(), window, XDamageReportNonEmpty);

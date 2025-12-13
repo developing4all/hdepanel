@@ -289,6 +289,7 @@ static bool x11IsDock(Window w) {
     if (!x11DisplayCompat()) return false;
     Atom typeAtom = X11Support::atom("_NET_WM_WINDOW_TYPE");
     Atom dockAtom = X11Support::atom("_NET_WM_WINDOW_TYPE_DOCK");
+    Atom panelAtom = X11Support::atom("_NET_WM_WINDOW_TYPE_PANEL");
 
     Atom actualType; int actualFormat; unsigned long nitems, bytesAfter;
     unsigned char* data = nullptr;
@@ -300,7 +301,7 @@ static bool x11IsDock(Window w) {
     if (data && actualType == XA_ATOM && actualFormat == 32) {
         Atom* atoms = reinterpret_cast<Atom*>(data);
         for (unsigned long i = 0; i < nitems; ++i) {
-            if (atoms[i] == dockAtom) { isDock = true; break; }
+            if (atoms[i] == dockAtom || atoms[i] == panelAtom) { isDock = true; break; }
         }
     }
     if (data) XFree(data);
@@ -358,6 +359,65 @@ static QVector<Window> x11ClientList() {
         if (data) XFree(data);
     }
     return out;
+}
+
+QMargins X11Support::getExternalStrutReservations(const QRect& screen, unsigned long excludeWindow)
+{
+    QMargins m(0, 0, 0, 0);
+    if (!x11DisplayCompat() || !screen.isValid())
+        return m;
+
+    const int sLeft = screen.left();
+    const int sRight = screen.right();
+    const int sTop = screen.top();
+    const int sBottom = screen.bottom();
+    Q_UNUSED(sTop)
+    Q_UNUSED(sBottom)
+
+    auto overlaps1D = [](int a1, int a2, int b1, int b2) -> bool {
+        if (a1 > a2) std::swap(a1, a2);
+        if (b1 > b2) std::swap(b1, b2);
+        return !(a2 < b1 || b2 < a1);
+    };
+
+    const QVector<Window> wins = x11ClientList();
+    for (Window w : wins) {
+        if (!w) continue;
+        if (excludeWindow && w == static_cast<Window>(excludeWindow)) continue;
+        if (!x11IsViewable(w)) continue;
+
+        // Only consider dock/panel windows to avoid random windows with bogus properties.
+        if (!x11IsDock(w)) continue;
+
+        const X11Strut s = x11GetStrut(w);
+        if (!s.valid) continue;
+
+        // Top / bottom: respect strut partial range if present; otherwise assume it applies globally.
+        if (s.top > 0) {
+            const bool hasRange = (s.topStartX != 0 || s.topEndX != 0);
+            const bool overlaps = hasRange ? overlaps1D(s.topStartX, s.topEndX, sLeft, sRight) : true;
+            if (overlaps) m.setTop(qMax(m.top(), s.top));
+        }
+        if (s.bottom > 0) {
+            const bool hasRange = (s.bottomStartX != 0 || s.bottomEndX != 0);
+            const bool overlaps = hasRange ? overlaps1D(s.bottomStartX, s.bottomEndX, sLeft, sRight) : true;
+            if (overlaps) m.setBottom(qMax(m.bottom(), s.bottom));
+        }
+
+        // Left / right: optional; use partial Y range if present.
+        if (s.left > 0) {
+            const bool hasRange = (s.leftStartY != 0 || s.leftEndY != 0);
+            const bool overlaps = hasRange ? overlaps1D(s.leftStartY, s.leftEndY, screen.top(), screen.bottom()) : true;
+            if (overlaps) m.setLeft(qMax(m.left(), s.left));
+        }
+        if (s.right > 0) {
+            const bool hasRange = (s.rightStartY != 0 || s.rightEndY != 0);
+            const bool overlaps = hasRange ? overlaps1D(s.rightStartY, s.rightEndY, screen.top(), screen.bottom()) : true;
+            if (overlaps) m.setRight(qMax(m.right(), s.right));
+        }
+    }
+
+    return m;
 }
 
 

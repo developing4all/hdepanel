@@ -1027,8 +1027,21 @@ void PanelWindow::updatePosition() {
     int extRight = 0;
     int extTop = 0;
     int extBottom = 0;
-    
-    // (in the future you can detect other panels here)
+#if QT_VERSION < 0x060000
+    const bool isX11 = QX11Info::isPlatformX11();
+#else
+    const bool isX11 = qApp->platformName().toLower().contains("xcb");
+#endif
+    if (isX11) {
+        const QMargins ext = X11Support::getExternalStrutReservations(screen, winId());
+        extLeft = ext.left();
+        extRight = ext.right();
+        extTop = ext.top();
+        extBottom = ext.bottom();
+    }
+
+    // GNOME top bar fallback in case it isn't represented in struts
+    extTop = qMax(extTop, detectGnomeTopOffsetPx());
     int x = screen.left();
     switch (m_horizontalAnchor) {
         case Min:    x = screen.left() + extLeft; break;
@@ -1039,12 +1052,14 @@ void PanelWindow::updatePosition() {
     int y = 0;
     switch (m_verticalAnchor) {
         case Min:
-            y = screen.top() + detectGnomeTopOffsetPx() + extTop;
+            // Stack below any existing top reservations.
+            y = screen.top() + extTop;
             break;
         case Center:
             y = screen.top() + (screen.height() - height()) / 2;
             break;
         case Max:
+            // Stack above any existing bottom reservations.
             y = screen.bottom() - extBottom - height() + 1;
             break;
     }
@@ -1103,8 +1118,12 @@ void PanelWindow::applyX11Struts(const QRect& panelGeom)
     const bool isTop = (m_verticalAnchor == Min);
     const bool isBottom = (m_verticalAnchor == Max);
 
-    // GNOME top bar offset
-    const int gnomeTop = detectGnomeTopOffsetPx();
+    // External reservations (exclude ourselves), plus GNOME fallback for top if needed
+    int extTop = 0;
+    int extBottom = 0;
+    const QMargins ext = X11Support::getExternalStrutReservations(currentScreenGeometry(), winId());
+    extTop = qMax(ext.top(), detectGnomeTopOffsetPx());
+    extBottom = ext.bottom();
 
     // Build _NET_WM_STRUT_PARTIAL
     int left=0, right=0, top=0, bottom=0;
@@ -1113,10 +1132,11 @@ void PanelWindow::applyX11Struts(const QRect& panelGeom)
     int bottomStartX=panelGeom.left(), bottomEndX=panelGeom.right();
 
     if (isTop) {
-        // Reserve GNOME bar + our height so other windows start below us
-        top = gnomeTop + panelGeom.height();
+        // Stack below any existing top reservations.
+        top = extTop + panelGeom.height();
     } else if (isBottom) {
-        bottom = panelGeom.height();
+        // Stack above any existing bottom reservations.
+        bottom = extBottom + panelGeom.height();
     }
 
     X11Support::setStrut(

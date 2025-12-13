@@ -31,6 +31,8 @@
 #include <QtCore/QVector>
 #include <QtCore/QMap>
 #include <QtCore/QObject>
+#include <QtCore/QMargins>
+#include <QtCore/QRect>
 #include <QtGui/QIcon>
 #include <QtGui/QPixmap>
 #include <QtCore/QTimer>
@@ -88,6 +90,11 @@ public:
 	static QIcon getWindowIcon(unsigned long window);
     static bool getWindowMinimizedState(unsigned long window);
 	static bool getWindowUrgency(unsigned long window);
+
+    // Returns the maximum strut reservations from other dock/panel windows that overlap `screen`.
+    // Values are in pixels from the corresponding screen edge, per EWMH.
+    // `excludeWindow` should be set to our own panel winId() so we don't include ourselves.
+    static QMargins getExternalStrutReservations(const QRect& screen, unsigned long excludeWindow);
 
     // Select X11 input events for a window on the *same* X connection used by Qt/X11Support.
     // This is required for XCB_PROPERTY_NOTIFY (title/icon/urgency changes) to reach our event filter.

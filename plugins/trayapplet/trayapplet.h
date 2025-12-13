@@ -33,6 +33,7 @@
 #include "applet.h"
 
 class TrayApplet;
+class SniItemProxy;
 
 class TrayItem: public QObject, public QGraphicsItem
 {
@@ -59,6 +60,31 @@ private:
 	unsigned long m_window;
 };
 
+class SniTrayItem: public QObject, public QGraphicsItem
+{
+	Q_OBJECT
+	Q_INTERFACES(QGraphicsItem)
+public:
+	SniTrayItem(TrayApplet* trayApplet, SniItemProxy* sniItem);
+	~SniTrayItem();
+
+	void setPosition(const QPoint& position);
+	void setSize(const QSize& size);
+
+	QRectF boundingRect() const;
+	void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget);
+
+	SniItemProxy* sniItem() const
+	{
+		return m_sniItem;
+	}
+
+private:
+	QSize m_size;
+	TrayApplet* m_trayApplet;
+	SniItemProxy* m_sniItem;
+};
+
 class TrayApplet: public Applet
 {
 	Q_OBJECT
@@ -76,6 +102,8 @@ public:
 
 	void registerTrayItem(TrayItem* trayItem);
 	void unregisterTrayItem(TrayItem* trayItem);
+	void registerSniTrayItem(SniTrayItem* trayItem);
+	void unregisterSniTrayItem(SniTrayItem* trayItem);
 
 	int iconSize() const { return m_iconSize; }
 
@@ -96,6 +124,7 @@ private:
 
 	bool m_initialized;
 	QVector<TrayItem*> m_trayItems;
+	QVector<SniTrayItem*> m_sniTrayItems;
 	int m_iconSize;
 	int m_spacing;
     class SniWatcher* m_sniWatcher; // Wayland: DBus-based tray

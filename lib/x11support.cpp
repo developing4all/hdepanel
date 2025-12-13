@@ -193,7 +193,7 @@ void X11Support::onX11Event(XEvent* event)
 	if (event->type == PropertyNotify)
 		emit windowPropertyChanged(event->xproperty.window, event->xproperty.atom);
     if (event->type == ClientMessage)
-        emit clientMessageReceived(event->xclient.window, event->xclient.message_type, event->xclient.data.b);
+        emit clientMessageReceived(event->xclient.window, event->xclient.message_type, event->xclient.data.l);
 }
 
 unsigned long X11Support::rootWindow()

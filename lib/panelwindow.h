@@ -29,6 +29,7 @@
 #include <QRect>
 #include <QTimer>
 #include <QGraphicsItem>
+#include <QElapsedTimer>
 #include "waylandlayershell.h"
 #include "layershellqtintegration.h"
 
@@ -38,6 +39,7 @@ class QGraphicsScene;
  class QResizeEvent;
  class QShowEvent;
  class QScreen;
+ class QAbstractNativeEventFilter;
  class Applet;
  
  class PanelWindow : public QWidget
@@ -90,6 +92,7 @@ class QGraphicsScene;
 	 void removePanel();
 
  private:
+	 class RootEventFilter; // X11 root window native event filter
 	 // Settings / init
 	 void readSettings();
 	 void setApplets();
@@ -102,6 +105,11 @@ class QGraphicsScene;
 	 void scheduleApplyStruts();                 // debounce wrapper
 	 void scheduleApplyStrutsIfMoved();          // only when geometry changed
 	 int  detectGnomeTopOffsetPx() const;        // uses X11Support::detectTopPanelHeight or fallback
+
+	 // X11 reactivity (root window changes)
+	 void setupX11RootEventListener();
+	 void teardownX11RootEventListener();
+	 void scheduleRepositionFromWmChange();
  
 	 // Utility
 	 QRect getAnchorGeometry(const QRect& screen, const QRect& available) const;
@@ -130,8 +138,11 @@ class QGraphicsScene;
  
 	 // Debounce strut application to avoid repeated XChangeProperty calls
 	 QTimer        m_strutDebounce;
+	 QTimer        m_repositionDebounce;
 	 QTimer        m_waylandPositionTimer;
 	 QRect         m_lastStrutGeom;              // last geometry we applied struts for
+	 QElapsedTimer m_lastStrutApply;             // used to suppress WM workarea events caused by us
+	 QAbstractNativeEventFilter* m_x11RootEventFilter = nullptr; // owned by this; installed on qApp when X11
  
 	 // Wayland helpers
 	 QTimer*       m_waylandRepositionTimer = nullptr;

@@ -42,6 +42,7 @@
 #include <QLinearGradient>
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
+#include <QAbstractNativeEventFilter>
 #include "layershellqtintegration.h"
 #include <typeinfo>
  
@@ -67,6 +68,67 @@
 #else
 #  include <QX11Info>
 #endif
+
+#if defined(Q_OS_UNIX)
+#  include <xcb/xcb.h>
+#endif
+
+class PanelWindow::RootEventFilter final : public QAbstractNativeEventFilter {
+public:
+    explicit RootEventFilter(PanelWindow* panel)
+        : m_panel(panel) {}
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    bool nativeEventFilter(const QByteArray& eventType, void* message, long*) override
+#else
+    bool nativeEventFilter(const QByteArray& eventType, void* message, qintptr*) override
+#endif
+    {
+        if (!m_panel) return false;
+        if (eventType != "xcb_generic_event_t") return false;
+        if (!message) return false;
+
+        auto* ev = static_cast<xcb_generic_event_t*>(message);
+        const uint8_t type = ev->response_type & ~0x80;
+
+        const xcb_window_t root = static_cast<xcb_window_t>(X11Support::rootWindow());
+        if (!root) return false;
+
+        if (type == XCB_PROPERTY_NOTIFY) {
+            auto* pe = reinterpret_cast<xcb_property_notify_event_t*>(ev);
+            if (pe->window != root) return false;
+
+            const xcb_atom_t aWorkarea = static_cast<xcb_atom_t>(X11Support::atom("_NET_WORKAREA"));
+            const xcb_atom_t aDeskGeom = static_cast<xcb_atom_t>(X11Support::atom("_NET_DESKTOP_GEOMETRY"));
+            const xcb_atom_t aCurDesk  = static_cast<xcb_atom_t>(X11Support::atom("_NET_CURRENT_DESKTOP"));
+            const xcb_atom_t aViewport = static_cast<xcb_atom_t>(X11Support::atom("_NET_DESKTOP_VIEWPORT"));
+            const xcb_atom_t aClient   = static_cast<xcb_atom_t>(X11Support::atom("_NET_CLIENT_LIST"));
+
+            // Ignore workarea updates that are very likely caused by our own strut changes.
+            if (pe->atom == aWorkarea) {
+                if (m_panel->m_lastStrutApply.isValid() && m_panel->m_lastStrutApply.elapsed() < 250)
+                    return false;
+                m_panel->scheduleRepositionFromWmChange();
+                return false;
+            }
+
+            if (pe->atom == aDeskGeom || pe->atom == aCurDesk || pe->atom == aViewport || pe->atom == aClient) {
+                m_panel->scheduleRepositionFromWmChange();
+                return false;
+            }
+        } else if (type == XCB_CONFIGURE_NOTIFY) {
+            auto* ce = reinterpret_cast<xcb_configure_notify_event_t*>(ev);
+            if (ce->window != root) return false;
+            m_panel->scheduleRepositionFromWmChange();
+            return false;
+        }
+
+        return false;
+    }
+
+private:
+    PanelWindow* m_panel = nullptr; // not owned
+};
 // ---------------------- PanelWindowGraphicsItem ----------------------
  
 PanelWindow::PanelWindowGraphicsItem::PanelWindowGraphicsItem(PanelWindow* panelWindow)
@@ -203,6 +265,16 @@ PanelWindow::PanelWindow(QString id)
     connect(&m_strutDebounce, &QTimer::timeout, this, [this]{
         applyX11Struts(geometry());
     });
+
+    // Debounce repositioning after WM/root workarea/geometry changes
+    m_repositionDebounce.setSingleShot(true);
+    m_repositionDebounce.setInterval(80);
+    connect(&m_repositionDebounce, &QTimer::timeout, this, [this]{
+        // Re-run the same canonical path: layout -> position -> struts (debounced)
+        updateLayout();
+        updatePosition();
+        scheduleApplyStruts();
+    });
     
     // Wayland positioning timer - continuously force position
 #if QT_VERSION < 0x060000
@@ -273,6 +345,7 @@ PanelWindow::PanelWindow(QString id)
 PanelWindow::~PanelWindow()
 {
     removeApplets();
+    teardownX11RootEventListener();
     
     // Stop timers before cleanup
     m_strutDebounce.stop();
@@ -300,6 +373,44 @@ PanelWindow::~PanelWindow()
     }
 }
  
+void PanelWindow::setupX11RootEventListener()
+{
+#if QT_VERSION < 0x060000
+    if (!QX11Info::isPlatformX11()) return;
+    Display* dpy = QX11Info::display();
+#else
+    if (!qApp->platformName().toLower().contains("xcb")) return;
+    auto native = qGuiApp->nativeInterface<QNativeInterface::QX11Application>();
+    Display* dpy = native ? native->display() : nullptr;
+#endif
+    if (!dpy) return;
+    if (m_x11RootEventFilter) return; // already installed
+
+    // Ask X11 to send us property/configure events from the root window.
+    const Window root = X11Support::rootWindow();
+    XSelectInput(dpy, root, PropertyChangeMask | StructureNotifyMask);
+    XSync(dpy, False);
+
+    auto* filter = new RootEventFilter(this);
+    qApp->installNativeEventFilter(filter);
+    m_x11RootEventFilter = filter;
+}
+
+void PanelWindow::teardownX11RootEventListener()
+{
+    if (!m_x11RootEventFilter) return;
+    qApp->removeNativeEventFilter(m_x11RootEventFilter);
+    delete m_x11RootEventFilter;
+    m_x11RootEventFilter = nullptr;
+}
+
+void PanelWindow::scheduleRepositionFromWmChange()
+{
+    // If we’re not visible/mapped yet, just let normal init/showEvent handle it.
+    if (!isVisible()) return;
+    m_repositionDebounce.start();
+}
+
 void PanelWindow::showEvent(QShowEvent* e)
 {
     QWidget::showEvent(e);
@@ -459,7 +570,10 @@ void PanelWindow::showEvent(QShowEvent* e)
 
     XSync(dpy, False);
 
-    // Layout is already done, just schedule struts after a short delay to ensure mapping
+    // Now that we're mapped, do a final assert of position + struts,
+    // and start listening for root changes (workarea/desktop geometry).
+    setupX11RootEventListener();
+    updatePosition();
     scheduleApplyStruts(); // single, debounced
 
     qDebug() << "PanelWindow::showEvent - applied dock type; scheduled struts";
@@ -1015,6 +1129,7 @@ void PanelWindow::applyX11Struts(const QRect& panelGeom)
     );
 
     m_lastStrutGeom = panelGeom;
+    m_lastStrutApply.start();
 }
 
 // ---------------------- Wayland fallback ----------------------

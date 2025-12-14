@@ -151,16 +151,23 @@ QRectF PanelWindow::PanelWindowGraphicsItem::boundingRect() const
 void PanelWindow::PanelWindowGraphicsItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget*)
 {
 	painter->setPen(Qt::NoPen);
-	painter->setBrush(QColor(0, 0, 0, 128));
+	QColor bgColor = m_panelWindow->m_backgroundColor;
+	bgColor.setAlpha(m_panelWindow->m_backgroundTransparency);
+	painter->setBrush(bgColor);
 	painter->drawRect(boundingRect());
 
 	static const int borderThickness = 3;
+	QColor borderColor = m_panelWindow->m_borderColor;
 	if(m_panelWindow->verticalAnchor() == PanelWindow::Min)
 	{
 		QLinearGradient gradient(0.0, m_panelWindow->height() - borderThickness, 0.0, m_panelWindow->height());
 		gradient.setSpread(QGradient::RepeatSpread);
-		gradient.setColorAt(0.0, QColor(255, 255, 255, 0));
-		gradient.setColorAt(1.0, QColor(255, 255, 255, 128));
+		QColor borderColorStart = borderColor;
+		borderColorStart.setAlpha(0);
+		QColor borderColorEnd = borderColor;
+		borderColorEnd.setAlpha(m_panelWindow->m_borderTransparency);
+		gradient.setColorAt(0.0, borderColorStart);
+		gradient.setColorAt(1.0, borderColorEnd);
 		painter->setBrush(QBrush(gradient));
 		painter->drawRect(0.0, m_panelWindow->height() - borderThickness, m_panelWindow->width(), borderThickness);
 	}
@@ -168,8 +175,12 @@ void PanelWindow::PanelWindowGraphicsItem::paint(QPainter* painter, const QStyle
 	{
 		QLinearGradient gradient(0.0, 0.0, 0.0, borderThickness);
 		gradient.setSpread(QGradient::RepeatSpread);
-		gradient.setColorAt(0.0, QColor(255, 255, 255, 128));
-		gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
+		QColor borderColorStart = borderColor;
+		borderColorStart.setAlpha(m_panelWindow->m_borderTransparency);
+		QColor borderColorEnd = borderColor;
+		borderColorEnd.setAlpha(0);
+		gradient.setColorAt(0.0, borderColorStart);
+		gradient.setColorAt(1.0, borderColorEnd);
 		painter->setBrush(QBrush(gradient));
 		painter->drawRect(0.0, 0.0, m_panelWindow->width(), borderThickness);
 	}
@@ -698,6 +709,20 @@ void PanelWindow::readSettings()
     }
 
     m_appletnames = Settings::value(m_id, "applets", QStringList()).toStringList();
+
+    // Load color settings
+    m_backgroundColor = Settings::value(m_id, "backgroundColor", QColor(0, 0, 0)).value<QColor>();
+    m_backgroundTransparency = Settings::value(m_id, "backgroundColorTransparency", 128).toInt();
+    m_borderColor = Settings::value(m_id, "borderColor", QColor(255, 255, 255)).value<QColor>();
+    m_borderTransparency = Settings::value(m_id, "borderColorTransparency", 128).toInt();
+}
+
+void PanelWindow::updateColors()
+{
+    readSettings();
+    if (m_scene) {
+        m_scene->update();
+    }
 }
  
 bool PanelWindow::init()
@@ -1052,15 +1077,12 @@ int PanelWindow::detectGnomeTopOffsetPx() const
     }
     
     if (!dpy) {
-        qDebug() << "PanelWindow::detectGnomeTopOffsetPx: no X11 display available";
         return 0;
     }
 
     // This function already scans for GNOME Shell / Top Bar windows.
     // If it finds nothing, we return 0 (NO guessed fallback).
     const int h = X11Support::detectTopPanelHeight(dpy);
-    qDebug() << "PanelWindow::detectGnomeTopOffsetPx (X11): detected height=" << h
-             << "isX11=" << isX11 << "openedDisplay=" << openedDisplay;
     
     // Close display if we opened it ourselves (don't close Qt's display)
     if (openedDisplay && dpy) {
@@ -1068,7 +1090,6 @@ int PanelWindow::detectGnomeTopOffsetPx() const
     }
     
     if (h <= 0 || h > 128) {
-        qDebug() << "PanelWindow::detectGnomeTopOffsetPx: returning 0 (invalid height)";
         return 0;
     }
 
@@ -1077,12 +1098,6 @@ int PanelWindow::detectGnomeTopOffsetPx() const
 
  void PanelWindow::updatePosition()
  {
-    qDebug() << "PanelWindow::updatePosition ENTER"
-    << "winId=" << winId()
-    << "visible=" << isVisible()
-    << "anchorV=" << m_verticalAnchor
-    << "anchorH=" << m_horizontalAnchor
-    << "geom(before)=" << geometry();
     // Layer-shell handles positioning itself
      if ((m_layerShellQt && m_layerShellQt->isAvailable()) ||
          (m_waylandLayerShell && m_waylandLayerShell->isAvailable())) {
@@ -1169,8 +1184,6 @@ int PanelWindow::detectGnomeTopOffsetPx() const
     if (geometry() != newGeom) {
        setGeometry(newGeom);
        scheduleApplyStruts();
-    } else {
-       qDebug() << "PanelWindow::updatePosition SKIPPED (geometry unchanged)";
     }
  }
  

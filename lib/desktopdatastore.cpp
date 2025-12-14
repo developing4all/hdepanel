@@ -927,7 +927,11 @@ DesktopEntryData DesktopDataStore::getDesktopEntry(const QString& desktopFile) c
     
     return DesktopEntryData();
 }
-bool DesktopDataStore::hasDesktopEntry(const QString& desktopFile) const { return false; }
+bool DesktopDataStore::hasDesktopEntry(const QString& desktopFile) const
+{
+    QMutexLocker lock(&m_mutex);
+    return m_desktopEntries.contains(desktopFile);
+}
 bool DesktopDataStore::fuzzyMatch(const QString& query, const QString& text) const { return false; }
 int DesktopDataStore::calculateRelevance(const QString& query, const DesktopEntryData& entry) const { return 0; }
 

@@ -51,6 +51,115 @@
     </widget>
    </item>
    <item>
+    <widget class="QGroupBox" name="taskbarColorsBox">
+     <property name="title">
+      <string>Taskbar Colors</string>
+     </property>
+     <layout class="QFormLayout" name="taskbarColorsLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="buttonColorLabel">
+        <property name="text">
+         <string>Button color:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout" name="buttonColorLayout">
+        <item>
+         <widget class="QPushButton" name="buttonColorButton">
+          <property name="text">
+           <string>Choose...</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>80</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>80</width>
+            <height>16777215</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="buttonColorTransparencyLabel">
+          <property name="text">
+           <string>Transparency:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="buttonColorTransparency">
+          <property name="minimum">
+           <number>0</number>
+          </property>
+          <property name="maximum">
+           <number>255</number>
+          </property>
+          <property name="value">
+           <number>80</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="focusColorLabel">
+        <property name="text">
+         <string>Focus color:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <layout class="QHBoxLayout" name="focusColorLayout">
+        <item>
+         <widget class="QPushButton" name="focusColorButton">
+          <property name="text">
+           <string>Choose...</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>80</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>80</width>
+            <height>16777215</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="focusColorTransparencyLabel">
+          <property name="text">
+           <string>Transparency:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="focusColorTransparency">
+          <property name="minimum">
+           <number>0</number>
+          </property>
+          <property name="maximum">
+           <number>255</number>
+          </property>
+          <property name="value">
+           <number>128</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <spacer name="verticalSpacer">
      <property name="orientation">
       <enum>Qt::Vertical</enum>

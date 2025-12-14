@@ -68,6 +68,11 @@ private slots:
 
     void on_appletSettings_clicked();
 
+    void on_backgroundColorButton_clicked();
+    void on_borderColorButton_clicked();
+    void on_backgroundColorTransparency_changed(int value);
+    void on_borderColorTransparency_changed(int value);
+
 private:
     void readSettings();
     void fontChanged(const QString font);

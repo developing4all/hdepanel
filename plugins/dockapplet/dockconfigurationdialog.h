@@ -17,6 +17,10 @@ public:
 
 private slots:
     void on_buttonBox_accepted();
+    void on_buttonColorButton_clicked();
+    void on_focusColorButton_clicked();
+    void on_buttonColorTransparency_changed(int value);
+    void on_focusColorTransparency_changed(int value);
 
 private:
     Ui::DockConfigurationDialog *ui;

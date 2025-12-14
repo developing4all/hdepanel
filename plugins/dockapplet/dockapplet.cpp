@@ -58,12 +58,15 @@
 #include "../../lib/hpopupmenu.h"
 
 #include <settings.h>
+#include <QColor>
 
 // Include Xlib locally to access XSelectInput and event masks without leaking macros globally
 #include <X11/Xlib.h>
 
 DockApplet::DockApplet(PanelWindow* panelWindow)
-	: Applet(panelWindow), m_dragging(false), m_initialized(false), m_destroying(false), m_waylandSupport(nullptr)
+	: Applet(panelWindow), m_dragging(false), m_initialized(false), m_destroying(false), m_waylandSupport(nullptr),
+	  m_buttonColor(255, 255, 255), m_buttonColorTransparency(80),
+	  m_focusColor(0, 0, 0), m_focusColorTransparency(128)
 {
     setObjectName("Dock");
 
@@ -335,6 +338,8 @@ DockItem* DockApplet::dockItemForClient(Client* client)
 	
 	// Create a new dock item for this client
 	DockItem* dockItem = new DockItem(this);
+	dockItem->setButtonColor(m_buttonColor, m_buttonColorTransparency);
+	dockItem->setFocusColor(m_focusColor, m_focusColorTransparency);
 	dockItem->addClient(client);
 	
 	// Register the dock item immediately
@@ -358,6 +363,8 @@ DockItem* DockApplet::dockItemForWaylandClient(WaylandClient* client)
 	
 	// Create a new dock item for this wayland client
 	DockItem* dockItem = new DockItem(this);
+	dockItem->setButtonColor(m_buttonColor, m_buttonColorTransparency);
+	dockItem->setFocusColor(m_focusColor, m_focusColorTransparency);
 	dockItem->setWaylandClient(client);
 	
 	// Register the dock item immediately
@@ -718,6 +725,18 @@ void DockApplet::readSettings()
     m_only_current_screen = Settings::value(m_id, "only_current_screen", true).toBool();
     m_only_current_desktop = Settings::value(m_id, "only_current_desktop", true).toBool();
     m_only_minimized = Settings::value(m_id, "only_minimized", false).toBool();
+    
+    // Load color settings
+    m_buttonColor = Settings::value(m_id, "buttonColor", QColor(255, 255, 255)).value<QColor>();
+    m_buttonColorTransparency = Settings::value(m_id, "buttonColorTransparency", 80).toInt();
+    m_focusColor = Settings::value(m_id, "focusColor", QColor(0, 0, 0)).value<QColor>();
+    m_focusColorTransparency = Settings::value(m_id, "focusColorTransparency", 128).toInt();
+    
+    // Update all existing dock items with new colors
+    for (DockItem* item : m_dockItems) {
+        item->setButtonColor(m_buttonColor, m_buttonColorTransparency);
+        item->setFocusColor(m_focusColor, m_focusColorTransparency);
+    }
 }
 
 void DockApplet::deduplicateDockItems()
@@ -773,6 +792,8 @@ DockItem* DockApplet::createDockItem(const QString& name, const QIcon& icon, con
 {
 	// Create the dock item
 	DockItem* dockItem = new DockItem(this);
+	dockItem->setButtonColor(m_buttonColor, m_buttonColorTransparency);
+	dockItem->setFocusColor(m_focusColor, m_focusColorTransparency);
 	
 	// Set object name if provided
 	if (!objectName.isEmpty()) {

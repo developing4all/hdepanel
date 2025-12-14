@@ -66,6 +66,10 @@ DockItem::DockItem(DockApplet* dockApplet)
     m_waylandClient = nullptr;
     m_waylandText = QString();
     m_shouldDelete = false;
+    m_buttonColor = QColor(255, 255, 255);
+    m_buttonColorTransparency = 80;
+    m_focusColor = QColor(0, 0, 0);
+    m_focusColorTransparency = 128;
 
 	m_dockApplet = dockApplet;
 
@@ -360,8 +364,12 @@ void DockItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
 
 	{
 		QRadialGradient gradient(center, adjustHardcodedPixelSize(200), center);
-		gradient.setColorAt(0.0, QColor(255, 255, 255, 80 + static_cast<int>(80*m_highlightIntensity)));
-		gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
+		QColor buttonColorStart = m_buttonColor;
+		buttonColorStart.setAlpha(m_buttonColorTransparency + static_cast<int>(m_buttonColorTransparency*m_highlightIntensity));
+		QColor buttonColorEnd = m_buttonColor;
+		buttonColorEnd.setAlpha(0);
+		gradient.setColorAt(0.0, buttonColorStart);
+		gradient.setColorAt(1.0, buttonColorEnd);
 		painter->setBrush(QBrush(gradient));
 		painter->drawRoundedRect(rect, roundRadius, roundRadius);
 	}
@@ -369,17 +377,23 @@ void DockItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
 	// Draw focus highlight (stronger than hover, different color)
 	if(m_focusHighlightIntensity > 0.001)
 	{
-		// Draw a solid border for focused windows - more visible than gradient
-		QPen focusPen(QColor(100, 150, 255, static_cast<int>(64*m_focusHighlightIntensity)));
-		focusPen.setWidth(adjustHardcodedPixelSize(3)); // Make it thicker
+		// Draw a solid border for focused windows using configurable color
+		QColor focusPenColor = m_focusColor;
+		focusPenColor.setAlpha(static_cast<int>(m_focusColorTransparency*m_focusHighlightIntensity));
+		QPen focusPen(focusPenColor);
+		focusPen.setWidth(adjustHardcodedPixelSize(2));
 		painter->setPen(focusPen);
 		painter->setBrush(Qt::NoBrush);
 		painter->drawRoundedRect(rect.adjusted(1, 1, -1, -1), roundRadius, roundRadius);
 		
-		// Also add a more visible gradient overlay
+		// Also add a gradient overlay using configurable color
 		QRadialGradient gradient(center, adjustHardcodedPixelSize(200), center);
-		gradient.setColorAt(0.0, QColor(100, 150, 255, static_cast<int>(24*m_focusHighlightIntensity)));
-		gradient.setColorAt(1.0, QColor(100, 150, 255, 0));
+		QColor focusColorStart = m_focusColor;
+		focusColorStart.setAlpha(static_cast<int>(60*m_focusHighlightIntensity));
+		QColor focusColorEnd = m_focusColor;
+		focusColorEnd.setAlpha(0);
+		gradient.setColorAt(0.0, focusColorStart);
+		gradient.setColorAt(1.0, focusColorEnd);
 		painter->setPen(Qt::NoPen);
 		painter->setBrush(QBrush(gradient));
 		painter->drawRoundedRect(rect, roundRadius, roundRadius);
@@ -555,6 +569,20 @@ bool DockItem::isFocused() const
 		return true;
 	
 	return false;
+}
+
+void DockItem::setButtonColor(const QColor& color, int transparency)
+{
+    m_buttonColor = color;
+    m_buttonColorTransparency = transparency;
+    update();
+}
+
+void DockItem::setFocusColor(const QColor& color, int transparency)
+{
+    m_focusColor = color;
+    m_focusColorTransparency = transparency;
+    update();
 }
 
 bool DockItem::hasClient(Client* client) const

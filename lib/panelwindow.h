@@ -90,6 +90,7 @@ class QGraphicsScene;
 	 void updatePosition();
 	 void showConfigurationDialog();
 	 void removePanel();
+	 void updateColors();
 
  private:
 	 class RootEventFilter; // X11 root window native event filter
@@ -148,6 +149,12 @@ class QGraphicsScene;
 	 QTimer*       m_waylandRepositionTimer = nullptr;
 	 class WaylandLayerShell* m_waylandLayerShell = nullptr;
 	 class LayerShellQtIntegration* m_layerShellQt = nullptr;
+
+	 // Color settings
+	 QColor        m_backgroundColor = QColor(0, 0, 0);
+	 int           m_backgroundTransparency = 128;
+	 QColor        m_borderColor = QColor(255, 255, 255);
+	 int           m_borderTransparency = 128;
  
 	 friend class PanelWindowGraphicsItem;
  

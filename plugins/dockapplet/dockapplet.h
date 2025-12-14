@@ -111,6 +111,12 @@ private:
     bool m_initialized;
     bool m_destroying;
     WaylandSupport* m_waylandSupport;
+    
+    // Color settings
+    QColor m_buttonColor;
+    int m_buttonColorTransparency;
+    QColor m_focusColor;
+    int m_focusColorTransparency;
 };
 
 #endif

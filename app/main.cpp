@@ -83,9 +83,9 @@ int main(int argc, char** argv)
 
     PanelApplication app(argc, argv);
     
-    // Setup translations
-    QTranslator qtTranslator;
-    QTranslator appTranslator;
+    // Setup translations - must be heap-allocated to persist for application lifetime
+    QTranslator* qtTranslator = new QTranslator(&app);
+    QTranslator* appTranslator = new QTranslator(&app);
     
     // Get system locale (e.g., "en_US", "nl_NL", "ar_SA")
     QString locale = QLocale::system().name();
@@ -93,8 +93,12 @@ int main(int argc, char** argv)
     qDebug() << "System locale:" << locale << "Language:" << language;
     
     // Load Qt's built-in translations
-    qtTranslator.load("qt_" + locale, QLibraryInfo::location(QLibraryInfo::TranslationsPath));
-    app.installTranslator(&qtTranslator);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    qtTranslator->load("qt_" + locale, QLibraryInfo::path(QLibraryInfo::TranslationsPath));
+#else
+    qtTranslator->load("qt_" + locale, QLibraryInfo::location(QLibraryInfo::TranslationsPath));
+#endif
+    app.installTranslator(qtTranslator);
     
     // Try to find translation file - check both full locale and language code
     QString translationsPath;
@@ -124,8 +128,8 @@ int main(int argc, char** argv)
     
     // Load the translation
     if (!translationsPath.isEmpty()) {
-        if (appTranslator.load(translationFile, translationsPath)) {
-            app.installTranslator(&appTranslator);
+        if (appTranslator->load(translationFile, translationsPath)) {
+            app.installTranslator(appTranslator);
             qDebug() << "✓ Loaded translation:" << translationFile << "from" << translationsPath;
         } else {
             qDebug() << "✗ Failed to load translation:" << translationFile;

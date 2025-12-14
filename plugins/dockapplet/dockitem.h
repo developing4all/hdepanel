@@ -71,6 +71,8 @@ public:
 	void setTargetSize(const QSize& targetSize);
 	void moveInstantly();
 	void startAnimation();
+	void setButtonColor(const QColor& color, int transparency);
+	void setFocusColor(const QColor& color, int transparency);
 
 	const QVector<Client*>& clients() const
 	{
@@ -116,6 +118,12 @@ private:
 	QPoint m_dragStartPosition;
     bool m_isMinimized;
     bool m_shouldDelete;
+    
+    // Color settings
+    QColor m_buttonColor;
+    int m_buttonColorTransparency;
+    QColor m_focusColor;
+    int m_focusColorTransparency;
 };
 
 #endif

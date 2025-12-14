@@ -267,8 +267,13 @@ DesktopApplication DesktopApplications::applicationFromPath(const QString& path)
 
 void DesktopApplications::launch(const QString& path)
 {
-	QMutexLocker lock(&m_applicationsMutex);
-	m_applications[path].launch();
+	// Get the application from DesktopDataStore (consistent with applications() and applicationFromPath())
+	DesktopApplication app = applicationFromPath(path);
+	if (!app.path().isEmpty()) {
+		app.launch();
+	} else {
+		qDebug() << "DesktopApplications::launch() - Application not found for path:" << path;
+	}
 }
 
 void DesktopApplications::run()

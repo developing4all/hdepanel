@@ -34,6 +34,7 @@
 #include <QDebug>
 #include <QIcon>
 #include <QSettings>
+#include <QColorDialog>
 #if QT_VERSION < 0x060000
 #include <QDesktopWidget>
 #endif
@@ -106,6 +107,14 @@ PanelSettings::PanelSettings(QString panel_id, QWidget *parent) :
             [this](int) { handleFontActivated(ui->font->currentFont().family()); });
     connect(ui->fontSize, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &PanelSettings::on_fontSize_valueChanged);
+    connect(ui->backgroundColorButton, &QPushButton::clicked,
+            this, &PanelSettings::on_backgroundColorButton_clicked);
+    connect(ui->borderColorButton, &QPushButton::clicked,
+            this, &PanelSettings::on_borderColorButton_clicked);
+    connect(ui->backgroundColorTransparency, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &PanelSettings::on_backgroundColorTransparency_changed);
+    connect(ui->borderColorTransparency, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &PanelSettings::on_borderColorTransparency_changed);
 
     readSettings();
 }
@@ -144,6 +153,25 @@ void PanelSettings::setPanelWindow(PanelWindow *panel)
     if (m_panel && ui->font && ui->fontSize) {
         ui->font->setCurrentText(m_panel->font().family());
         ui->fontSize->setValue(m_panel->font().pointSize());
+    }
+
+    // Load color settings
+    QColor bgColor = Settings::value(m_panel_id, "backgroundColor", QColor(0, 0, 0)).value<QColor>();
+    int bgTransparency = Settings::value(m_panel_id, "backgroundColorTransparency", 128).toInt();
+    QColor borderColor = Settings::value(m_panel_id, "borderColor", QColor(255, 255, 255)).value<QColor>();
+    int borderTransparency = Settings::value(m_panel_id, "borderColorTransparency", 128).toInt();
+    
+    if (ui->backgroundColorButton) {
+        ui->backgroundColorButton->setStyleSheet(QString("background-color: %1;").arg(bgColor.name()));
+    }
+    if (ui->backgroundColorTransparency) {
+        ui->backgroundColorTransparency->setValue(bgTransparency);
+    }
+    if (ui->borderColorButton) {
+        ui->borderColorButton->setStyleSheet(QString("background-color: %1;").arg(borderColor.name()));
+    }
+    if (ui->borderColorTransparency) {
+        ui->borderColorTransparency->setValue(borderTransparency);
     }
 
     // applets
@@ -334,4 +362,46 @@ QString PanelSettings::translateAppletName(const QString &appletName)
     
     // Return original name if no translation found
     return appletName;
+}
+
+void PanelSettings::on_backgroundColorButton_clicked()
+{
+    QColor currentColor = Settings::value(m_panel_id, "backgroundColor", QColor(0, 0, 0)).value<QColor>();
+    QColor color = QColorDialog::getColor(currentColor, this, "Choose Background Color");
+    if (color.isValid()) {
+        Settings::setValue(m_panel_id, "backgroundColor", color);
+        ui->backgroundColorButton->setStyleSheet(QString("background-color: %1;").arg(color.name()));
+        if (m_panel) {
+            m_panel->updateColors();
+        }
+    }
+}
+
+void PanelSettings::on_borderColorButton_clicked()
+{
+    QColor currentColor = Settings::value(m_panel_id, "borderColor", QColor(255, 255, 255)).value<QColor>();
+    QColor color = QColorDialog::getColor(currentColor, this, "Choose Border Color");
+    if (color.isValid()) {
+        Settings::setValue(m_panel_id, "borderColor", color);
+        ui->borderColorButton->setStyleSheet(QString("background-color: %1;").arg(color.name()));
+        if (m_panel) {
+            m_panel->updateColors();
+        }
+    }
+}
+
+void PanelSettings::on_backgroundColorTransparency_changed(int value)
+{
+    Settings::setValue(m_panel_id, "backgroundColorTransparency", value);
+    if (m_panel) {
+        m_panel->updateColors();
+    }
+}
+
+void PanelSettings::on_borderColorTransparency_changed(int value)
+{
+    Settings::setValue(m_panel_id, "borderColorTransparency", value);
+    if (m_panel) {
+        m_panel->updateColors();
+    }
 }

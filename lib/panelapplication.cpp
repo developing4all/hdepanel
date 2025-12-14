@@ -173,10 +173,6 @@ void PanelApplication::init()
     QElapsedTimer initTimer;
     initTimer.start();
     
-#if QT_VERSION >= 0x050000
-    installNativeEventFilter(&myXEv);
-#endif
-    
     // Start loading desktop entries once at application startup
     QElapsedTimer dataStoreTimer;
     dataStoreTimer.start();
@@ -225,20 +221,15 @@ void PanelApplication::showPanel(const QString& panel_id)
     panelWindow->setLayoutPolicy(PanelWindow::FillSpace);
     panelWindow->setDockMode(true);
     
-    // Initialize applets first
-    panelWindow->init();
-    
-    // Then update layout
+    // Update layout to ensure window has correct size
     panelWindow->updateLayout();
     
-    // Set position BEFORE showing the window
-    panelWindow->updatePosition();
-    
+    // Show the window first so winId() is valid and geometry is established
     panelWindow->show();
     
-    // Only one additional position update after showing, with a small delay
-    // to ensure the window is fully mapped and ready
-    QTimer::singleShot(50, [panelWindow]() {
+    // Now position after the window is shown and has valid winId/size
+    // Use a small delay to ensure the window is fully mapped
+    QTimer::singleShot(10, [panelWindow]() {
         panelWindow->updatePosition();
     });
     

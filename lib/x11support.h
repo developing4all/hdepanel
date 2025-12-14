@@ -96,6 +96,17 @@ public:
     // `excludeWindow` should be set to our own panel winId() so we don't include ourselves.
     static QMargins getExternalStrutReservations(const QRect& screen, unsigned long excludeWindow);
 
+    // Returns the maximum strut value from other hdepanel windows at the same position.
+    // For top panels, returns the maximum top strut. For bottom panels, returns the maximum bottom strut.
+    // This allows multiple hdepanel panels to coordinate their struts.
+    static int getMaxHdepanelStrut(const QRect& screen, unsigned long excludeWindow, bool isTop, bool isBottom);
+
+    // Returns the total height of other hdepanel panels at the same position.
+    // For top panels, returns the sum of heights of all panels stacked at the top.
+    // For bottom panels, returns the sum of heights of all panels stacked at the bottom.
+    // This is used for positioning new panels below/above existing ones.
+    static int getHdepanelPanelsHeight(const QRect& screen, unsigned long excludeWindow, bool isTop, bool isBottom);
+
     // Select X11 input events for a window on the *same* X connection used by Qt/X11Support.
     // This is required for XCB_PROPERTY_NOTIFY (title/icon/urgency changes) to reach our event filter.
     static void selectInput(unsigned long window, long eventMask);

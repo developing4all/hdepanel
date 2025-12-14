@@ -19,14 +19,19 @@ SniItemProxy::SniItemProxy(const QString &service, const QString &path, QObject 
 
 QIcon SniItemProxy::icon() const
 {
-    // Try IconPixmap property first (array of (w,h,bytes))
     QDBusInterface iface(m_service, m_path, SNI_ITEM_IFACE, QDBusConnection::sessionBus());
-    QVariant v = iface.property("IconPixmap");
-    if (v.isValid()) {
-        // Minimal: ignore, fall back to IconName due to complex parsing
-    }
+    
+    // Try IconName first (simpler, doesn't require complex type registration)
     QString name = iface.property("IconName").toString();
-    if (!name.isEmpty()) return QIcon::fromTheme(name);
+    if (!name.isEmpty()) {
+        return QIcon::fromTheme(name);
+    }
+    
+    // IconPixmap is a complex type (array of (iiay)) that requires type registration.
+    // Since we're not parsing it anyway, we skip it to avoid the warning.
+    // If needed in the future, we'd need to register the type with:
+    // qDBusRegisterMetaType<IconPixmapArray>();
+    
     return QIcon();
 }
 
@@ -90,27 +95,45 @@ void SniWatcher::RegisterStatusNotifierItem(const QString &service)
     }
     
     // Extract service name and path from the service string
-    // Format is usually "service_name" or "service_name/path"
+    // Format can be:
+    // - "service_name" (well-known name)
+    // - "service_name/path" (well-known name with path)
+    // - ":1.104@/StatusNotifierItem" (unique name with @ separator and path)
+    // - ":1.104" (unique name without path)
     QString serviceName = service;
     QString path = "/StatusNotifierItem";
     
-    int slashPos = service.indexOf('/');
-    if (slashPos > 0) {
-        serviceName = service.left(slashPos);
-        path = service.mid(slashPos);
+    // Check for @ separator (used by some implementations to separate unique name from path)
+    int atPos = service.indexOf('@');
+    if (atPos > 0) {
+        // Format: ":1.104@/StatusNotifierItem"
+        serviceName = service.left(atPos);
+        QString afterAt = service.mid(atPos + 1);
+        if (!afterAt.isEmpty() && afterAt.startsWith('/')) {
+            path = afterAt;
+        }
     } else {
-        // If no path specified, try common paths
-        // First try the service name as-is with default path
-        QDBusInterface iface(serviceName, "/StatusNotifierItem", SNI_ITEM_IFACE, m_bus);
-        if (!iface.isValid()) {
-            // Try without the path, just the service name
+        // No @ separator, check for / separator
+        int slashPos = service.indexOf('/');
+        if (slashPos > 0) {
+            // Format: "service_name/path"
+            serviceName = service.left(slashPos);
+            path = service.mid(slashPos);
+        } else {
+            // No path specified, use default
             serviceName = service;
-            path = "";
+            path = "/StatusNotifierItem";
         }
     }
     
+    // Validate service name (must be non-empty and valid D-Bus name format)
+    if (serviceName.isEmpty()) {
+        qDebug() << "Invalid service name (empty), skipping";
+        return;
+    }
+    
     qDebug() << "Adding SNI item - service:" << serviceName << "path:" << path;
-    addItem(serviceName, path.isEmpty() ? "/StatusNotifierItem" : path);
+    addItem(serviceName, path);
 }
 
 void SniWatcher::queryRegisteredItems()
@@ -160,15 +183,15 @@ static bool hasTrayIconProperties(const QString &service, const QString &path, c
         return false;
     }
     
-    // Check for IconName or IconPixmap - real tray icons will have at least one
+    // Check for IconName - real tray icons will have this
     QString iconName = iface.property("IconName").toString();
-    QVariant iconPixmap = iface.property("IconPixmap");
     
     // Also check for Id property - real tray icons should have this
     QString id = iface.property("Id").toString();
     
-    // If it has an icon name/pixmap or an ID, it's likely a real tray icon
-    return !iconName.isEmpty() || iconPixmap.isValid() || !id.isEmpty();
+    // Skip IconPixmap to avoid type registration warning - IconName is sufficient
+    // If it has an icon name or an ID, it's likely a real tray icon
+    return !iconName.isEmpty() || !id.isEmpty();
 }
 
 void SniWatcher::queryExistingItems()
@@ -183,14 +206,30 @@ void SniWatcher::queryExistingItems()
     qDebug() << "Querying" << m_registeredServices.size() << "registered SNI services";
     
     for (const QString &servicePath : m_registeredServices) {
-        // Extract service name and path
+        // Extract service name and path (same logic as RegisterStatusNotifierItem)
         QString serviceName = servicePath;
         QString path = "/StatusNotifierItem";
         
-        int slashPos = servicePath.indexOf('/');
-        if (slashPos > 0) {
-            serviceName = servicePath.left(slashPos);
-            path = servicePath.mid(slashPos);
+        // Check for @ separator first
+        int atPos = servicePath.indexOf('@');
+        if (atPos > 0) {
+            serviceName = servicePath.left(atPos);
+            QString afterAt = servicePath.mid(atPos + 1);
+            if (!afterAt.isEmpty() && afterAt.startsWith('/')) {
+                path = afterAt;
+            }
+        } else {
+            // Check for / separator
+            int slashPos = servicePath.indexOf('/');
+            if (slashPos > 0) {
+                serviceName = servicePath.left(slashPos);
+                path = servicePath.mid(slashPos);
+            }
+        }
+        
+        // Validate service name
+        if (serviceName.isEmpty()) {
+            continue;
         }
         
         // Skip system services

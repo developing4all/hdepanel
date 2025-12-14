@@ -6,6 +6,9 @@
 #include <QLibraryInfo>
 #include <QFile>
 #include <QCoreApplication>
+#include <QLockFile>
+#include <QStandardPaths>
+#include <QDir>
 
 #include <signal.h>
 
@@ -63,6 +66,19 @@ int main(int argc, char** argv)
             qputenv("QT_QPA_PLATFORM", QByteArray("xcb"));
             qDebug() << "Defaulting to X11 (xcb) platform.";
         }
+    }
+
+    // ---- Single-instance guard ----
+    // Prevent launching multiple hdepanel instances (which can fight over struts/tray selection
+    // and cause both panels to move to unexpected positions).
+    const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    const QString lockDir = runtimeDir.isEmpty() ? QDir::tempPath() : runtimeDir;
+    const QString lockPath = QDir(lockDir).filePath("hdepanel.lock");
+    static QLockFile instanceLock(lockPath);
+    instanceLock.setStaleLockTime(0); // rely on PID checking; don't auto-break locks
+    if (!instanceLock.tryLock(0)) {
+        qDebug() << "Another hdepanel instance is already running (lock:" << lockPath << "). Exiting.";
+        return 0;
     }
 
     PanelApplication app(argc, argv);

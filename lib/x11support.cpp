@@ -308,6 +308,29 @@ static bool x11IsDock(Window w) {
     return isDock;
 }
 
+static bool x11GetRootRect(Window w, QRect& out)
+{
+    if (!x11DisplayCompat()) return false;
+
+    XWindowAttributes a;
+    if (!XGetWindowAttributes(x11DisplayCompat(), w, &a)) return false;
+
+    Window child = None;
+    int rx = 0, ry = 0;
+
+    if (!XTranslateCoordinates(x11DisplayCompat(),
+                               w,
+                               x11RootWindowCompat(),
+                               0, 0,
+                               &rx, &ry,
+                               &child)) {
+        return false;
+    }
+
+    out = QRect(rx, ry, a.width, a.height);
+    return true;
+}
+
 static X11Strut x11GetStrut(Window w) {
     X11Strut s; s.valid = false;
     if (!x11DisplayCompat()) return s;
@@ -389,6 +412,14 @@ QMargins X11Support::getExternalStrutReservations(const QRect& screen, unsigned 
         // Only consider dock/panel windows to avoid random windows with bogus properties.
         if (!x11IsDock(w)) continue;
 
+        // Exclude our own hdepanel windows - they set their own struts independently
+        // Check window title to identify hdepanel windows
+        QString windowName = getWindowName(w);
+        if (windowName.contains("HDE Panel", Qt::CaseInsensitive) || 
+            windowName.contains("hdepanel", Qt::CaseInsensitive)) {
+            continue; // Skip our own panels
+        }
+
         const X11Strut s = x11GetStrut(w);
         if (!s.valid) continue;
 
@@ -420,6 +451,130 @@ QMargins X11Support::getExternalStrutReservations(const QRect& screen, unsigned 
     return m;
 }
 
+int X11Support::getMaxHdepanelStrut(const QRect& screen, unsigned long excludeWindow, bool isTop, bool isBottom)
+{
+    int maxStrut = 0;
+    if (!x11DisplayCompat() || !screen.isValid())
+        return maxStrut;
+
+    const QVector<Window> wins = x11ClientList();
+    for (Window w : wins) {
+        if (!w) continue;
+        if (excludeWindow && w == static_cast<Window>(excludeWindow)) continue;
+        if (!x11IsViewable(w)) continue;
+        if (!x11IsDock(w)) continue;
+
+        // Only consider hdepanel windows
+        QString windowName = getWindowName(w);
+        if (!windowName.contains("HDE Panel", Qt::CaseInsensitive) && 
+            !windowName.contains("hdepanel", Qt::CaseInsensitive)) {
+            continue; // Skip non-hdepanel windows
+        }
+
+        // Get window geometry to determine position and calculate strut
+        XWindowAttributes attrs;
+        if (!XGetWindowAttributes(x11DisplayCompat(), w, &attrs)) continue;
+        
+        // Check if this window is at the same position (top or bottom)
+        // For top: consider panels in the upper half of the screen
+        // For bottom: consider panels in the lower half of the screen
+        int screenCenterY = screen.top() + screen.height() / 2;
+        bool windowIsTop = (attrs.y + attrs.height / 2) < screenCenterY;
+        bool windowIsBottom = (attrs.y + attrs.height / 2) >= screenCenterY;
+
+        if (isTop && windowIsTop) {
+            // Calculate what the strut should be based on window geometry
+            // Strut is distance from screen top to bottom of panel
+            int calculatedStrut = (attrs.y + attrs.height - screen.top()) + 1;
+            if (calculatedStrut > 0) {
+                maxStrut = qMax(maxStrut, calculatedStrut);
+            }
+        } else if (isBottom && windowIsBottom) {
+            // Calculate what the strut should be based on window geometry
+            // Strut is distance from top of panel to screen bottom
+            int calculatedStrut = (screen.bottom() - attrs.y) + 1;
+            if (calculatedStrut > 0) {
+                maxStrut = qMax(maxStrut, calculatedStrut);
+            }
+        }
+    }
+
+    return maxStrut;
+}
+
+int X11Support::getHdepanelPanelsHeight(
+    const QRect& usable,
+    unsigned long selfWindow,
+    bool isTop,
+    bool isBottom)
+{
+    if (!x11DisplayCompat() || !usable.isValid() || selfWindow == 0)
+        return 0;
+
+    const int kEdgeSlackPx = 8; // small tolerance
+
+    struct Entry {
+        Window w;
+        QRect  r;
+    };
+    QVector<Entry> panels;
+
+    const QVector<Window> wins = x11ClientList();
+    for (Window w : wins) {
+        if (!w) continue;
+        if (!x11IsViewable(w)) continue;
+        if (!x11IsDock(w)) continue;
+
+        const QString name = getWindowName(w);
+        if (!name.contains("HDE Panel", Qt::CaseInsensitive) &&
+            !name.contains("hdepanel", Qt::CaseInsensitive))
+            continue;
+
+        QRect wr;
+        if (!x11GetRootRect(w, wr))
+            continue;
+
+        // Must be on the same screen area (avoid other monitors)
+        if (wr.right() < usable.left() || wr.left() > usable.right())
+            continue;
+
+        // Decide if this panel belongs to the requested edge.
+        // TOP: accept windows at/above usable.top()+slack (includes startup y=0).
+        // BOTTOM: accept windows at/under usable.bottom()-slack.
+        bool okEdge = false;
+        if (isTop) {
+            if (wr.top() <= usable.top() + kEdgeSlackPx)
+                okEdge = true;
+        } else if (isBottom) {
+            if (wr.bottom() >= usable.bottom() - kEdgeSlackPx)
+                okEdge = true;
+        } else {
+            // center or unknown: don't stack
+            return 0;
+        }
+
+        if (!okEdge) continue;
+
+        panels.push_back({w, wr});
+    }
+
+    // Stable order: sort by window id. (If you want user-defined order later,
+    // we can sort by a property or by your panel id.)
+    std::sort(panels.begin(), panels.end(),
+              [](const Entry& a, const Entry& b) { return a.w < b.w; });
+
+    // Offset = sum heights of panels BEFORE selfWindow
+    int offset = 0;
+    const Window self = static_cast<Window>(selfWindow);
+
+    for (const auto& e : panels) {
+        if (e.w == self)
+            break;
+        offset += e.r.height();
+    }
+
+    return offset;
+}
 
 void X11Support::setStrut(Window _wid,
                        int left, int right,
@@ -705,30 +860,101 @@ bool X11Support::getWindowMinimizedState(unsigned long window)
 
 QIcon X11Support::getWindowIcon(unsigned long window)
 {
-	int numItems;
-	unsigned long* rawData;
-	QIcon icon;
-	if(!getWindowPropertyHelper(window, atom("_NET_WM_ICON"), XA_CARDINAL, numItems, rawData))
+    QIcon icon;
+    if (!x11DisplayCompat()) {
+        return icon;
+    }
+
+	int numItems = 0;
+	unsigned long* rawData = nullptr;
+	if(!getWindowPropertyHelper(window, atom("_NET_WM_ICON"), XA_CARDINAL, numItems, rawData) || !rawData || numItems < 2) {
 		return icon;
+    }
+
+    // NOTE: _NET_WM_ICON is an array of CARDINALs:
+    // [width, height, argb-pixels...][width, height, argb-pixels...]...
+    // During early startup some apps briefly expose malformed/partial data.
 	unsigned long* data = rawData;
-	while(numItems > 0)
+    int remaining = numItems;
+
+    // Safety caps (avoid huge allocations / bogus metadata).
+    // Increased from 512 to 2048 to accommodate larger icons while still preventing DoS
+    constexpr int kMaxIconDim = 2048;
+    // Track if we've successfully parsed at least one icon
+    bool hasValidIcon = false;
+
+	while(remaining >= 2)
 	{
-		int width = static_cast<int>(data[0]);
-		int height = static_cast<int>(data[1]);
-		data += 2;
-		numItems -= 2;
-		QImage image(width, height, QImage::Format_ARGB32);
-		for(int i = 0; i < height; i++)
-		{
-			for(int k = 0; k < width; k++)
-			{
-				image.setPixel(k, i, static_cast<unsigned int>(data[i*width + k]));
-			}
-		}
-		data += width*height;
-		numItems -= width*height;
-		icon.addPixmap(QPixmap::fromImage(image));
+        // Read header (don't consume yet - validate first)
+        const unsigned long wU = data[0];
+        const unsigned long hU = data[1];
+		const int width  = static_cast<int>(wU);
+		const int height = static_cast<int>(hU);
+
+        // Validate header dimensions
+        if (width <= 0 || height <= 0 || width > kMaxIconDim || height > kMaxIconDim) {
+            // Invalid header - try to recover by skipping this entry
+            // Skip forward by 1 item and try again (heuristic: next icon might start here)
+            if (remaining > 2) {
+                data += 1;
+                remaining -= 1;
+                continue;
+            }
+            // No more data to try
+            break;
+        }
+
+        const qint64 pixels64 = static_cast<qint64>(width) * static_cast<qint64>(height);
+        // Check if we have enough data (accounting for the 2 header items we haven't consumed yet)
+        if (pixels64 <= 0 || pixels64 > (remaining - 2)) {
+            // Not enough data for this icon - if we already have valid icons, stop here
+            // Otherwise try to skip forward (might be mid-update during startup)
+            if (hasValidIcon) {
+                break;
+            }
+            // Try skipping forward by 1 to find next valid icon
+            if (remaining > 2) {
+                data += 1;
+                remaining -= 1;
+                continue;
+            }
+            break;
+        }
+        const int pixels = static_cast<int>(pixels64);
+
+        // Header is valid - now consume it
+        data += 2;
+        remaining -= 2;
+
+        QImage image(width, height, QImage::Format_ARGB32);
+        if (image.isNull()) {
+            // Allocation failed; skip this icon's pixel data and continue
+            if (remaining >= pixels) {
+                data += pixels;
+                remaining -= pixels;
+            } else {
+                // Not enough data - stop here
+                break;
+            }
+            continue;
+        }
+
+        // Fast pixel copy with bounds safety - we know pixels <= remaining at this point
+        for (int y = 0; y < height; ++y) {
+            QRgb* scan = reinterpret_cast<QRgb*>(image.scanLine(y));
+            const int rowOff = y * width;
+            for (int x = 0; x < width; ++x) {
+                scan[x] = static_cast<QRgb>(data[rowOff + x] & 0xFFFFFFFFu);
+            }
+        }
+
+        data += pixels;
+        remaining -= pixels;
+
+        icon.addPixmap(QPixmap::fromImage(image));
+        hasValidIcon = true;
 	}
+
 	XFree(rawData);
 	return icon;
 }
@@ -853,10 +1079,16 @@ unsigned long X11Support::getARGBVisualId()
 
 	int numVisuals;
     XVisualInfo* visualInfoList = XGetVisualInfo(x11DisplayCompat(), VisualScreenMask | VisualDepthMask | VisualRedMaskMask | VisualGreenMaskMask | VisualBlueMaskMask, &visualInfoTemplate, &numVisuals);
-	unsigned long id = visualInfoList[0].visualid;
-	XFree(visualInfoList);
+    if (!visualInfoList || numVisuals <= 0) {
+        // Fallback: use default visual id if ARGB visual isn't available.
+        // This can happen on some X servers or during early startup when extensions aren't fully ready.
+        Visual* v = DefaultVisual(x11DisplayCompat(), x11AppScreenCompat());
+        return XVisualIDFromVisual(v);
+    }
 
-	return id;
+    unsigned long id = visualInfoList[0].visualid;
+    XFree(visualInfoList);
+    return id;
 }
 
 void X11Support::redirectWindow(unsigned long window)
@@ -874,7 +1106,19 @@ QPixmap X11Support::getWindowPixmap(unsigned long window)
 {
 #if QT_VERSION >= 0x050000
     XWindowAttributes attr;
-    XGetWindowAttributes(x11DisplayCompat(), window, &attr);
+    if (!x11DisplayCompat()) {
+        return QPixmap();
+    }
+    if (XGetWindowAttributes(x11DisplayCompat(), window, &attr) == 0) {
+        return QPixmap();
+    }
+    // If the icon window isn't mapped / viewable yet, it may not have a drawable pixmap.
+    if (attr.map_state != IsViewable) {
+        return QPixmap();
+    }
+    if (attr.width <= 0 || attr.height <= 0) {
+        return QPixmap();
+    }
 
     QIcon icon = X11Support::getWindowIcon(window);
     //qDebug() << icon.availableSizes();
@@ -882,15 +1126,33 @@ QPixmap X11Support::getWindowPixmap(unsigned long window)
 
     if(pixmap.isNull())
     {
+        // Composite path: some tray icons only render correctly via XComposite.
         Pixmap pix = XCompositeNameWindowPixmap(x11DisplayCompat(), window);
-        XImage *ximage = XGetImage(x11DisplayCompat(), pix, 0, 0, attr.width, attr.height, AllPlanes, ZPixmap);
+        if (pix == None) {
+            return QPixmap();
+        }
+        XImage *ximage = XGetImage(x11DisplayCompat(), pix, 0, 0,
+                                   static_cast<unsigned int>(attr.width),
+                                   static_cast<unsigned int>(attr.height),
+                                   AllPlanes, ZPixmap);
         XFreePixmap(x11DisplayCompat(), pix);
+        if (!ximage || !ximage->data) {
+            if (ximage) {
+                XDestroyImage(ximage);
+            }
+            return QPixmap();
+        }
 
         // This is safe to do since we only composite ARGB32 windows, and PictStandardARGB32
         // matches QImage::Format_ARGB32_Premultiplied.
-        QImage image((const uchar*)ximage->data, ximage->width, ximage->height, ximage->bytes_per_line,
+        QImage image(reinterpret_cast<const uchar*>(ximage->data),
+                     ximage->width,
+                     ximage->height,
+                     ximage->bytes_per_line,
                      QImage::Format_ARGB32_Premultiplied);
-        pixmap = QPixmap::fromImage(image);
+        // Detach from XImage-owned memory before freeing it.
+        pixmap = QPixmap::fromImage(image.copy());
+        XDestroyImage(ximage);
     }
     return pixmap;
 #else

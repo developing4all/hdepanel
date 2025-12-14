@@ -45,6 +45,9 @@
 #include <QAbstractNativeEventFilter>
 #include "layershellqtintegration.h"
 #include <typeinfo>
+
+// X11 headers for GNOME top bar detection (needed for XOpenDisplay/XCloseDisplay)
+#include <X11/Xlib.h>
  
 #if QT_VERSION < 0x060000
 #include <QDesktopWidget>
@@ -223,8 +226,9 @@ PanelWindow::PanelWindow(QString id)
     setAttribute(Qt::WA_TranslucentBackground);
     setAutoFillBackground(false);
      
-    // Window flags / attributes - simplified for Wayland testing
-    setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint);
+    // Window flags / attributes - must be set before showing to prevent decorations
+    // Set frameless and always on top for proper panel behavior
+    setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint);
     setAttribute(Qt::WA_ShowWithoutActivating);
     setMinimumSize(100, 48);
     
@@ -256,6 +260,17 @@ PanelWindow::PanelWindow(QString id)
  
     // Settings & plugins
     readSettings();
+    
+    // Apply dock mode attributes early (before showing) to prevent window decorations
+    // This ensures the window is treated as a dock/panel from the start
+#if QT_VERSION < 0x060000
+    if (QX11Info::isPlatformX11())
+        setAttribute(Qt::WA_X11NetWmWindowTypeDock, m_dockMode);
+#else
+    if (qApp->platformName().toLower().contains("xcb"))
+        setAttribute(Qt::WA_X11NetWmWindowTypeDock, m_dockMode);
+#endif
+    
     setApplets();
     init();
  
@@ -573,10 +588,13 @@ void PanelWindow::showEvent(QShowEvent* e)
     // Now that we're mapped, do a final assert of position + struts,
     // and start listening for root changes (workarea/desktop geometry).
     setupX11RootEventListener();
-    updatePosition();
-    scheduleApplyStruts(); // single, debounced
 
-    qDebug() << "PanelWindow::showEvent - applied dock type; scheduled struts";
+    // Pass 1: right after we're mapped
+    QTimer::singleShot(0, this, [this]{
+        updateLayout();
+        updatePosition();
+        scheduleApplyStruts();
+    });
 }
  
 void PanelWindow::mousePressEvent(QMouseEvent* e)  { e->accept(); QWidget::mousePressEvent(e); }
@@ -978,111 +996,183 @@ void PanelWindow::updateLayout()
         x += sz.width() + spacing;
     }
 }
-int PanelWindow::detectGnomeTopOffsetPx() const {
-   #if QT_VERSION < 0x060000
-       const bool isX11 = QX11Info::isPlatformX11();
-   #else
-       const bool isX11 = qApp->platformName().toLower().contains("xcb");
-   #endif
-       if (!isX11) return 0;
-   
-       const QByteArray desktop = qgetenv("XDG_CURRENT_DESKTOP");
-       const QByteArray mode    = qgetenv("GNOME_SHELL_SESSION_MODE");
-       const bool isGnome = desktop.contains("GNOME") || mode.contains("ubuntu");
-   
-       if (!isGnome) return 0;
-   
-       // Use your detector that inspects X11 (not workarea!)
-       Display *dpy = nullptr;
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-       dpy = QX11Info::display();
-#else
-   if (auto native = qGuiApp->nativeInterface<QNativeInterface::QX11Application>())
-        dpy = native->display();
-#endif
 
-        int h = dpy ? X11Support::detectTopPanelHeight(dpy) : 0;
-
-        if (h <= 0 || h > 128) h = 32; // sane fallback
-        return h;
- }
-
-
-void PanelWindow::updatePosition() {
-    // If layer-shell is in use, still allow fallback to reassert y on Qt5 (compositor sometimes centers)
-    if ((m_layerShellQt && m_layerShellQt->isAvailable()) || 
-        (m_waylandLayerShell && m_waylandLayerShell->isAvailable())) {
-#if QT_VERSION >= 0x060000
-        qDebug() << "PanelWindow::updatePosition() - Skipping (Qt6 layer-shell handles it)";
-        return;
-#else
-        // On Qt5 Wayland we keep computing target rect so forceWaylandPosition can use it
-#endif
-    }
-    
-    const QRect screen = currentScreenGeometry();
-
-    // 1) What *others* reserve (excludes our own window)
-    int extLeft = 0;
-    int extRight = 0;
-    int extTop = 0;
-    int extBottom = 0;
+int PanelWindow::detectGnomeTopOffsetPx() const
+{
 #if QT_VERSION < 0x060000
     const bool isX11 = QX11Info::isPlatformX11();
 #else
     const bool isX11 = qApp->platformName().toLower().contains("xcb");
 #endif
-    if (isX11) {
-        const QMargins ext = X11Support::getExternalStrutReservations(screen, winId());
-        extLeft = ext.left();
-        extRight = ext.right();
-        extTop = ext.top();
-        extBottom = ext.bottom();
-    }
-
-    // GNOME top bar fallback in case it isn't represented in struts
-    extTop = qMax(extTop, detectGnomeTopOffsetPx());
-    int x = screen.left();
-    switch (m_horizontalAnchor) {
-        case Min:    x = screen.left() + extLeft; break;
-        case Center: x = screen.left() + (screen.width() - width()) / 2; break;
-        case Max:    x = screen.right() - extRight - width() + 1; break;
+    
+    // Check if we're on Wayland (even if using XWayland for the panel)
+    const QByteArray sessionType = qgetenv("XDG_SESSION_TYPE").toLower();
+    const bool isWayland = (sessionType == "wayland");
+    
+    // On Wayland, GNOME top bar is a native Wayland window, not visible via X11
+    // Use a reasonable default or try to detect via available screen geometry
+    if (isWayland) {
+        // Try to get available screen geometry (workarea) vs full screen
+        // The difference at the top should be the GNOME top bar height
+        const QRect screen = currentScreenGeometry();
+        const QRect available = getAvailableScreenGeometry();
+        
+        int topBarHeight = screen.top() - available.top();
+        if (topBarHeight > 0 && topBarHeight <= 128) {
+            return topBarHeight;
+        }
+        
+        // Fallback: common GNOME top bar heights
+        // GNOME typically uses 27-30px, but can be customized
+        return 30; // Common GNOME top bar height
     }
     
-    int y = 0;
-    switch (m_verticalAnchor) {
-        case Min:
-            // Stack below any existing top reservations.
-            y = screen.top() + extTop;
-            break;
-        case Center:
-            y = screen.top() + (screen.height() - height()) / 2;
-            break;
-        case Max:
-            // Stack above any existing bottom reservations.
-            y = screen.bottom() - extBottom - height() + 1;
-            break;
+    // On native X11, try to detect via X11 window queries
+    Display* dpy = nullptr;
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    if (isX11) {
+        dpy = QX11Info::display();
+    }
+#else
+    if (isX11) {
+        if (auto native = qGuiApp->nativeInterface<QNativeInterface::QX11Application>()) {
+            dpy = native->display();
+        }
+    }
+#endif
+    
+    // Fallback: try opening display directly (useful for XWayland on Wayland)
+    bool openedDisplay = false;
+    if (!dpy) {
+        const char* displayName = qgetenv("DISPLAY").constData();
+        if (displayName && *displayName) {
+            dpy = XOpenDisplay(displayName);
+            openedDisplay = (dpy != nullptr);
+        }
+    }
+    
+    if (!dpy) {
+        qDebug() << "PanelWindow::detectGnomeTopOffsetPx: no X11 display available";
+        return 0;
     }
 
-    // 2) GNOME top bar (constant or X11 probe, not workarea)
-    // const int gnomeTop = detectGnomeTopOffsetPx(); // Unused for now
-
-    // width for FillSpace
-    if (m_layoutPolicy == FillSpace && m_orientation == Horizontal) {
-        if (width() != screen.width()) resize(screen.width(), height());
+    // This function already scans for GNOME Shell / Top Bar windows.
+    // If it finds nothing, we return 0 (NO guessed fallback).
+    const int h = X11Support::detectTopPanelHeight(dpy);
+    qDebug() << "PanelWindow::detectGnomeTopOffsetPx (X11): detected height=" << h
+             << "isX11=" << isX11 << "openedDisplay=" << openedDisplay;
+    
+    // Close display if we opened it ourselves (don't close Qt's display)
+    if (openedDisplay && dpy) {
+        XCloseDisplay(dpy);
+    }
+    
+    if (h <= 0 || h > 128) {
+        qDebug() << "PanelWindow::detectGnomeTopOffsetPx: returning 0 (invalid height)";
+        return 0;
     }
 
-    // Only update geometry if position or size has actually changed
-    QRect newGeometry(x, y, width(), height());
-    if (geometry() != newGeometry) {
-        setGeometry(newGeometry);
-        
-        // Apply *our* strut (only our height). This will change workarea,
-        // but our future placements no longer depend on workarea.
-        applyX11Struts(geometry());
-    }
+    return h;
 }
 
+ void PanelWindow::updatePosition()
+ {
+    qDebug() << "PanelWindow::updatePosition ENTER"
+    << "winId=" << winId()
+    << "visible=" << isVisible()
+    << "anchorV=" << m_verticalAnchor
+    << "anchorH=" << m_horizontalAnchor
+    << "geom(before)=" << geometry();
+    // Layer-shell handles positioning itself
+     if ((m_layerShellQt && m_layerShellQt->isAvailable()) ||
+         (m_waylandLayerShell && m_waylandLayerShell->isAvailable())) {
+         return;
+     }
+ 
+     if (winId() == 0 || width() <= 0 || height() <= 0)
+         return;
+ 
+     const QRect screen = currentScreenGeometry();
+ 
+ #if QT_VERSION < 0x060000
+     const bool isX11 = QX11Info::isPlatformX11();
+ #else
+     const bool isX11 = qApp->platformName().toLower().contains("xcb");
+ #endif
+ 
+     // ------------------------------------------------------------------
+     // 1) External struts ONLY (never mix with our own panels)
+     // ------------------------------------------------------------------
+     int extLeft = 0, extRight = 0, extTop = 0, extBottom = 0;
+     if (isX11) {
+         const QMargins ext = X11Support::getExternalStrutReservations(screen, winId());
+         extLeft   = ext.left();
+         extRight  = ext.right();
+         extTop    = ext.top();
+         extBottom = ext.bottom();
+     }
+ 
+    // GNOME fallback (only if not already reserved)
+    int gnomeTop = detectGnomeTopOffsetPx();
+    extTop = qMax(extTop, gnomeTop);
+ 
+    // ------------------------------------------------------------------
+    // 2) Stack OUR panels relative to the usable area (screen minus external)
+    // ------------------------------------------------------------------
+    int ownTopStack = 0;
+    int ownBottomStack = 0;
+
+    if (isX11) {
+        const QRect usable = screen.adjusted(extLeft, extTop, -extRight, -extBottom);
+
+        if (m_verticalAnchor == Min) {
+            ownTopStack = X11Support::getHdepanelPanelsHeight(
+                usable, winId(), true, false
+            );
+        } else if (m_verticalAnchor == Max) {
+            ownBottomStack = X11Support::getHdepanelPanelsHeight(
+                usable, winId(), false, true
+            );
+        }
+    }
+
+ 
+     // ------------------------------------------------------------------
+     // 3) Horizontal placement
+     // ------------------------------------------------------------------
+     int x = screen.left();
+     switch (m_horizontalAnchor) {
+         case Min:    x = screen.left() + extLeft; break;
+         case Center: x = screen.left() + (screen.width() - width()) / 2; break;
+         case Max:    x = screen.right() - extRight - width() + 1; break;
+     }
+ 
+     // ------------------------------------------------------------------
+     // 4) Vertical placement (CORRECT stacking)
+     // ------------------------------------------------------------------
+     int y = screen.top();
+     if (m_verticalAnchor == Min) {
+         y = screen.top() + extTop + ownTopStack;
+     } else if (m_verticalAnchor == Max) {
+         y = screen.bottom() - extBottom - ownBottomStack - height() + 1;
+     } else {
+         y = screen.top() + (screen.height() - height()) / 2;
+     }
+ 
+     // Full-width panels
+     if (m_layoutPolicy == FillSpace && m_orientation == Horizontal) {
+         if (width() != screen.width())
+             resize(screen.width(), height());
+     }
+ 
+    const QRect newGeom(x, y, width(), height());
+    if (geometry() != newGeom) {
+       setGeometry(newGeom);
+       scheduleApplyStruts();
+    } else {
+       qDebug() << "PanelWindow::updatePosition SKIPPED (geometry unchanged)";
+    }
+ }
  
 // ---------------------- Strut application (debounced) ----------------------
 
@@ -1114,29 +1204,32 @@ void PanelWindow::applyX11Struts(const QRect& panelGeom)
     if (!m_dockMode) return;
     if (!panelGeom.isValid() || panelGeom.isEmpty()) return;
 
-    // Determine top/bottom
-    const bool isTop = (m_verticalAnchor == Min);
-    const bool isBottom = (m_verticalAnchor == Max);
+    // Prevent feedback loops
+    if (panelGeom == m_lastStrutGeom &&
+        m_lastStrutApply.isValid() &&
+        m_lastStrutApply.elapsed() < 800) {
+        return;
+    }
 
-    // External reservations (exclude ourselves), plus GNOME fallback for top if needed
-    int extTop = 0;
-    int extBottom = 0;
-    const QMargins ext = X11Support::getExternalStrutReservations(currentScreenGeometry(), winId());
-    extTop = qMax(ext.top(), detectGnomeTopOffsetPx());
-    extBottom = ext.bottom();
+    const QRect screen = currentScreenGeometry();
 
-    // Build _NET_WM_STRUT_PARTIAL
-    int left=0, right=0, top=0, bottom=0;
-    int leftStartY=0, leftEndY=0, rightStartY=0, rightEndY=0;
-    int topStartX=panelGeom.left(), topEndX=panelGeom.right();
-    int bottomStartX=panelGeom.left(), bottomEndX=panelGeom.right();
+    int left = 0, right = 0, top = 0, bottom = 0;
+    int leftStartY = 0, leftEndY = 0;
+    int rightStartY = 0, rightEndY = 0;
+    int topStartX = screen.left();
+    int topEndX   = screen.right();
+    int bottomStartX = screen.left();
+    int bottomEndX   = screen.right();
 
-    if (isTop) {
-        // Stack below any existing top reservations.
-        top = extTop + panelGeom.height();
-    } else if (isBottom) {
-        // Stack above any existing bottom reservations.
-        bottom = extBottom + panelGeom.height();
+    if (m_verticalAnchor == Min) {
+        // Absolute distance from screen top to *this panel’s bottom*
+        top = panelGeom.bottom() - screen.top() + 1;
+        if (top < 0) top = 0;
+    }
+    else if (m_verticalAnchor == Max) {
+        // Absolute distance from *this panel’s top* to screen bottom
+        bottom = screen.bottom() - panelGeom.top() + 1;
+        if (bottom < 0) bottom = 0;
     }
 
     X11Support::setStrut(
@@ -1149,7 +1242,10 @@ void PanelWindow::applyX11Struts(const QRect& panelGeom)
     );
 
     m_lastStrutGeom = panelGeom;
-    m_lastStrutApply.start();
+    if (!m_lastStrutApply.isValid())
+        m_lastStrutApply.start();
+    else
+        m_lastStrutApply.restart();
 }
 
 // ---------------------- Wayland fallback ----------------------

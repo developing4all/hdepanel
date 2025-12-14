@@ -59,7 +59,8 @@
 DockItem::DockItem(DockApplet* dockApplet)
 {
     m_dragging = false;
-    m_highlightIntensity =0.0;
+    m_highlightIntensity = 0.0;
+    m_focusHighlightIntensity = 0.0;
     m_urgencyHighlightIntensity = 0.0;
     m_isMinimized = false;
     m_waylandClient = nullptr;
@@ -288,6 +289,10 @@ void DockItem::animate()
 	qreal targetIntensity = isUnderMouse() ? 1.0 : 0.0;
 	m_highlightIntensity = AnimationUtils::animate(m_highlightIntensity, targetIntensity, highlightAnimationSpeed, needAnotherStep);
 
+	static const qreal focusHighlightAnimationSpeed = 0.15;
+	qreal targetFocusIntensity = isFocused() ? 1.0 : 0.0;
+	m_focusHighlightIntensity = AnimationUtils::animate(m_focusHighlightIntensity, targetFocusIntensity, focusHighlightAnimationSpeed, needAnotherStep);
+
 	static const qreal urgencyHighlightAnimationSpeed = 0.015;
 	qreal targetUrgencyIntensity = 0.0;
 	if(isUrgent())
@@ -357,6 +362,25 @@ void DockItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
 		QRadialGradient gradient(center, adjustHardcodedPixelSize(200), center);
 		gradient.setColorAt(0.0, QColor(255, 255, 255, 80 + static_cast<int>(80*m_highlightIntensity)));
 		gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
+		painter->setBrush(QBrush(gradient));
+		painter->drawRoundedRect(rect, roundRadius, roundRadius);
+	}
+
+	// Draw focus highlight (stronger than hover, different color)
+	if(m_focusHighlightIntensity > 0.001)
+	{
+		// Draw a solid border for focused windows - more visible than gradient
+		QPen focusPen(QColor(100, 150, 255, static_cast<int>(64*m_focusHighlightIntensity)));
+		focusPen.setWidth(adjustHardcodedPixelSize(3)); // Make it thicker
+		painter->setPen(focusPen);
+		painter->setBrush(Qt::NoBrush);
+		painter->drawRoundedRect(rect.adjusted(1, 1, -1, -1), roundRadius, roundRadius);
+		
+		// Also add a more visible gradient overlay
+		QRadialGradient gradient(center, adjustHardcodedPixelSize(200), center);
+		gradient.setColorAt(0.0, QColor(100, 150, 255, static_cast<int>(24*m_focusHighlightIntensity)));
+		gradient.setColorAt(1.0, QColor(100, 150, 255, 0));
+		painter->setPen(Qt::NoPen);
 		painter->setBrush(QBrush(gradient));
 		painter->drawRoundedRect(rect, roundRadius, roundRadius);
 	}
@@ -511,6 +535,25 @@ bool DockItem::isUrgent()
 		if(m_clients[i]->isUrgent())
 			return true;
 	}
+	return false;
+}
+
+bool DockItem::isFocused() const
+{
+	if (!m_dockApplet)
+		return false;
+	
+	// Check X11 clients
+	for(int i = 0; i < m_clients.size(); i++)
+	{
+		if(m_dockApplet->activeWindow() == m_clients[i]->handle())
+			return true;
+	}
+	
+	// Check Wayland client
+	if (m_waylandClient && m_waylandClient->isFocused())
+		return true;
+	
 	return false;
 }
 

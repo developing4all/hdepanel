@@ -73,6 +73,11 @@ public:
 		return m_isUrgent;
 	}
 
+	bool isFocused() const
+	{
+		return m_focused;
+	}
+
 	DockItem* dockItem() const
 	{
 		return m_dockItem;
@@ -92,6 +97,7 @@ private:
 	QString m_appId;
 	QIcon m_icon;
 	bool m_isUrgent;
+	bool m_focused;
 	bool m_visible;
 	DockItem* m_dockItem;
 };

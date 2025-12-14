@@ -95,6 +95,7 @@ protected:
 private:
 	void updateClientsIconGeometry();
 	bool isUrgent();
+	bool isFocused() const;
 
 	QTimer* m_animationTimer;
 	DockApplet* m_dockApplet;
@@ -108,6 +109,7 @@ private:
 	QSize m_size;
 	QSize m_targetSize;
 	qreal m_highlightIntensity;
+	qreal m_focusHighlightIntensity;
 	qreal m_urgencyHighlightIntensity;
     bool m_dragging;
 	QPointF m_mouseDownPosition;

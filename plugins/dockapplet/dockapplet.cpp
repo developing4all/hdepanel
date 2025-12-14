@@ -624,17 +624,36 @@ void DockApplet::updateX11ClientList()
 void DockApplet::updateActiveWindow()
 {
 #if QT_VERSION >= 0x050000
-    if (qApp->platformName().toLower().contains("xcb") == false) return; 
+    if (qApp->platformName().toLower().contains("xcb") == false) {
+		// For Wayland, focus is tracked via WaylandWindow.focused field
+		// which is updated in updateWaylandClientList()
+		// Just trigger updates for all dock items
+		for(int i = 0; i < m_dockItems.size(); i++)
+		{
+			m_dockItems[i]->startAnimation();
+		}
+		return;
+	}
 #endif
-	unsigned long activeWindow = X11Support::getWindowPropertyCardinal(X11Support::rootWindow(), "_NET_ACTIVE_WINDOW");
+	unsigned long activeWindow = X11Support::getWindowPropertyWindow(X11Support::rootWindow(), "_NET_ACTIVE_WINDOW");
+	
 	if(activeWindow == 0)
 		return;
+
+	if(activeWindow == m_activeWindow) {
+		// Still trigger animation in case focus highlight needs to update
+		for(int i = 0; i < m_dockItems.size(); i++)
+		{
+			m_dockItems[i]->startAnimation();
+		}
+		return;
+	}
 
 	m_activeWindow = activeWindow;
 
 	for(int i = 0; i < m_dockItems.size(); i++)
 	{
-		m_dockItems[i]->update();
+		m_dockItems[i]->startAnimation();
 	}
 }
 
@@ -643,6 +662,13 @@ void DockApplet::windowPropertyChanged(unsigned long window, unsigned long atom)
 #if QT_VERSION >= 0x050000
     if (qApp->platformName().toLower().contains("xcb") == false) return; 
 #endif
+    
+    // Check if this is a _NET_ACTIVE_WINDOW change on the root window
+    unsigned long activeWindowAtom = X11Support::atom("_NET_ACTIVE_WINDOW");
+    if (window == X11Support::rootWindow() && atom == activeWindowAtom) {
+        updateActiveWindow();
+        return;
+    }
     
     // Check if this is a _NET_CLIENT_LIST change (new window created/removed)
     if (atom == X11Support::atom("_NET_CLIENT_LIST")) {

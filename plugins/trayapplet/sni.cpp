@@ -26,12 +26,7 @@ QIcon SniItemProxy::icon() const
     if (!name.isEmpty()) {
         return QIcon::fromTheme(name);
     }
-    
-    // IconPixmap is a complex type (array of (iiay)) that requires type registration.
-    // Since we're not parsing it anyway, we skip it to avoid the warning.
-    // If needed in the future, we'd need to register the type with:
-    // qDBusRegisterMetaType<IconPixmapArray>();
-    
+
     return QIcon();
 }
 

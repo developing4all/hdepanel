@@ -39,6 +39,7 @@ WaylandClient::WaylandClient(DockApplet* dockApplet, const WaylandWindow& window
     : m_dockApplet(dockApplet)
     , m_surface(window.surface)
     , m_isUrgent(false)
+    , m_focused(false)
     , m_visible(window.visible)
     , m_dockItem(nullptr)
 {
@@ -90,6 +91,7 @@ void WaylandClient::updateFromWindow(const WaylandWindow& window)
     QString oldName = m_name;
     m_surface = window.surface;
     m_visible = window.visible;
+    m_focused = window.focused;
     
     // Set name, app ID, and icon from the window data
     m_name = window.title;
@@ -103,6 +105,8 @@ void WaylandClient::updateFromWindow(const WaylandWindow& window)
     // Update the dock item if it exists
     if (m_dockItem) {
         m_dockItem->setWaylandClient(this);
+        // Trigger animation update to show/hide focus highlight
+        m_dockItem->startAnimation();
     }
 }
 

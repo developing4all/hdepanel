@@ -46,9 +46,6 @@
 #include "layershellqtintegration.h"
 #include <typeinfo>
 
-// X11 headers for GNOME top bar detection (needed for XOpenDisplay/XCloseDisplay)
-#include <X11/Xlib.h>
- 
 #if QT_VERSION < 0x060000
 #include <QDesktopWidget>
 #endif
@@ -62,10 +59,6 @@
 #include "panelsettings.h"
 #include "hpopupmenu.h"
  
-#if defined(Q_OS_UNIX)
-#  include <X11/Xlib.h>
-#  include <X11/Xatom.h>
-#endif
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #  include <QGuiApplication>
 #else
@@ -74,6 +67,12 @@
 
 #if defined(Q_OS_UNIX)
 #  include <xcb/xcb.h>
+#endif
+
+// IMPORTANT: X11 headers MUST come AFTER Qt headers on Qt5 (X11 defines macro "None")
+#if defined(Q_OS_UNIX)
+#  include <X11/Xlib.h>
+#  include <X11/Xatom.h>
 #endif
 
 class PanelWindow::RootEventFilter final : public QAbstractNativeEventFilter {

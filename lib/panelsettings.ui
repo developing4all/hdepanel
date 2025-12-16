@@ -84,14 +84,14 @@
              <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
             </property>
             <item row="1" column="0">
-             <widget class="QLabel" name="verticalPositionLabel">
+             <widget class="QLabel" name="positionLabel">
               <property name="text">
-               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Vertical position:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Position:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
               </property>
              </widget>
             </item>
             <item row="1" column="1">
-             <widget class="QComboBox" name="verticalPosition">
+             <widget class="QComboBox" name="position">
               <item>
                <property name="text">
                 <string>Top</string>
@@ -102,25 +102,9 @@
                 <string>Bottom</string>
                </property>
               </item>
-             </widget>
-            </item>
-            <item row="2" column="0">
-             <widget class="QLabel" name="horizontalPositionLabel">
-              <property name="text">
-               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Horizontal position:&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="1">
-             <widget class="QComboBox" name="horizontalPosition">
               <item>
                <property name="text">
                 <string>Left</string>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>Center</string>
                </property>
               </item>
               <item>
@@ -130,14 +114,54 @@
               </item>
              </widget>
             </item>
+            <item row="2" column="0">
+             <widget class="QLabel" name="panelHeightLabel">
+              <property name="text">
+               <string>Height (Top/Bottom):</string>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <widget class="QSpinBox" name="panelHeight">
+              <property name="minimum">
+               <number>24</number>
+              </property>
+              <property name="maximum">
+               <number>200</number>
+              </property>
+              <property name="value">
+               <number>48</number>
+              </property>
+             </widget>
+            </item>
             <item row="3" column="0">
+             <widget class="QLabel" name="panelWidthLabel">
+              <property name="text">
+               <string>Width (Left/Right):</string>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="1">
+             <widget class="QSpinBox" name="panelWidth">
+              <property name="minimum">
+               <number>24</number>
+              </property>
+              <property name="maximum">
+               <number>200</number>
+              </property>
+              <property name="value">
+               <number>48</number>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="0">
              <widget class="QLabel" name="fontLabel">
               <property name="text">
                <string>Font:</string>
               </property>
              </widget>
             </item>
-            <item row="3" column="1">
+            <item row="4" column="1">
              <widget class="QFontComboBox" name="font">
               <property name="enabled">
                <bool>true</bool>
@@ -145,117 +169,116 @@
              </widget>
             </item>
             <item row="5" column="0">
+             <widget class="QLabel" name="fontSizeLabel">
+              <property name="text">
+               <string>Font size:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="5" column="1">
+             <widget class="QSpinBox" name="fontSize"/>
+            </item>
+            <item row="6" column="0">
              <widget class="QLabel" name="label">
               <property name="text">
                <string>screen:</string>
               </property>
              </widget>
             </item>
-            <item row="5" column="1">
+            <item row="6" column="1">
              <widget class="QComboBox" name="screen"/>
             </item>
-            <item row="4" column="1">
-             <widget class="QSpinBox" name="fontSize"/>
-            </item>
-            <item row="6" column="0">
+            <item row="7" column="0">
              <widget class="QLabel" name="backgroundColorLabel">
               <property name="text">
                <string>Background color:</string>
               </property>
              </widget>
             </item>
-            <item row="6" column="1">
-             <layout class="QHBoxLayout" name="backgroundColorLayout">
-              <item>
-               <widget class="QPushButton" name="backgroundColorButton">
-                <property name="text">
-                 <string>Choose...</string>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>80</width>
-                  <height>0</height>
-                 </size>
-                </property>
-                <property name="maximumSize">
-                 <size>
-                  <width>80</width>
-                  <height>16777215</height>
-                 </size>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QLabel" name="backgroundColorTransparencyLabel">
-                <property name="text">
-                 <string>Transparency:</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QSpinBox" name="backgroundColorTransparency">
-                <property name="minimum">
-                 <number>0</number>
-                </property>
-                <property name="maximum">
-                 <number>255</number>
-                </property>
-                <property name="value">
-                 <number>128</number>
-                </property>
-               </widget>
-              </item>
-             </layout>
+            <item row="7" column="1">
+             <widget class="QPushButton" name="backgroundColorButton">
+              <property name="text">
+               <string>Choose...</string>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>80</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>80</width>
+                <height>16777215</height>
+               </size>
+              </property>
+             </widget>
             </item>
-            <item row="7" column="0">
+            <item row="8" column="0">
+             <widget class="QLabel" name="backgroundColorTransparencyLabel">
+              <property name="text">
+               <string>Background transparency:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="8" column="1">
+             <widget class="QSpinBox" name="backgroundColorTransparency">
+              <property name="minimum">
+               <number>0</number>
+              </property>
+              <property name="maximum">
+               <number>255</number>
+              </property>
+              <property name="value">
+               <number>128</number>
+              </property>
+             </widget>
+            </item>
+            <item row="9" column="0">
              <widget class="QLabel" name="borderColorLabel">
               <property name="text">
                <string>Border color:</string>
               </property>
              </widget>
             </item>
-            <item row="7" column="1">
-             <layout class="QHBoxLayout" name="borderColorLayout">
-              <item>
-               <widget class="QPushButton" name="borderColorButton">
-                <property name="text">
-                 <string>Choose...</string>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>80</width>
-                  <height>0</height>
-                 </size>
-                </property>
-                <property name="maximumSize">
-                 <size>
-                  <width>80</width>
-                  <height>16777215</height>
-                 </size>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QLabel" name="borderColorTransparencyLabel">
-                <property name="text">
-                 <string>Transparency:</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QSpinBox" name="borderColorTransparency">
-                <property name="minimum">
-                 <number>0</number>
-                </property>
-                <property name="maximum">
-                 <number>255</number>
-                </property>
-                <property name="value">
-                 <number>128</number>
-                </property>
-               </widget>
-              </item>
-             </layout>
+            <item row="9" column="1">
+             <widget class="QPushButton" name="borderColorButton">
+              <property name="text">
+               <string>Choose...</string>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>80</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>80</width>
+                <height>16777215</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+            <item row="10" column="0">
+             <widget class="QLabel" name="borderColorTransparencyLabel">
+              <property name="text">
+               <string>Border transparency:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="10" column="1">
+             <widget class="QSpinBox" name="borderColorTransparency">
+              <property name="minimum">
+               <number>0</number>
+              </property>
+              <property name="maximum">
+               <number>255</number>
+              </property>
+              <property name="value">
+               <number>128</number>
+              </property>
+             </widget>
             </item>
            </layout>
           </widget>

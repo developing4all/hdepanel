@@ -23,42 +23,48 @@
  * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
  * Boston, MA 02110-1301 USA
  *
- * END_COMMON_COPYRIGHT_HEADER */
+ * END_COMMON_COPYRIGHT_HEADER 
+*/
 
 
 #ifndef TEXTGRAPHICSITEM_H
 #define TEXTGRAPHICSITEM_H
 
+#include <QtCore/QString>
 #include <QtGui/QColor>
 #include <QtGui/QFont>
-#if QT_VERSION >= 0x050000
-#include <QGraphicsItem>
+#include <QtGui/QImage>
+
+#if QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
+  #include <QGraphicsItem>
 #else
-#include <QtGui/QGraphicsItem>
+  #include <QtGui/QGraphicsItem>
 #endif
 
-class TextGraphicsItem: public QGraphicsItem
+class TextGraphicsItem : public QGraphicsItem
 {
 public:
-	TextGraphicsItem(QGraphicsItem* parent = NULL);
-	~TextGraphicsItem();
+    explicit TextGraphicsItem(QGraphicsItem* parent = nullptr);
+    ~TextGraphicsItem() override;
 
-	void setColor(const QColor& color);
-	void setFont(const QFont& font);
-	void setText(const QString& text);
+    void setColor(const QColor& color);
+    void setFont(const QFont& font);
+    void setText(const QString& text);
     void setImage(const QImage& image);
 
 	const QFont& font() const { return m_font; }
 	QString text() const { return m_text; }
-
-	QRectF boundingRect() const;
-	void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget);
+    QRectF boundingRect() const override;
+    void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override;
 
 private:
-	QColor m_color;
-	QFont m_font;
-	QString m_text;
-    QImage m_image;
+    QRectF multiLineBoundingRect(const QString& text) const;
+
+private:
+    QColor  m_color = Qt::white;
+    QFont   m_font;
+    QString m_text;
+    QImage  m_image;
 };
 
 #endif

@@ -84,7 +84,8 @@ public:
     virtual void setPanelWindow(PanelWindow* panelWindow);
 
     bool init();
-    void close(){}
+    void close();
+    QMargins buttonMargins() const override { return QMargins(0, 12, 0, 0); }
 
     QSize desiredSize();
     void clicked();
@@ -103,6 +104,7 @@ private slots:
 
 public slots:
     void fontChanged();
+    void refreshIcons();
 
 private:
     void populateMenuFromDataStore();
@@ -113,6 +115,8 @@ private:
     ApplicationsMenuStyle m_style;
 #endif
     TextGraphicsItem* m_textItem;
+    TextGraphicsItem* m_iconItem;
+    int m_iconSize = 22;
     bool m_menuOpened;
     QMenu* m_menu;
     QList<SubMenu> m_subMenus;

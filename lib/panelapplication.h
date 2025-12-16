@@ -122,7 +122,7 @@ private:
 
 	QString m_fontName;
 	QString m_iconThemeName;
-	PanelWindow::Anchor m_verticalAnchor;
+	PanelWindow::Position m_position;
 	QString m_defaultIconThemeName;
 	QFont m_panelFont;
 	QVector<PanelWindow*> m_panelWindows;

@@ -80,14 +80,21 @@ TrayItem::~TrayItem()
 void TrayItem::setPosition(const QPoint& position)
 {
 	setPos(position.x(), position.y());
-	X11Support::moveWindow(m_window,
-		static_cast<int>(m_trayApplet->pos().x()) + position.x() + m_size.width()/2 - m_trayApplet->iconSize()/2,
-		static_cast<int>(m_trayApplet->pos().y()) + position.y() + m_size.height()/2 - m_trayApplet->iconSize()/2
-	);
+	
+	// Only update X11 window position if we have a valid size
+	if (m_size.width() > 0 && m_size.height() > 0) {
+		X11Support::moveWindow(m_window,
+			static_cast<int>(m_trayApplet->pos().x()) + position.x() + m_size.width()/2 - m_trayApplet->iconSize()/2,
+			static_cast<int>(m_trayApplet->pos().y()) + position.y() + m_size.height()/2 - m_trayApplet->iconSize()/2
+		);
+	}
 }
 
 void TrayItem::setSize(const QSize& size)
 {
+	if (m_size == size)
+		return;
+		
 	m_size = size;
 	update();
 }
@@ -301,11 +308,43 @@ bool TrayApplet::init()
 
 QSize TrayApplet::desiredSize()
 {
-	int totalItems = m_trayItems.size() + m_sniTrayItems.size();
-	int desiredWidth = (m_iconSize + m_spacing)*totalItems - m_spacing;
-	if(desiredWidth < 0)
-		desiredWidth = 0;
-	return QSize(desiredWidth, -1);
+    if (!m_panelWindow)
+        return QSize(0, -1);
+
+    const PanelWindow::Position pos = m_panelWindow->position();
+    const bool horizontal = (pos == PanelWindow::Top || pos == PanelWindow::Bottom);
+
+    // Panel "thickness" drives tray tile size.
+    int thickness = horizontal ? m_panelWindow->panelHeight()
+                               : m_panelWindow->panelWidth();
+    if (thickness <= 0)
+        thickness = adjustHardcodedPixelSize(24);
+
+    // Margin inside each tray tile (matches your other applets)
+    const int tileMargin = adjustHardcodedPixelSize(5);
+
+    // Tile side equals panel thickness; icon size is thickness minus margins.
+    const int tileSide = thickness;
+    int icon = tileSide - 2 * tileMargin;
+
+    const int minIcon = adjustHardcodedPixelSize(12);
+    const int maxIcon = adjustHardcodedPixelSize(48);
+    m_iconSize = qBound(minIcon, icon, maxIcon);
+
+    m_spacing = adjustHardcodedPixelSize(4);
+
+    const int totalItems = m_trayItems.size() + m_sniTrayItems.size();
+    if (totalItems <= 0) {
+        // Don't waste space when empty
+        return horizontal ? QSize(0, -1) : QSize(-1, 0);
+    }
+
+    // Length along the flow direction
+    int desiredLen = tileSide * totalItems + m_spacing * (totalItems - 1);
+    if (desiredLen < 0) desiredLen = 0;
+
+    return horizontal ? QSize(desiredLen, -1)    // width grows on top/bottom
+                      : QSize(-1, desiredLen);   // height grows on left/right
 }
 
 void TrayApplet::registerTrayItem(TrayItem* trayItem)
@@ -442,19 +481,73 @@ void TrayApplet::windowDamaged(unsigned long window)
 
 void TrayApplet::updateLayout()
 {
-	int currentPosition = 0;
-	// Layout X11 tray items
-	for(int i = 0; i < m_trayItems.size(); i++)
-	{
-		m_trayItems[i]->setSize(QSize(m_iconSize, m_size.height()));
-		m_trayItems[i]->setPosition(QPoint(currentPosition, 0));
-		currentPosition += m_iconSize + m_spacing;
-	}
-	// Layout SNI tray items
-	for(int i = 0; i < m_sniTrayItems.size(); i++)
-	{
-		m_sniTrayItems[i]->setSize(QSize(m_iconSize, m_size.height()));
-		m_sniTrayItems[i]->setPosition(QPoint(currentPosition, 0));
-		currentPosition += m_iconSize + m_spacing;
-	}
+    if (!m_panelWindow)
+        return;
+
+    const PanelWindow::Position pos = m_panelWindow->position();
+    const bool horizontal = (pos == PanelWindow::Top || pos == PanelWindow::Bottom);
+
+    int thickness = horizontal ? m_panelWindow->panelHeight()
+                               : m_panelWindow->panelWidth();
+    if (thickness <= 0)
+        thickness = adjustHardcodedPixelSize(24);
+
+    const int tileMargin = adjustHardcodedPixelSize(5);
+    const int tileSide = thickness;
+
+    int icon = tileSide - 2 * tileMargin;
+    const int minIcon = adjustHardcodedPixelSize(12);
+    const int maxIcon = adjustHardcodedPixelSize(48);
+    m_iconSize = qBound(minIcon, icon, maxIcon);
+
+    if (m_spacing <= 0)
+        m_spacing = adjustHardcodedPixelSize(4);
+
+    // Fallback applet size if not assigned yet
+    int appW = m_size.width();
+    int appH = m_size.height();
+    if (appW <= 0) appW = horizontal ? tileSide : thickness;
+    if (appH <= 0) appH = horizontal ? thickness : tileSide;
+
+    int current = 0;
+
+#if QT_VERSION >= 0x050000
+    const bool isX11 = qApp && qApp->platformName().toLower().contains("xcb");
+#else
+    const bool isX11 = true;
+#endif
+
+    if (horizontal) {
+        // Left -> Right
+        for (int i = 0; i < m_trayItems.size(); ++i) {
+            TrayItem* it = m_trayItems[i];
+            it->setSize(QSize(tileSide, appH));
+            if (isX11) X11Support::resizeWindow(it->window(), m_iconSize, m_iconSize);
+            it->setPosition(QPoint(current, 0));
+            current += tileSide + m_spacing;
+        }
+        for (int i = 0; i < m_sniTrayItems.size(); ++i) {
+            SniTrayItem* it = m_sniTrayItems[i];
+            it->setSize(QSize(tileSide, appH));
+            it->setPosition(QPoint(current, 0));
+            current += tileSide + m_spacing;
+        }
+    } else {
+        // Top -> Bottom
+        for (int i = 0; i < m_trayItems.size(); ++i) {
+            TrayItem* it = m_trayItems[i];
+            it->setSize(QSize(appW, tileSide));
+            if (isX11) X11Support::resizeWindow(it->window(), m_iconSize, m_iconSize);
+            it->setPosition(QPoint(0, current));
+            current += tileSide + m_spacing;
+        }
+        for (int i = 0; i < m_sniTrayItems.size(); ++i) {
+            SniTrayItem* it = m_sniTrayItems[i];
+            it->setSize(QSize(appW, tileSide));
+            it->setPosition(QPoint(0, current));
+            current += tileSide + m_spacing;
+        }
+    }
+
+    update();
 }

@@ -51,10 +51,16 @@ Client::Client(DockApplet* dockApplet, unsigned long handle)
 
 Client::~Client()
 {
-	if(m_dockItem != NULL)
-	{
-		m_dockItem->removeClient(this);
-	}
+    // During DockApplet shutdown we don't want to touch DockItem at all,
+    // because the applet might already be tearing down its internal state.
+    if (m_dockItem != NULL) {
+        if (!m_dockApplet || m_dockApplet->isDestroying()) {
+            // Just drop the pointer; DockItem lifetime is managed elsewhere.
+            m_dockItem = NULL;
+        } else {
+            m_dockItem->removeClient(this);
+        }
+    }
 }
 
 void Client::windowPropertyChanged(unsigned long atom)
@@ -83,6 +89,10 @@ void Client::windowPropertyChanged(unsigned long atom)
 
 void Client::updateVisibility()
 {
+	// Safety check: bail out if applet is being destroyed
+	if(m_dockApplet == NULL || m_dockApplet->isDestroying())
+		return;
+
 	QVector<unsigned long> windowTypes = X11Support::getWindowPropertyAtomsArray(m_handle, "_NET_WM_WINDOW_TYPE");
 	QVector<unsigned long> windowStates = X11Support::getWindowPropertyAtomsArray(m_handle, "_NET_WM_STATE");
 
@@ -108,20 +118,23 @@ void Client::updateVisibility()
 void Client::updateName()
 {
 	m_name = X11Support::getWindowName(m_handle);
-	if(m_dockItem != NULL)
+	// Safety check: ensure dock item and applet are still valid before updating
+	if(m_dockItem != NULL && m_dockApplet != NULL && !m_dockApplet->isDestroying())
 		m_dockItem->updateContent();
 }
 
 void Client::updateIcon()
 {
 	m_icon = X11Support::getWindowIcon(m_handle);
-	if(m_dockItem != NULL)
+	// Safety check: ensure dock item and applet are still valid before updating
+	if(m_dockItem != NULL && m_dockApplet != NULL && !m_dockApplet->isDestroying())
 		m_dockItem->updateContent();
 }
 
 void Client::updateUrgency()
 {
 	m_isUrgent = X11Support::getWindowUrgency(m_handle);
-	if(m_dockItem != NULL)
+	// Safety check: ensure dock item and applet are still valid before updating
+	if(m_dockItem != NULL && m_dockApplet != NULL && !m_dockApplet->isDestroying())
 		m_dockItem->startAnimation();
 }

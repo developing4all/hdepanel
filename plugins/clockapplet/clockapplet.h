@@ -62,10 +62,11 @@ private slots:
 private:
 	void scheduleUpdate();
 
-	QTimer* m_timer;
+	// IMPORTANT: initialize pointers to avoid random non-null garbage (Qt6 crash in scheduleUpdate)
+	QTimer* m_timer = nullptr;
 	QString m_text;
-	TextGraphicsItem* m_textItem;
-    Calendar *m_calendar;
+	TextGraphicsItem* m_textItem = nullptr;
+    Calendar *m_calendar = nullptr;
 };
 
 

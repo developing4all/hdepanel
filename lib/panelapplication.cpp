@@ -217,8 +217,8 @@ void PanelApplication::init()
 void PanelApplication::showPanel(const QString& panel_id)
 {
     PanelWindow* panelWindow = new PanelWindow(panel_id);
-    // Use FillSpace to span full screen width
-    panelWindow->setLayoutPolicy(PanelWindow::FillSpace);
+    // Use Normal layout policy (no longer using FillSpace)
+    panelWindow->setLayoutPolicy(PanelWindow::Normal);
     panelWindow->setDockMode(true);
     
     // Update layout to ensure window has correct size

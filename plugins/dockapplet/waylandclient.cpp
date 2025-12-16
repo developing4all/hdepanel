@@ -88,6 +88,10 @@ WaylandClient::~WaylandClient()
 
 void WaylandClient::updateFromWindow(const WaylandWindow& window)
 {
+    // Safety check: bail out if applet is being destroyed
+    if(m_dockApplet == NULL || m_dockApplet->isDestroying())
+        return;
+
     QString oldName = m_name;
     m_surface = window.surface;
     m_visible = window.visible;
@@ -103,7 +107,8 @@ void WaylandClient::updateFromWindow(const WaylandWindow& window)
     updateUrgency();
     
     // Update the dock item if it exists
-    if (m_dockItem) {
+    // Safety check: ensure dock item and applet are still valid before updating
+    if (m_dockItem && m_dockApplet && !m_dockApplet->isDestroying()) {
         m_dockItem->setWaylandClient(this);
         // Trigger animation update to show/hide focus highlight
         m_dockItem->startAnimation();

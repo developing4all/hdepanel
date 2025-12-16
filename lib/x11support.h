@@ -59,7 +59,10 @@ public:
 	X11Support();
 	~X11Support();
 	static int detectTopPanelHeight(Display *dpy);
+	enum class HdeEdge { Top, Bottom, Left, Right };
 
+	static int getHdepanelStackOffsetPx(const QRect& usable, unsigned long selfWindow, HdeEdge edge);
+	
 #if QT_VERSION >= 0x050000
     void onX11Event(xcb_generic_event_t *event);
 #endif

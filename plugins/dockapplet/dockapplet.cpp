@@ -69,6 +69,7 @@ DockApplet::DockApplet(PanelWindow* panelWindow)
 	  m_focusColor(0, 0, 0), m_focusColorTransparency(128)
 {
     setObjectName("Dock");
+    setExpandable(true);
 
     // Register for notifications about window property changes (X11 only).
 #if QT_VERSION >= 0x050000
@@ -180,22 +181,22 @@ void DockApplet::fontChanged()
 bool DockApplet::init()
 {
     readSettings();
-    
-    // Initialize window detection - use the unified updateClientList method
+
+    // IMPORTANT:
+    // Allow the first population of clients. Otherwise a newly created DockApplet
+    // won't show already-open windows until _NET_CLIENT_LIST changes.
+    m_initialized = true;
+
+    // Populate immediately (existing windows)
     updateClientList();
-    
-    // Update active window for X11 platforms
+
 #if QT_VERSION >= 0x050000
     if (qApp->platformName().toLower().contains("xcb")) {
         updateActiveWindow();
     }
 #endif
 
-
-	// Mark as initialized to allow future updateClientList() calls
-	m_initialized = true;
-
-	return true;
+    return true;
 }
 
 QSize DockApplet::desiredSize()
@@ -205,56 +206,121 @@ QSize DockApplet::desiredSize()
 
 void DockApplet::updateLayout()
 {
-	// TODO: Vertical orientation support.
-	
-	// Clean up dock items marked for deletion
-	QVector<DockItem*> itemsToDelete;
-	for (int i = 0; i < m_dockItems.size(); i++) {
-		if (m_dockItems[i]->shouldDelete()) {
-			qDebug() << "DockApplet::updateLayout - Marking dock item for deletion";
-			itemsToDelete.append(m_dockItems[i]);
-		}
-	}
-	
-	// Remove and delete the marked items
-	for (DockItem* item : itemsToDelete) {
-		qDebug() << "DockApplet::updateLayout - Removing dock item marked for deletion";
-		unregisterDockItem(item);
-		m_dockItems.removeAll(item);
-		delete item;
-	}
-	
-	// If size is not set yet, use a default width
-	int freeSpace = m_size.width();
-	if (freeSpace <= 0) {
-		freeSpace = 800; // Default width if not set
-	}
-	
-	int spaceForOneClient = (m_dockItems.size() > 0) ? freeSpace/m_dockItems.size() : 0;
-	int currentPosition = 0;
-	
-	for(int i = 0; i < m_dockItems.size(); i++)
-	{
-		int spaceForThisClient = spaceForOneClient;
-		static const int maxSpace = adjustHardcodedPixelSize(256);
-		if(spaceForThisClient > maxSpace)
-			spaceForThisClient = maxSpace;
-		
-		QPoint targetPos = QPoint(currentPosition, 0);
-		QSize targetSize = QSize(spaceForThisClient - 4, m_size.height() > 0 ? m_size.height() : 48);
-		
-		m_dockItems[i]->setTargetPosition(targetPos);
-		m_dockItems[i]->setTargetSize(targetSize);
-		m_dockItems[i]->startAnimation();
-		currentPosition += spaceForThisClient;
-	}
+    // Clean up dock items marked for deletion
+    QVector<DockItem*> itemsToDelete;
+    for (int i = 0; i < m_dockItems.size(); i++) {
+        if (m_dockItems[i]->shouldDelete()) {
+            itemsToDelete.append(m_dockItems[i]);
+        }
+    }
+    for (DockItem* item : itemsToDelete) {
+        unregisterDockItem(item);
+        m_dockItems.removeAll(item);
+        delete item;
+    }
 
-	update();
-	
-	// Force a complete repaint of the entire dock area
-	if (scene()) {
-		scene()->update(sceneBoundingRect());
-	}
+    // Get panel orientation / position
+    PanelWindow::Orientation orientation = PanelWindow::Horizontal;
+    PanelWindow::Position    position    = PanelWindow::Bottom;
+    if (panelWindow()) {
+        orientation = panelWindow()->orientation();
+        position    = panelWindow()->position();
+    }
+
+    const bool isVerticalPanel =
+        (orientation == PanelWindow::Vertical) ||
+        (position == PanelWindow::Left || position == PanelWindow::Right);
+
+    // Fallback sizes if not set yet
+    int appW = (m_size.width()  > 0) ? m_size.width()  : adjustHardcodedPixelSize(48);
+    int appH = (m_size.height() > 0) ? m_size.height() : adjustHardcodedPixelSize(600);
+
+    // Requested margins/gaps
+    const int edge = adjustHardcodedPixelSize(3); // 3px to edge
+    const int gap  = adjustHardcodedPixelSize(5); // 5px between buttons
+
+    if (!isVerticalPanel) {
+        // -------------------------
+        // HORIZONTAL (Top/Bottom)
+        // Leave it as your current/previous behavior
+        // -------------------------
+        int freeSpace = appW;
+        if (freeSpace <= 0) freeSpace = 800;
+
+        int spaceForOneClient = (m_dockItems.size() > 0) ? freeSpace / m_dockItems.size() : 0;
+        int currentPosition = 0;
+
+        for (int i = 0; i < m_dockItems.size(); i++) {
+            int spaceForThisClient = spaceForOneClient;
+            static const int maxSpace = adjustHardcodedPixelSize(256);
+            if (spaceForThisClient > maxSpace)
+                spaceForThisClient = maxSpace;
+
+            QPoint targetPos = QPoint(currentPosition, 0);
+            QSize  targetSize = QSize(spaceForThisClient - 4,
+                                      (appH > 0 ? appH : adjustHardcodedPixelSize(48)));
+
+            m_dockItems[i]->setTargetPosition(targetPos);
+            m_dockItems[i]->setTargetSize(targetSize);
+            m_dockItems[i]->startAnimation();
+
+            currentPosition += spaceForThisClient;
+        }
+    } else {
+        // -------------------------
+        // VERTICAL (Left/Right) — FIXED
+        // -------------------------
+        const int count = m_dockItems.size();
+        if (count == 0) {
+            update();
+            if (scene()) scene()->update(sceneBoundingRect());
+            return;
+        }
+
+        const int btnW = qMax(1, appW - 2 * edge);  // width = panelWidth - 6
+        const int availH = qMax(1, appH - 2 * edge - gap * (count - 1));
+
+        // “Small panel” heuristic: if the panel is narrow, hide text and use square buttons.
+        int panelW = appW;
+        if (panelWindow())
+            panelW = panelWindow()->panelWidth();
+
+        const bool narrow = (panelW < adjustHardcodedPixelSize(100));
+
+        int btnH = 0;
+        if (narrow) {
+            // Small side panel: square buttons (width - 6)
+            btnH = btnW;
+        } else {
+            // Wide side panel: 24–30px height
+            btnH = adjustHardcodedPixelSize(28);
+            btnH = qBound(adjustHardcodedPixelSize(24), btnH, adjustHardcodedPixelSize(30));
+        }
+
+        // If we can’t fit, shrink (but keep a sane minimum)
+        if (btnH * count > availH) {
+            btnH = qMax(adjustHardcodedPixelSize(18), availH / count);
+        }
+
+        int y = edge;
+        for (int i = 0; i < m_dockItems.size(); i++) {
+            QPoint targetPos(edge, y);
+            QSize  targetSize(btnW, btnH);
+
+            m_dockItems[i]->setTargetPosition(targetPos);
+            m_dockItems[i]->setTargetSize(targetSize);
+            m_dockItems[i]->startAnimation();
+
+            y += btnH + gap;
+        }
+    }
+
+    update();
+
+    // Force repaint
+    if (scene()) {
+        scene()->update(sceneBoundingRect());
+    }
 }
 
 void DockApplet::draggingStarted()
@@ -379,24 +445,23 @@ void DockApplet::updateClientList()
     if (!m_initialized) {
         return;
     }
-    
+
     if (m_waylandSupport) {
         // Wayland updates are handled by signal/slot connection
-        // No need to call updateWaylandClientList() here
     } else {
         updateX11ClientList();
     }
-    
-    // Deduplicate dock items after updating
+
+    // Deduplicate dock items after updating (FIXED implementation below)
     deduplicateDockItems();
-    
+
     // Update layout after deduplication to recalculate positions
     updateLayout();
-    
+
     // Move items instantly to their new positions
-    for(int i = 0; i < m_dockItems.size(); i++)
+    for (int i = 0; i < m_dockItems.size(); i++)
         m_dockItems[i]->moveInstantly();
-    
+
     // Force a complete repaint of the entire dock area
     if (scene()) {
         scene()->update(sceneBoundingRect());
@@ -741,51 +806,71 @@ void DockApplet::readSettings()
 
 void DockApplet::deduplicateDockItems()
 {
-	QVector<DockItem*> itemsToRemove;
-	QSet<QString> seenApplications;
-	
-	for (int i = 0; i < m_dockItems.size(); ++i) {
-		DockItem* item = m_dockItems[i];
-		QString itemText = item->text();
-		QString normalizedName = itemText.toLower();
-		
-		// Extract application name from various patterns
-		QString appName = normalizedName;
-		if (normalizedName.contains(" - hdepanel")) {
-			// Extract from "dockapplet.cpp - hdepanel - Cursor" -> "cursor"
-			QString extracted = normalizedName.split(" - hdepanel").last().trimmed();
-			// Remove leading dash and space if present
-			if (extracted.startsWith("- ")) {
-				extracted = extracted.mid(2).trimmed();
-			}
-			appName = extracted;
-		} else if (normalizedName.contains(" - hde/panel")) {
-			// Extract from "dockapplet.cpp - hde/panel - Cursor" -> "cursor"
-			QString extracted = normalizedName.split(" - hde/panel").last().trimmed();
-			// Remove leading dash and space if present
-			if (extracted.startsWith("- ")) {
-				extracted = extracted.mid(2).trimmed();
-			}
-			appName = extracted;
-		}
-		
-		// Check if we've seen this application before
-		if (seenApplications.contains(appName)) {
-			itemsToRemove.append(item);
-		} else {
-			seenApplications.insert(appName);
-		}
-	}
-	
-	// Remove duplicate items safely
-	for (DockItem* item : itemsToRemove) {
-		if (m_dockItems.contains(item)) {
-			// Remove from list first
-			m_dockItems.removeAll(item);
-			// Then delete - the destructor will call unregisterDockItem
-			delete item;
-		}
-	}
+    QVector<DockItem*> itemsToRemove;
+
+    // Dedup by *identity*, NOT by item->text() (text can be empty/elided)
+    QSet<qulonglong> seenX11Handles;
+    QSet<qulonglong> seenWaylandPtrs;
+
+    for (DockItem* item : m_dockItems) {
+        if (!item) continue;
+
+        bool matched = false;
+
+        // --- X11: find which Client* this item belongs to, then dedup by handle ---
+        for (auto it = m_clients.begin(); it != m_clients.end(); ++it) {
+            Client* c = it.value();
+            if (!c) continue;
+
+            if (item->hasClient(c)) {
+                matched = true;
+                const qulonglong h = static_cast<qulonglong>(c->handle());
+                if (seenX11Handles.contains(h)) {
+                    itemsToRemove.append(item);
+                } else {
+                    seenX11Handles.insert(h);
+                }
+                break;
+            }
+        }
+
+        if (matched) continue;
+
+        // --- Wayland: find which WaylandClient* this item belongs to, dedup by pointer ---
+        for (auto it = m_waylandClients.begin(); it != m_waylandClients.end(); ++it) {
+            WaylandClient* wc = it.value();
+            if (!wc) continue;
+
+            if (item->hasWaylandClient(wc)) {
+                matched = true;
+                const qulonglong p = static_cast<qulonglong>(reinterpret_cast<uintptr_t>(wc));
+                if (seenWaylandPtrs.contains(p)) {
+                    itemsToRemove.append(item);
+                } else {
+                    seenWaylandPtrs.insert(p);
+                }
+                break;
+            }
+        }
+
+        // If it matched neither X11 nor Wayland, we don't dedup it here.
+    }
+
+    // Remove duplicates safely
+    for (DockItem* item : itemsToRemove) {
+        if (!item) continue;
+        if (!m_dockItems.contains(item)) continue;
+
+        // Remove from list first
+        m_dockItems.removeAll(item);
+
+        // Remove from scene if present (avoid double-remove during shutdown)
+        if (scene() && item->scene() == scene()) {
+            scene()->removeItem(item);
+        }
+
+        delete item;
+    }
 }
 
 DockItem* DockApplet::createDockItem(const QString& name, const QIcon& icon, const QString& objectName)

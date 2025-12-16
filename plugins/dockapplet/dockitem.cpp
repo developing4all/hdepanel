@@ -28,6 +28,9 @@
 #include "dockitem.h"
 #include "dockapplet.h"
 #include "client.h"
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#include <chrono>
+#endif
 #include "waylandclient.h"
 #include "../../lib/waylandsupport.h"
 #include "textgraphicsitem.h"
@@ -75,7 +78,11 @@ DockItem::DockItem(DockApplet* dockApplet)
 
 	m_animationTimer = new QTimer();
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+	m_animationTimer->setInterval(std::chrono::milliseconds(20));
+#else
 	m_animationTimer->setInterval(20);
+#endif
 	m_animationTimer->setSingleShot(true);
 	connect(m_animationTimer, SIGNAL(timeout()), this, SLOT(animate()));
 
@@ -89,7 +96,10 @@ DockItem::DockItem(DockApplet* dockApplet)
 
 	m_textItem = new TextGraphicsItem(this);
 	m_textItem->setColor(Qt::white);
-	m_textItem->setFont(m_dockApplet->panelWindow()->font());
+	// Safety check: only set font if panel window is available
+	if (m_dockApplet && m_dockApplet->panelWindow()) {
+		m_textItem->setFont(m_dockApplet->panelWindow()->font());
+	}
 
 	m_iconItem = new QGraphicsPixmapItem(this);
 
@@ -120,60 +130,151 @@ DockItem::~DockItem()
 
 void DockItem::updateContent()
 {
-    // Safety checks
-    if (!m_textItem || !m_iconItem || !m_dockApplet || !m_dockApplet->panelWindow()) {
+    if (!m_textItem ||
+        !m_iconItem ||
+        !m_dockApplet ||
+        m_dockApplet->isDestroying() ||
+        !m_dockApplet->panelWindow()) {
         return;
     }
-    
-    m_textItem->setFont(m_dockApplet->panelWindow()->font());
-    QFontMetrics fontMetrics(m_textItem->font());
-    
+
+    PanelWindow* panelWindow = m_dockApplet->panelWindow();
+    PanelWindow::Orientation orientation = panelWindow->orientation();
+    PanelWindow::Position position = panelWindow->position();
+
+    const bool isVerticalPanel =
+        (orientation == PanelWindow::Vertical) ||
+        (position == PanelWindow::Left || position == PanelWindow::Right);
+
+    const int cellW = (m_size.width()  > 0) ? m_size.width()  : m_targetSize.width();
+    const int cellH = (m_size.height() > 0) ? m_size.height() : m_targetSize.height();
+
+    bool showText = true;
+    if (isVerticalPanel) {
+        if (panelWindow->panelWidth() < 100)
+            showText = false;
+    }
+
+    m_textItem->setFont(panelWindow->font());
+    QFontMetrics fm(m_textItem->font());
+
     QString displayText;
     QIcon displayIcon;
-    
+
     if (!m_clients.isEmpty()) {
-        // X11 applications - use client data
         displayText = m_clients[0]->name();
         displayIcon = m_clients[0]->icon();
     } else if (!m_waylandText.isEmpty()) {
-        // Wayland applications - use stored text
         displayText = m_waylandText;
-        // For Wayland, we need to get the icon from the pixmap that was already set
-        if (m_iconItem && !m_iconItem->pixmap().isNull()) {
+        if (m_iconItem && !m_iconItem->pixmap().isNull())
             displayIcon = QIcon(m_iconItem->pixmap());
+    } else {
+        displayText = m_textItem ? m_textItem->text() : QString();
+        if (m_iconItem && !m_iconItem->pixmap().isNull())
+            displayIcon = QIcon(m_iconItem->pixmap());
+    }
+
+    setToolTip(displayText);
+
+    // --- sizing rules ---
+    const int sideMargin = 5;   // outer margin for narrow side panels
+    const int iconPad    = 3;   // extra internal padding between button and icon
+    const int gap        = 8;
+    const int leftPad    = 12;
+    const int rightPad   = 8;
+
+    int iconSize = adjustHardcodedPixelSize(16);
+
+    if (isVerticalPanel && !showText) {
+        // Narrow side panel: icon = (thickness - 2*(sideMargin + iconPad))
+        int thickness = panelWindow->panelWidth();
+        if (cellW > 0) thickness = qMin(thickness, cellW);
+
+        const int inset = sideMargin + iconPad;
+
+        int wanted = thickness - 2 * inset;                    // e.g. 64 -> 64 - 16 = 48
+        int maxByCellH = (cellH > 0) ? (cellH - 2 * inset) : wanted;
+
+        iconSize = qMin(wanted, maxByCellH);
+        if (iconSize < adjustHardcodedPixelSize(8))
+            iconSize = adjustHardcodedPixelSize(8);
+    } else if (isVerticalPanel && showText) {
+        int maxByHeight = (cellH > 0) ? (cellH - 6 - 2*iconPad) : (panelWindow->panelHeight() - 6 - 2*iconPad);
+        iconSize = qMin(adjustHardcodedPixelSize(24), maxByHeight);
+        if (iconSize < adjustHardcodedPixelSize(8))
+            iconSize = adjustHardcodedPixelSize(8);
+    } else {
+        int maxByHeight = (cellH > 0) ? (cellH - 8 - 2*iconPad) : (panelWindow->panelHeight() - 8 - 2*iconPad);
+        iconSize = qMin(adjustHardcodedPixelSize(16), maxByHeight);
+        if (iconSize < adjustHardcodedPixelSize(8))
+            iconSize = adjustHardcodedPixelSize(8);
+    }
+
+    if (!displayIcon.isNull())
+        m_iconItem->setPixmap(displayIcon.pixmap(iconSize, iconSize));
+
+    // --- positioning ---
+    int iconX = 0;
+    int iconY = 0;
+
+    if (!isVerticalPanel) {
+        iconX = adjustHardcodedPixelSize(8) + iconPad; // ✅ inset from left
+        iconY = (cellH > 0) ? (cellH - iconSize) / 2 : 0;
+    } else {
+        if (!showText) {
+            iconX = sideMargin + iconPad;              // ✅ inset on narrow side panels
+            iconY = (cellH > 0) ? (cellH - iconSize) / 2 : 0;
+        } else {
+            iconX = leftPad + iconPad;                 // ✅ inset even when text is shown
+            iconY = (cellH > 0) ? (cellH - iconSize) / 2 : 0;
+        }
+    }
+
+    m_iconItem->setPos(iconX, iconY);
+
+    // --- text ---
+    if (showText) {
+        int availableW = 0;
+
+        if (!isVerticalPanel) {
+            availableW = (cellW > 0 ? cellW : 200) - (iconX + iconSize + gap + rightPad);
+            if (availableW < 0) availableW = 0;
+
+            QString shortName = fm.elidedText(displayText, Qt::ElideRight, availableW);
+            m_textItem->setText(shortName);
+            m_textItem->setVisible(true);
+
+            int textX = iconX + iconSize + gap;
+            int textY = panelWindow->textBaseLine();
+            m_textItem->setPos(textX, textY);
+        } else {
+            availableW = (cellW > 0 ? cellW : panelWindow->panelWidth()) - (iconX + iconSize + gap + rightPad);
+            if (availableW < 0) availableW = 0;
+
+            QString shortName = fm.elidedText(displayText, Qt::ElideRight, availableW);
+            m_textItem->setText(shortName);
+            m_textItem->setVisible(true);
+
+            int textX = iconX + iconSize + gap;
+            int textY = (cellH > 0) ? ((cellH - fm.height()) / 2 + fm.ascent())
+                                    : panelWindow->textBaseLine();
+            m_textItem->setPos(textX, textY);
         }
     } else {
-        // Fallback - use text item text
-        displayText = m_textItem->text();
-        // For Wayland, we need to get the icon from the pixmap that was already set
-        if (m_iconItem && !m_iconItem->pixmap().isNull()) {
-            displayIcon = QIcon(m_iconItem->pixmap());
-        }
+        m_textItem->setText(QString());
+        m_textItem->setVisible(false);
     }
-    
-    // Apply text eliding and positioning
-    int availableWidth = m_targetSize.width() > 0 ? m_targetSize.width() - adjustHardcodedPixelSize(36) : 200; // Fallback width
-    QString shortName = fontMetrics.elidedText(displayText, Qt::ElideRight, availableWidth);
-    m_textItem->setText(shortName);
-    
-    // Position text to the right of the icon with proper spacing
-    int textX = adjustHardcodedPixelSize(28); // 8 (icon) + 16 (icon width) + 4 (spacing)
-    int textY = m_dockApplet->panelWindow()->textBaseLine();
-    m_textItem->setPos(textX, textY);
 
-    // Apply icon sizing and positioning
-    if (!displayIcon.isNull()) {
-        m_iconItem->setPixmap(displayIcon.pixmap(adjustHardcodedPixelSize(16)));
-    }
-    // Center icon vertically in the dock item
-    int iconY = m_targetSize.height() > 0 ? m_targetSize.height()/2 - adjustHardcodedPixelSize(8) : 16; // Fallback height
-    m_iconItem->setPos(adjustHardcodedPixelSize(8), iconY);
-
-	update();
+    update();
 }
 
 void DockItem::fontChanged()
 {
+    // Safety check: ensure dock item and applet are still valid before updating
+    if (!m_textItem || !m_dockApplet || m_dockApplet->isDestroying() || !m_dockApplet->panelWindow()) {
+        return;
+    }
+    
     m_textItem->setFont(m_dockApplet->panelWindow()->font());
     update();
 }
@@ -228,26 +329,30 @@ void DockItem::setWaylandClient(WaylandClient* waylandClient)
 
 void DockItem::setText(const QString& text)
 {
-    if (m_textItem) {
-        m_textItem->setText(text);
-        // Update stored Wayland text if this is a Wayland client
-        if (m_clients.isEmpty()) {
-            m_waylandText = text;
-        }
-        // Use updateContent() for consistent styling with X11 applications
-        updateContent();
-    } else {
+    // Safety check: ensure dock item and applet are still valid before updating
+    if (!m_textItem || !m_dockApplet || m_dockApplet->isDestroying()) {
+        return;
     }
+    
+    m_textItem->setText(text);
+    // Update stored Wayland text if this is a Wayland client
+    if (m_clients.isEmpty()) {
+        m_waylandText = text;
+    }
+    // Use updateContent() for consistent styling with X11 applications
+    updateContent();
 }
 
 void DockItem::setIcon(const QIcon& icon)
 {
-    if (m_iconItem) {
-        m_iconItem->setPixmap(icon.pixmap(16, 16));
-        // Use updateContent() for consistent styling with X11 applications
-        updateContent();
-    } else {
+    // Safety check: ensure dock item and applet are still valid before updating
+    if (!m_iconItem || !m_dockApplet || m_dockApplet->isDestroying()) {
+        return;
     }
+    
+    m_iconItem->setPixmap(icon.pixmap(16, 16));
+    // Use updateContent() for consistent styling with X11 applications
+    updateContent();
 }
 
 QString DockItem::text() const
@@ -357,56 +462,110 @@ void DockItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
 {
     Q_UNUSED(widget)
     Q_UNUSED(option)
+
+    if (!m_dockApplet || m_dockApplet->isDestroying()) return;
+    PanelWindow* panelWindow = m_dockApplet->panelWindow();
+    if (!panelWindow) return;
+
+    auto dp = [this](int px) { return adjustHardcodedPixelSize(px); };
+
+    const int w = qMax(1, m_size.width());
+    const int h = qMax(1, m_size.height());
+
+    const PanelWindow::Position position = panelWindow->position();
+    const PanelWindow::Orientation orientation = panelWindow->orientation();
+
+    const bool isVerticalPanel =
+        (orientation == PanelWindow::Vertical) ||
+        (position == PanelWindow::Left || position == PanelWindow::Right);
+
+    const int textThresholdPx = 100;
+    const bool showText = (!isVerticalPanel) ? true : (w >= textThresholdPx);
+
+    // Outer margins: 3px each side (=> width - 6)
+    const int outerMarginX = dp(3);
+    const int outerMarginY = dp(3);
+
+    const int buttonW = qMax(1, w - 2 * outerMarginX);
+
+    // Height clamp 24..30 for wide panels, and for icon-only small panels.
+    const int maxH = qMax(1, h - 2 * outerMarginY);
+    const int desiredMinH = dp(24);
+    const int desiredMaxH = dp(30);
+
+    int buttonH = maxH;
+    if (buttonH > desiredMaxH) buttonH = desiredMaxH;
+
+    // If we are too small to reach 24px, just use what we have
+    if (buttonH < desiredMinH) buttonH = maxH;
+
+    // If it's a vertical *wide* panel (text shown), you might want taller buttons.
+    // If you still want 24..30 there too, remove this block.
+    if (isVerticalPanel && showText) {
+        buttonH = maxH; // allow full height when vertical panel is wide enough for text
+    }
+
+    const int buttonX = outerMarginX;
+    const int buttonY = (h - buttonH) / 2;
+
+    QRectF rect(buttonX, buttonY, buttonW, buttonH);
+
     painter->setPen(Qt::NoPen);
-	QPointF center(m_size.width()/2.0, m_size.height() + adjustHardcodedPixelSize(32));
-	QRectF rect(0.0, adjustHardcodedPixelSize(4), m_size.width(), m_size.height() - adjustHardcodedPixelSize(8));
-	static const qreal roundRadius = adjustHardcodedPixelSize(3);
 
-	{
-		QRadialGradient gradient(center, adjustHardcodedPixelSize(200), center);
-		QColor buttonColorStart = m_buttonColor;
-		buttonColorStart.setAlpha(m_buttonColorTransparency + static_cast<int>(m_buttonColorTransparency*m_highlightIntensity));
-		QColor buttonColorEnd = m_buttonColor;
-		buttonColorEnd.setAlpha(0);
-		gradient.setColorAt(0.0, buttonColorStart);
-		gradient.setColorAt(1.0, buttonColorEnd);
-		painter->setBrush(QBrush(gradient));
-		painter->drawRoundedRect(rect, roundRadius, roundRadius);
-	}
+    static const qreal roundRadius = 3.0; // small radius, dp not critical here
+    QPointF center(rect.center().x(), rect.bottom() + dp(20));
 
-	// Draw focus highlight (stronger than hover, different color)
-	if(m_focusHighlightIntensity > 0.001)
-	{
-		// Draw a solid border for focused windows using configurable color
-		QColor focusPenColor = m_focusColor;
-		focusPenColor.setAlpha(static_cast<int>(m_focusColorTransparency*m_focusHighlightIntensity));
-		QPen focusPen(focusPenColor);
-		focusPen.setWidth(adjustHardcodedPixelSize(2));
-		painter->setPen(focusPen);
-		painter->setBrush(Qt::NoBrush);
-		painter->drawRoundedRect(rect.adjusted(1, 1, -1, -1), roundRadius, roundRadius);
-		
-		// Also add a gradient overlay using configurable color
-		QRadialGradient gradient(center, adjustHardcodedPixelSize(200), center);
-		QColor focusColorStart = m_focusColor;
-		focusColorStart.setAlpha(static_cast<int>(60*m_focusHighlightIntensity));
-		QColor focusColorEnd = m_focusColor;
-		focusColorEnd.setAlpha(0);
-		gradient.setColorAt(0.0, focusColorStart);
-		gradient.setColorAt(1.0, focusColorEnd);
-		painter->setPen(Qt::NoPen);
-		painter->setBrush(QBrush(gradient));
-		painter->drawRoundedRect(rect, roundRadius, roundRadius);
-	}
+    // Base hover background
+    {
+        QRadialGradient gradient(center, dp(200), center);
+        QColor buttonColorStart = m_buttonColor;
+        buttonColorStart.setAlpha(m_buttonColorTransparency +
+                                  static_cast<int>(m_buttonColorTransparency * m_highlightIntensity));
+        QColor buttonColorEnd = m_buttonColor;
+        buttonColorEnd.setAlpha(0);
 
-	if(m_urgencyHighlightIntensity > 0.001)
-	{
-		QRadialGradient gradient(center, adjustHardcodedPixelSize(200), center);
-		gradient.setColorAt(0.0, QColor(255, 100, 0, static_cast<int>(160*m_urgencyHighlightIntensity)));
-		gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
-		painter->setBrush(QBrush(gradient));
-		painter->drawRoundedRect(rect, roundRadius, roundRadius);
-	}
+        gradient.setColorAt(0.0, buttonColorStart);
+        gradient.setColorAt(1.0, buttonColorEnd);
+
+        painter->setBrush(QBrush(gradient));
+        painter->drawRoundedRect(rect, roundRadius, roundRadius);
+    }
+
+    // Focus highlight
+    if (m_focusHighlightIntensity > 0.001) {
+        QColor focusPenColor = m_focusColor;
+        focusPenColor.setAlpha(static_cast<int>(m_focusColorTransparency * m_focusHighlightIntensity));
+        QPen focusPen(focusPenColor);
+        focusPen.setWidth(dp(2));
+
+        painter->setPen(focusPen);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRoundedRect(rect.adjusted(1, 1, -1, -1), roundRadius, roundRadius);
+
+        QRadialGradient gradient(center, dp(200), center);
+        QColor focusColorStart = m_focusColor;
+        focusColorStart.setAlpha(static_cast<int>(60 * m_focusHighlightIntensity));
+        QColor focusColorEnd = m_focusColor;
+        focusColorEnd.setAlpha(0);
+
+        gradient.setColorAt(0.0, focusColorStart);
+        gradient.setColorAt(1.0, focusColorEnd);
+
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QBrush(gradient));
+        painter->drawRoundedRect(rect, roundRadius, roundRadius);
+    }
+
+    // Urgency highlight
+    if (m_urgencyHighlightIntensity > 0.001) {
+        QRadialGradient gradient(center, dp(200), center);
+        gradient.setColorAt(0.0, QColor(255, 100, 0,
+                                        static_cast<int>(160 * m_urgencyHighlightIntensity)));
+        gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
+
+        painter->setBrush(QBrush(gradient));
+        painter->drawRoundedRect(rect, roundRadius, roundRadius);
+    }
 }
 
 void DockItem::hoverEnterEvent(QGraphicsSceneHoverEvent* event)
@@ -506,40 +665,87 @@ void DockItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 	if(!m_dragging)
 		return;
 
-	// TODO: Vertical orientation support.
+	// Get panel orientation
+	PanelWindow::Orientation orientation = PanelWindow::Horizontal;
+	if (m_dockApplet->panelWindow()) {
+		orientation = m_dockApplet->panelWindow()->orientation();
+	}
 
 	QPointF delta = event->scenePos() - m_mouseDownPosition;
-	m_position.setX(m_dragStartPosition.x() + static_cast<int>(delta.x()));
-	if(m_position.x() < 0)
-		m_position.setX(0);
-	if(m_position.x() >= m_dockApplet->size().width() - m_targetSize.width())
-		m_position.setX(m_dockApplet->size().width() - m_targetSize.width());
-	setPos(m_position.x(), m_position.y());
+	
+	if (orientation == PanelWindow::Horizontal) {
+		// Horizontal layout: drag left/right
+		m_position.setX(m_dragStartPosition.x() + static_cast<int>(delta.x()));
+		if(m_position.x() < 0)
+			m_position.setX(0);
+		if(m_position.x() >= m_dockApplet->size().width() - m_targetSize.width())
+			m_position.setX(m_dockApplet->size().width() - m_targetSize.width());
+		setPos(m_position.x(), m_position.y());
 
-	int criticalShift = m_targetSize.width()*55/100;
+		int criticalShift = m_targetSize.width()*55/100;
 
-	if(m_position.x() < m_targetPosition.x() - criticalShift)
-		m_dockApplet->moveItem(this, false);
+		if(m_position.x() < m_targetPosition.x() - criticalShift)
+			m_dockApplet->moveItem(this, false);
 
-	if(m_position.x() > m_targetPosition.x() + criticalShift)
-		m_dockApplet->moveItem(this, true);
+		if(m_position.x() > m_targetPosition.x() + criticalShift)
+			m_dockApplet->moveItem(this, true);
+	} else {
+		// Vertical layout: drag up/down
+		m_position.setY(m_dragStartPosition.y() + static_cast<int>(delta.y()));
+		if(m_position.y() < 0)
+			m_position.setY(0);
+		if(m_position.y() >= m_dockApplet->size().height() - m_targetSize.height())
+			m_position.setY(m_dockApplet->size().height() - m_targetSize.height());
+		setPos(m_position.x(), m_position.y());
+
+		int criticalShift = m_targetSize.height()*55/100;
+
+		if(m_position.y() < m_targetPosition.y() - criticalShift)
+			m_dockApplet->moveItem(this, false);
+
+		if(m_position.y() > m_targetPosition.y() + criticalShift)
+			m_dockApplet->moveItem(this, true);
+	}
 
 	update();
 }
 
 void DockItem::updateClientsIconGeometry()
 {
-	QPointF topLeft = m_dockApplet->mapToScene(m_targetPosition);
-	QVector<unsigned long> values;
-	values.resize(4);
-	values[0] = static_cast<unsigned long>(topLeft.x()) + m_dockApplet->panelWindow()->pos().x();
-	values[1] = static_cast<unsigned long>(topLeft.y()) + m_dockApplet->panelWindow()->pos().y();
-	values[2] = m_targetSize.width();
-	values[3] = m_targetSize.height();
-	for(int i = 0; i < m_clients.size(); i++)
-	{
-		X11Support::setWindowPropertyCardinalArray(m_clients[i]->handle(), "_NET_WM_ICON_GEOMETRY", values);
-	}
+    // Only meaningful on X11
+#if QT_VERSION < 0x060000
+    const bool isX11 = QX11Info::isPlatformX11();
+#else
+    const bool isX11 = qApp->platformName().toLower().contains("xcb");
+#endif
+    if (!isX11) return;
+
+    // Defensive: never touch anything while we’re shutting down / item invalid
+    if (m_shouldDelete) return;
+    if (!m_dockApplet || m_dockApplet->isDestroying()) return;
+
+    PanelWindow* pw = m_dockApplet->panelWindow();
+    if (!pw) return;
+
+    if (m_targetSize.width() <= 0 || m_targetSize.height() <= 0) return;
+
+    // If this DockApplet is not in a scene anymore, mapToScene can be unreliable
+    // but it usually still works; keep it guarded.
+    QPointF topLeft = m_dockApplet->mapToScene(m_targetPosition);
+
+    QVector<unsigned long> values;
+    values.resize(4);
+    values[0] = static_cast<unsigned long>(qRound(topLeft.x() + pw->pos().x()));
+    values[1] = static_cast<unsigned long>(qRound(topLeft.y() + pw->pos().y()));
+    values[2] = static_cast<unsigned long>(m_targetSize.width());
+    values[3] = static_cast<unsigned long>(m_targetSize.height());
+
+    for (int i = 0; i < m_clients.size(); ++i) {
+        Client* c = m_clients[i];
+        if (!c) continue;
+        if (!c->handle()) continue;
+        X11Support::setWindowPropertyCardinalArray(c->handle(), "_NET_WM_ICON_GEOMETRY", values);
+    }
 }
 
 bool DockItem::isUrgent()

@@ -68,14 +68,26 @@ bool Applet::init()
 
 void Applet::setPosition(const QPoint& position)
 {
-	m_position = position;
-	setPos(m_position);
+    if (m_position == position)
+        return;
+
+    m_position = position;
+    setPos(m_position);
+    update();
 }
 
 void Applet::setSize(const QSize& size)
 {
-	m_size = size;
-	layoutChanged();
+    if (m_size == size)
+        return;
+
+    // IMPORTANT: tell QGraphicsScene our geometry is about to change
+    prepareGeometryChange();
+
+    m_size = size;
+
+    layoutChanged();
+    update();
 }
 
 void Applet::setInteractive(bool interactive)
@@ -112,26 +124,48 @@ void Applet::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QW
     Q_UNUSED(option)
     Q_UNUSED(widget)
 
-    if(m_size.width() < 32 || m_size.height() <= 0)
-		return; // Too small to draw a background (don't want to deal with weird corner cases).
+    if (m_size.width() < 32 || m_size.height() <= 0)
+        return;
 
-	if(!m_interactive)
-		return; // Currently, background is only used for highlight on interactive applets.
+    if (!m_interactive)
+        return;
 
-	painter->setPen(Qt::NoPen);
+    // On vertical panels, the old radial glow looks like a big circle "below" the button.
+    // Use a simple rounded-rect hover instead.
+    bool verticalPanel = false;
+    if (m_panelWindow) {
+        PanelWindow::Position pos = m_panelWindow->position();
+        verticalPanel =
+            (m_panelWindow->orientation() == PanelWindow::Vertical) ||
+            (pos == PanelWindow::Left || pos == PanelWindow::Right);
+    }
+
+    painter->setPen(Qt::NoPen);
+
+    if (verticalPanel) {
+        QColor c(255, 255, 255, static_cast<int>(70 * m_highlightIntensity));
+        painter->setBrush(c);
+        QRectF r = boundingRect().adjusted(1, 1, -1, -1);
+        painter->drawRoundedRect(r, 6.0, 6.0);
+        return;
+    }
+
+    // Keep the original glow for horizontal panels
     qreal radius = (m_size.width()*m_size.width() + m_size.height()*m_size.height()) / (4.0*m_size.height());
-	QPointF center(m_size.width()/2.0, m_size.height() + radius - m_size.height()/2.0);
-	static const qreal radiusInc = 10.0;
-	QRadialGradient gradient(center, radius + radiusInc, center);
-	QColor highlightColor(255, 255, 255, static_cast<int>(150*m_highlightIntensity));
+    QPointF center(m_size.width()/2.0, m_size.height() + radius - m_size.height()/2.0);
+    static const qreal radiusInc = 10.0;
+
+    QRadialGradient gradient(center, radius + radiusInc, center);
+    QColor highlightColor(255, 255, 255, static_cast<int>(150*m_highlightIntensity));
     gradient.setColorAt(0.0, highlightColor);
-    // Ensure the stop position is within [0, 1]
+
     qreal stop = (radius - m_size.height()/2.0) / (radius + radiusInc);
     if (stop < 0.0) stop = 0.0; else if (stop > 1.0) stop = 1.0;
     gradient.setColorAt(stop, highlightColor);
-	gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
-	painter->setBrush(QBrush(gradient));
-	painter->drawRect(boundingRect());
+    gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
+
+    painter->setBrush(QBrush(gradient));
+    painter->drawRect(boundingRect());
 }
 
 void Applet::animateHighlight()

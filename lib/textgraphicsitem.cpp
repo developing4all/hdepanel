@@ -21,7 +21,8 @@
  * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
  * Boston, MA 02110-1301 USA
  *
- * END_COMMON_COPYRIGHT_HEADER */
+ * END_COMMON_COPYRIGHT_HEADER 
+*/
 
 #include "textgraphicsitem.h"
 
@@ -29,45 +30,83 @@
 #include <QtGui/QPainter>
 
 TextGraphicsItem::TextGraphicsItem(QGraphicsItem* parent)
-	: QGraphicsItem(parent)
+    : QGraphicsItem(parent)
 {
 }
 
-TextGraphicsItem::~TextGraphicsItem()
-{
-}
+TextGraphicsItem::~TextGraphicsItem() = default;
 
 void TextGraphicsItem::setColor(const QColor& color)
 {
-	m_color = color;
-	update(boundingRect());
+    if (m_color == color) return;
+    m_color = color;
+    update();
 }
 
 void TextGraphicsItem::setFont(const QFont& font)
 {
-	m_font = font;
-	update(boundingRect());
+    if (m_font == font) return;
+    prepareGeometryChange();
+    m_font = font;
+    update();
 }
 
 void TextGraphicsItem::setText(const QString& text)
 {
-	m_text = text;
-	update(boundingRect());
+    if (m_text == text) return;
+    prepareGeometryChange();
+    m_text = text;
+    update();
 }
 
-void TextGraphicsItem::setImage(const QImage& image) 
+void TextGraphicsItem::setImage(const QImage& image)
 {
+    if (m_image.cacheKey() == image.cacheKey()) return;
+    prepareGeometryChange();
     m_image = image;
-    update(boundingRect());
+    update();
+}
+
+QRectF TextGraphicsItem::multiLineBoundingRect(const QString& text) const
+{
+    QFontMetrics fm(m_font);
+    const int lineH = fm.height();
+
+    QString normalized = text;
+    normalized.replace("\r\n", "\n");
+    const QStringList lines = normalized.split('\n', Qt::KeepEmptyParts);
+
+    QRect total;
+    bool first = true;
+
+    for (int i = 0; i < lines.size(); ++i) {
+        QRect r = fm.boundingRect(lines[i]);   // IMPORTANT: baseline-based rect (y can be negative)
+        r.translate(0, i * lineH);             // next line baseline
+        if (first) { total = r; first = false; }
+        else       { total = total.united(r); }
+    }
+
+    if (first) {
+        // empty text
+        total = fm.boundingRect(QString());
+    }
+
+    return total;
 }
 
 QRectF TextGraphicsItem::boundingRect() const
 {
-	if (!m_image.isNull()) {
-        return m_image.rect();
+    if (!m_image.isNull()) {
+        return QRectF(0.0, 0.0, m_image.width(), m_image.height());
     }
-    QFontMetrics metrics(m_font);
-	return metrics.boundingRect(m_text);
+
+    // Single-line: keep the old behavior exactly
+    if (!m_text.contains('\n') && !m_text.contains("\r\n")) {
+        QFontMetrics fm(m_font);
+        return fm.boundingRect(m_text);
+    }
+
+    return multiLineBoundingRect(m_text);
 }
 
 void TextGraphicsItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
@@ -75,13 +114,35 @@ void TextGraphicsItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* 
     Q_UNUSED(option)
     Q_UNUSED(widget)
 
-	if (m_image.isNull()) {
-        painter->setFont(m_font);
-	    painter->setPen(QPen(Qt::black));
-	    painter->drawText(1, 1, m_text);
-	    painter->setPen(QPen(m_color));
-	    painter->drawText(0, 0, m_text);
-    } else {
+    if (!m_image.isNull()) {
         painter->drawImage(0, 0, m_image);
+        return;
+    }
+
+    painter->setFont(m_font);
+
+    // Single-line: old behavior exactly (baseline at y=0)
+    if (!m_text.contains('\n') && !m_text.contains("\r\n")) {
+        painter->setPen(QPen(Qt::black));
+        painter->drawText(1, 1, m_text);
+        painter->setPen(QPen(m_color));
+        painter->drawText(0, 0, m_text);
+        return;
+    }
+
+    // Multi-line: draw each line manually, still baseline-based
+    QFontMetrics fm(m_font);
+    const int lineH = fm.height();
+
+    QString normalized = m_text;
+    normalized.replace("\r\n", "\n");
+    const QStringList lines = normalized.split('\n', Qt::KeepEmptyParts);
+
+    for (int i = 0; i < lines.size(); ++i) {
+        const int y = i * lineH; // baseline
+        painter->setPen(QPen(Qt::black));
+        painter->drawText(1, y + 1, lines[i]);
+        painter->setPen(QPen(m_color));
+        painter->drawText(0, y, lines[i]);
     }
 }

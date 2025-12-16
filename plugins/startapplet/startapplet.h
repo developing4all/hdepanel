@@ -33,6 +33,7 @@ public:
     ~StartApplet();
     bool init();
     void close(){}
+    QMargins buttonMargins() const override { return QMargins(0, 12, 0, 0); }
     virtual void setPanelWindow(PanelWindow* panelWindow);
 
     //void startPlugin();
@@ -51,6 +52,7 @@ private:
     TextGraphicsItem* m_textItem;
     TextGraphicsItem* m_iconItem;
     StartWindow *m_start;
+    int m_iconSize = 22;
 
 };
 

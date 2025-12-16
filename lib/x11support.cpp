@@ -643,6 +643,89 @@ void X11Support::setStrut(Window _wid,
     XFlush(display);
 }
 
+int X11Support::getHdepanelStackOffsetPx(const QRect& usable, unsigned long selfWindow, HdeEdge edge)
+{
+    if (!x11DisplayCompat() || !usable.isValid() || selfWindow == 0)
+        return 0;
+
+    constexpr int kSlack = 8;
+
+    struct Entry { Window w; QRect r; };
+    QVector<Entry> panels;
+
+    const QVector<Window> wins = x11ClientList();
+    for (Window w : wins) {
+        if (!w) continue;
+        if (!x11IsViewable(w)) continue;
+        if (!x11IsDock(w)) continue;
+
+        const QString name = getWindowName(w);
+        if (!name.contains("HDE Panel", Qt::CaseInsensitive) &&
+            !name.contains("hdepanel", Qt::CaseInsensitive))
+            continue;
+
+        QRect wr;
+        if (!x11GetRootRect(w, wr)) continue;
+
+        // Must intersect usable area on the perpendicular axis
+        if (edge == HdeEdge::Top || edge == HdeEdge::Bottom) {
+            if (wr.right() < usable.left() || wr.left() > usable.right()) continue;
+        } else {
+            if (wr.bottom() < usable.top() || wr.top() > usable.bottom()) continue;
+        }
+
+        bool ok = false;
+        switch (edge) {
+            case HdeEdge::Top:    ok = (wr.top() <= usable.top() + kSlack); break;
+            case HdeEdge::Bottom: ok = (wr.bottom() >= usable.bottom() - kSlack); break;
+            case HdeEdge::Left:   ok = (wr.left() <= usable.left() + kSlack); break;
+            case HdeEdge::Right:  ok = (wr.right() >= usable.right() - kSlack); break;
+        }
+        if (!ok) continue;
+
+        panels.push_back({w, wr});
+    }
+
+    auto byId = [](const Entry& a, const Entry& b){ return a.w < b.w; };
+
+    // Stable + sensible ordering based on current geometry, with id tiebreak
+    switch (edge) {
+        case HdeEdge::Top:
+            std::sort(panels.begin(), panels.end(), [&](const Entry& a, const Entry& b){
+                if (a.r.top() != b.r.top()) return a.r.top() < b.r.top();
+                return byId(a,b);
+            });
+            break;
+        case HdeEdge::Bottom:
+            std::sort(panels.begin(), panels.end(), [&](const Entry& a, const Entry& b){
+                if (a.r.bottom() != b.r.bottom()) return a.r.bottom() > b.r.bottom();
+                return byId(a,b);
+            });
+            break;
+        case HdeEdge::Left:
+            std::sort(panels.begin(), panels.end(), [&](const Entry& a, const Entry& b){
+                if (a.r.left() != b.r.left()) return a.r.left() < b.r.left();
+                return byId(a,b);
+            });
+            break;
+        case HdeEdge::Right:
+            std::sort(panels.begin(), panels.end(), [&](const Entry& a, const Entry& b){
+                if (a.r.right() != b.r.right()) return a.r.right() > b.r.right();
+                return byId(a,b);
+            });
+            break;
+    }
+
+    const Window self = static_cast<Window>(selfWindow);
+
+    int offset = 0;
+    for (const auto& e : panels) {
+        if (e.w == self) break;
+        offset += (edge == HdeEdge::Left || edge == HdeEdge::Right) ? e.r.width()
+                                                                    : e.r.height();
+    }
+    return offset;
+}
 
 
 void X11Support::setWindowPropertyCardinal(unsigned long window, const QString& name, unsigned long value)

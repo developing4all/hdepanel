@@ -28,6 +28,7 @@
 #include "panelwindow.h"
 
 #include "settings.h"
+#include <QTimer>
 
 #include <QDir>
 #include <QStringList>
@@ -97,10 +98,8 @@ PanelSettings::PanelSettings(QString panel_id, QWidget *parent) :
     // Manually connect signals that are missing from the UI file
     connect(ui->theme, QOverload<int>::of(&QComboBox::activated),
             [this](int) { handleThemeActivated(ui->theme->currentText()); });
-    connect(ui->verticalPosition, QOverload<int>::of(&QComboBox::activated),
-            this, &PanelSettings::on_verticalPosition_activated);
-    connect(ui->horizontalPosition, QOverload<int>::of(&QComboBox::activated),
-            this, &PanelSettings::on_horizontalPosition_activated);
+    connect(ui->position, QOverload<int>::of(&QComboBox::activated),
+            this, &PanelSettings::on_position_activated);
     connect(ui->screen, QOverload<int>::of(&QComboBox::activated),
             [this](int) { handleScreenActivated(ui->screen->currentText()); });
     connect(ui->font, QOverload<int>::of(&QFontComboBox::currentIndexChanged),
@@ -112,9 +111,13 @@ PanelSettings::PanelSettings(QString panel_id, QWidget *parent) :
     connect(ui->borderColorButton, &QPushButton::clicked,
             this, &PanelSettings::on_borderColorButton_clicked);
     connect(ui->backgroundColorTransparency, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &PanelSettings::on_backgroundColorTransparency_changed);
+            this, &PanelSettings::handleBackgroundColorTransparencyChanged);
     connect(ui->borderColorTransparency, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &PanelSettings::on_borderColorTransparency_changed);
+            this, &PanelSettings::handleBorderColorTransparencyChanged);
+    connect(ui->panelHeight, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &PanelSettings::on_panelHeight_valueChanged);
+    connect(ui->panelWidth, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &PanelSettings::on_panelWidth_valueChanged);
 
     readSettings();
 }
@@ -136,15 +139,70 @@ void PanelSettings::setPanelWindow(PanelWindow *panel)
     if (ui->theme) {
         ui->theme->setCurrentText(QIcon::themeName());
     }
-    if (ui->verticalPosition) {
-        // Load position as index: 0=Top, 1=Bottom
-        int verticalPos = Settings::value(m_panel_id, "verticalPosition", 1).toInt();
-        ui->verticalPosition->setCurrentIndex(verticalPos);
-    }
-    if (ui->horizontalPosition) {
-        // Load position as index: 0=Left, 1=Center, 2=Right
-        int horizontalPos = Settings::value(m_panel_id, "horizontalPosition", 1).toInt();
-        ui->horizontalPosition->setCurrentIndex(horizontalPos);
+    if (ui->position) {
+        // Load position: try new format first, then migrate from old format
+        QVariant posVariant = Settings::value(m_panel_id, "position", QVariant());
+        int posIndex = 1; // Default to Bottom
+        
+        if (posVariant.isValid()) {
+#if QT_VERSION >= 0x060000
+            bool isString = (posVariant.metaType().id() == QMetaType::QString);
+#else
+            bool isString = (posVariant.type() == QVariant::String);
+#endif
+            if (isString) {
+                QString pos = posVariant.toString();
+                if (pos == "Top") posIndex = 0;
+                else if (pos == "Bottom") posIndex = 1;
+                else if (pos == "Left") posIndex = 2;
+                else if (pos == "Right") posIndex = 3;
+            } else {
+                posIndex = posVariant.toInt();
+            }
+        } else {
+            // Migrate from old format
+            QVariant vpos = Settings::value(m_panel_id, "verticalPosition", 1);
+            QVariant hpos = Settings::value(m_panel_id, "horizontalPosition", 1);
+            
+            bool isTop = false, isBottom = false, isLeft = false, isRight = false;
+            
+#if QT_VERSION >= 0x060000
+            bool vposIsString = (vpos.metaType().id() == QMetaType::QString);
+#else
+            bool vposIsString = (vpos.type() == QVariant::String);
+#endif
+            if (vposIsString) {
+                QString v = vpos.toString();
+                isTop = (v == "Top");
+                isBottom = (v == "Bottom");
+            } else {
+                int v = vpos.toInt();
+                isTop = (v == 0);
+                isBottom = (v == 1);
+            }
+            
+#if QT_VERSION >= 0x060000
+            bool hposIsString = (hpos.metaType().id() == QMetaType::QString);
+#else
+            bool hposIsString = (hpos.type() == QVariant::String);
+#endif
+            if (hposIsString) {
+                QString h = hpos.toString();
+                isLeft = (h == "Left");
+                isRight = (h == "Right");
+            } else {
+                int h = hpos.toInt();
+                isLeft = (h == 0);
+                isRight = (h == 2);
+            }
+            
+            if (isTop) posIndex = 0;
+            else if (isBottom) posIndex = 1;
+            else if (isLeft) posIndex = 2;
+            else if (isRight) posIndex = 3;
+        }
+        
+        ui->position->setCurrentIndex(posIndex);
     }
     if (ui->screen) {
         ui->screen->setCurrentText(Settings::value(m_panel_id, "screen", "0").toString());
@@ -165,13 +223,31 @@ void PanelSettings::setPanelWindow(PanelWindow *panel)
         ui->backgroundColorButton->setStyleSheet(QString("background-color: %1;").arg(bgColor.name()));
     }
     if (ui->backgroundColorTransparency) {
+        ui->backgroundColorTransparency->blockSignals(true);
         ui->backgroundColorTransparency->setValue(bgTransparency);
+        ui->backgroundColorTransparency->blockSignals(false);
     }
     if (ui->borderColorButton) {
         ui->borderColorButton->setStyleSheet(QString("background-color: %1;").arg(borderColor.name()));
     }
     if (ui->borderColorTransparency) {
+        ui->borderColorTransparency->blockSignals(true);
         ui->borderColorTransparency->setValue(borderTransparency);
+        ui->borderColorTransparency->blockSignals(false);
+    }
+    
+    // Load size settings
+    int panelHeight = Settings::value(m_panel_id, "panelHeight", 48).toInt();
+    int panelWidth = Settings::value(m_panel_id, "panelWidth", 48).toInt();
+    if (ui->panelHeight) {
+        ui->panelHeight->blockSignals(true);
+        ui->panelHeight->setValue(panelHeight);
+        ui->panelHeight->blockSignals(false);
+    }
+    if (ui->panelWidth) {
+        ui->panelWidth->blockSignals(true);
+        ui->panelWidth->setValue(panelWidth);
+        ui->panelWidth->blockSignals(false);
     }
 
     // applets
@@ -225,36 +301,42 @@ void PanelSettings::handleThemeActivated(const QString &theme)
     Settings::setValue("Main", "iconThemeName", theme);
 }
 
-void PanelSettings::on_verticalPosition_activated(int index)
+void PanelSettings::on_position_activated(int index)
 {
-    // index: 0=Top, 1=Bottom
-    PanelWindow::Anchor verticalAnchor = (index == 0) ? PanelWindow::Min : PanelWindow::Max;
-
-    m_panel->setVerticalAnchor(verticalAnchor);
+    if (!m_panel) return;
     
-    // Save as descriptive string instead of numeric value
-    QString positionString = (index == 0) ? "Top" : "Bottom";
-    Settings::setValue(m_panel_id, "verticalPosition", positionString);
+    // index: 0=Top, 1=Bottom, 2=Left, 3=Right
+    PanelWindow::Position position;
+    QString positionString;
+    
+    switch (index) {
+        case 0:
+            position = PanelWindow::Top;
+            positionString = "Top";
+            break;
+        case 1:
+            position = PanelWindow::Bottom;
+            positionString = "Bottom";
+            break;
+        case 2:
+            position = PanelWindow::Left;
+            positionString = "Left";
+            break;
+        case 3:
+            position = PanelWindow::Right;
+            positionString = "Right";
+            break;
+        default:
+            position = PanelWindow::Bottom;
+            positionString = "Bottom";
+            break;
+    }
+    
+    m_panel->setPosition(position);
+    Settings::setValue(m_panel_id, "position", positionString);
     
     // Force sync to ensure settings are written immediately
     Settings::s_settings->sync();
-}
-
-void PanelSettings::on_horizontalPosition_activated(int index)
-{
-
-    // index: 0=Left, 1=Center, 2=Right
-    PanelWindow::Anchor horizontalAnchor = PanelWindow::Center; // Default to center
-    
-    if(index == 0)
-        horizontalAnchor = PanelWindow::Min;
-    else if(index == 1)
-        horizontalAnchor = PanelWindow::Center;
-    else if(index == 2)
-        horizontalAnchor = PanelWindow::Max;
-
-    m_panel->setHorizontalAnchor(horizontalAnchor);
-    Settings::setValue(m_panel_id, "horizontalPosition", index);
 }
 
 void PanelSettings::handleScreenActivated(const QString &screen)
@@ -390,18 +472,60 @@ void PanelSettings::on_borderColorButton_clicked()
     }
 }
 
-void PanelSettings::on_backgroundColorTransparency_changed(int value)
+void PanelSettings::handleBackgroundColorTransparencyChanged(int value)
 {
     Settings::setValue(m_panel_id, "backgroundColorTransparency", value);
+    Settings::s_settings->sync(); // Ensure settings are saved immediately
     if (m_panel) {
         m_panel->updateColors();
     }
 }
 
-void PanelSettings::on_borderColorTransparency_changed(int value)
+void PanelSettings::handleBorderColorTransparencyChanged(int value)
 {
     Settings::setValue(m_panel_id, "borderColorTransparency", value);
+    Settings::s_settings->sync(); // Ensure settings are saved immediately
     if (m_panel) {
         m_panel->updateColors();
+    }
+}
+
+void PanelSettings::on_panelHeight_valueChanged(int value)
+{
+    // Save to settings immediately to prevent loss on tab switch
+    Settings::setValue(m_panel_id, "panelHeight", value);
+    Settings::s_settings->sync(); // Ensure settings are saved immediately
+    
+    if (m_panel) {
+        m_panel->setPanelHeight(value);
+        // Update the spinbox value in case it was adjusted by setPanelHeight()
+        // Use a small delay to avoid recursion
+        QTimer::singleShot(0, this, [this]() {
+            if (ui->panelHeight && m_panel && ui->panelHeight->value() != m_panel->panelHeight()) {
+                ui->panelHeight->blockSignals(true);
+                ui->panelHeight->setValue(m_panel->panelHeight());
+                ui->panelHeight->blockSignals(false);
+            }
+        });
+    }
+}
+
+void PanelSettings::on_panelWidth_valueChanged(int value)
+{
+    // Save to settings immediately to prevent loss on tab switch
+    Settings::setValue(m_panel_id, "panelWidth", value);
+    Settings::s_settings->sync(); // Ensure settings are saved immediately
+    
+    if (m_panel) {
+        m_panel->setPanelWidth(value);
+        // Update the spinbox value in case it was adjusted by setPanelWidth()
+        // Use a small delay to avoid recursion
+        QTimer::singleShot(0, this, [this]() {
+            if (ui->panelWidth && m_panel && ui->panelWidth->value() != m_panel->panelWidth()) {
+                ui->panelWidth->blockSignals(true);
+                ui->panelWidth->setValue(m_panel->panelWidth());
+                ui->panelWidth->blockSignals(false);
+            }
+        });
     }
 }

@@ -47,8 +47,8 @@ class QGraphicsScene;
 	 Q_OBJECT
  public:
 	 enum Orientation { Horizontal, Vertical };
-	 enum Anchor { Min, Center, Max };
-	 enum LayoutPolicy { Normal, AutoSize, FillSpace };
+	 enum Position { Top, Bottom, Left, Right };
+	 enum LayoutPolicy { Normal, AutoSize };
  
 	 explicit PanelWindow(QString id);
 	 ~PanelWindow() override;
@@ -58,11 +58,12 @@ class QGraphicsScene;
 	 void setScreen(int screen);
 	 int screen() const { return m_screen; }
 
-	 void setHorizontalAnchor(Anchor horizontalAnchor);
-	 void setVerticalAnchor(Anchor verticalAnchor);
+	 void setPosition(Position position);
 	 void setOrientation(Orientation orientation);
 	 void setLayoutPolicy(LayoutPolicy layoutPolicy);
- 
+	 void setPanelHeight(int height);
+	 void setPanelWidth(int width);
+	 QRect usableScreenRectX11() const;
 	 int  textBaseLine();
 	 void resetApplets();
  
@@ -71,9 +72,11 @@ class QGraphicsScene;
 	 QRect getAvailableScreenGeometry() const;
  
 	 // Used by settings dialog
-	 inline Anchor verticalAnchor() const { return m_verticalAnchor; }
-	 inline Anchor horizontalAnchor() const { return m_horizontalAnchor; }
+	 inline Position position() const { return m_position; }
+	 inline Orientation orientation() const { return m_orientation; }
  	 inline const QString& id() const { return m_id; }
+	 inline int panelHeight() const { return m_panelHeight; }
+	 inline int panelWidth() const { return m_panelWidth; }
  	 // Context menu / settings UI
 	 void showPanelContextMenu(const QPoint& point);
 	 bool init();
@@ -126,8 +129,7 @@ class QGraphicsScene;
  
 	 // Layout & geometry
 	 Orientation   m_orientation   = Horizontal;
-	 Anchor        m_horizontalAnchor = Center;
-	 Anchor        m_verticalAnchor   = Max;     // default bottom
+	 Position      m_position       = Bottom;    // default bottom
 	 LayoutPolicy  m_layoutPolicy  = Normal;
 	 bool          m_dockMode      = false;
 	 int           m_screen        = 0;
@@ -144,6 +146,7 @@ class QGraphicsScene;
 	 QRect         m_lastStrutGeom;              // last geometry we applied struts for
 	 QElapsedTimer m_lastStrutApply;             // used to suppress WM workarea events caused by us
 	 QAbstractNativeEventFilter* m_x11RootEventFilter = nullptr; // owned by this; installed on qApp when X11
+	 bool          m_updatingLayout = false;     // guard to prevent infinite loops
  
 	 // Wayland helpers
 	 QTimer*       m_waylandRepositionTimer = nullptr;
@@ -155,6 +158,10 @@ class QGraphicsScene;
 	 int           m_backgroundTransparency = 128;
 	 QColor        m_borderColor = QColor(255, 255, 255);
 	 int           m_borderTransparency = 128;
+	 
+	 // Size settings
+	 int           m_panelHeight = 48;  // Height for horizontal panels (Top/Bottom)
+	 int           m_panelWidth = 48;    // Width for vertical panels (Left/Right)
  
 	 friend class PanelWindowGraphicsItem;
  

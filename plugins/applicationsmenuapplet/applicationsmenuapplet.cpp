@@ -83,10 +83,25 @@ ApplicationsMenuApplet::ApplicationsMenuApplet(PanelWindow* panelWindow)
 {
     setObjectName("ApplicationsMenu");
     
-    // Create m_textItem early so desiredSize() doesn't crash
+    // Create text item early so desiredSize() doesn't crash
     m_textItem = new TextGraphicsItem(this);
     m_textItem->setColor(Qt::white);
     m_textItem->setText(tr("Applications"));
+
+    // Separate icon item (size will be adjusted in refreshIcons)
+    m_iconItem = new TextGraphicsItem(this);
+    m_iconItem->setColor(Qt::white);
+    m_iconSize = 22;
+
+    m_textItem->setAcceptedMouseButtons(Qt::NoButton);
+    m_iconItem->setAcceptedMouseButtons(Qt::NoButton);
+    #if QT_VERSION >= 0x050000
+    m_textItem->setAcceptHoverEvents(false);
+    m_iconItem->setAcceptHoverEvents(false);
+    #else
+    m_textItem->setAcceptsHoverEvents(false);
+    m_iconItem->setAcceptsHoverEvents(false);
+    #endif
 }
 void ApplicationsMenuApplet::setPanelWindow(PanelWindow *panelWindow)
 {
@@ -118,14 +133,15 @@ void ApplicationsMenuApplet::setPanelWindow(PanelWindow *panelWindow)
     m_subMenus.append(SubMenu(m_menu, tr("Settings"), "Settings", "preferences-desktop"));
     m_subMenus.append(SubMenu(m_menu, tr("Other"), "Other", "applications-other"));
 
-    m_textItem = new TextGraphicsItem(this);
-    m_textItem->setColor(Qt::white);
+    // Update text item font for new panel window
     m_textItem->setFont(m_panelWindow->font());
     m_textItem->setText(tr("Applications"));
-#if QT_VERSION >= 0x050000
-    // TODO: add oslogo to act like M$_WIN
-    m_textItem->setImage(UnifiedIconService::instance()->loadIconAsImage("start-here", 22));
-#endif
+
+    // Refresh icon now that we have a panel window
+    refreshIcons();
+
+    // Refresh icon when theme changes
+    QObject::connect(qApp, SIGNAL(iconThemeChanged(const QString&)), this, SLOT(refreshIcons()));
 }
 
 void ApplicationsMenuApplet::fontChanged()
@@ -138,14 +154,70 @@ void ApplicationsMenuApplet::fontChanged()
     }
 }
 
+void ApplicationsMenuApplet::refreshIcons()
+{
+#if QT_VERSION >= 0x050000
+    if (!m_iconItem || !m_panelWindow)
+        return;
+
+    PanelWindow::Orientation orientation = m_panelWindow->orientation();
+    PanelWindow::Position position = m_panelWindow->position();
+
+    const bool isSide = (position == PanelWindow::Left || position == PanelWindow::Right);
+    const bool horizontalPanel = (orientation == PanelWindow::Horizontal) && !isSide;
+
+    const int sideMargin = 5;   // match StartApplet + taskbar feel
+    const bool showText = !isSide || (m_panelWindow->panelWidth() >= 100);
+
+    int thickness = horizontalPanel ? m_panelWindow->panelHeight()
+                                    : m_panelWindow->panelWidth();
+    if (thickness <= 0)
+        thickness = 24;
+
+    int size = 22;
+
+    if (isSide && !showText) {
+        // Narrow side panel: icon should be (width - 2*margin)
+        size = thickness - 2 * sideMargin;  // e.g. 64 -> 54
+        if (size < 8) size = 8;
+    } else {
+        // Normal case: keep a sane cap so it doesn't explode on wide panels
+        const int padding = 4;
+        size = thickness - 2 * padding;
+        if (size < 8) size = 8;
+        if (size > 32) size = 32;
+    }
+
+    m_iconSize = size;
+
+    QImage img = UnifiedIconService::instance()->loadIconAsImage("start-here", m_iconSize);
+    m_iconItem->setImage(img);
+#endif
+}
+
+void ApplicationsMenuApplet::close()
+{
+    // Disconnect from DesktopDataStore signals to prevent callbacks after deletion
+    DesktopDataStore* dataStore = DesktopDataStore::instance();
+    if (dataStore) {
+        disconnect(dataStore, &DesktopDataStore::desktopEntryAdded, this, &ApplicationsMenuApplet::onDataStoreApplicationAdded);
+        disconnect(dataStore, &DesktopDataStore::desktopEntryUpdated, this, &ApplicationsMenuApplet::onDataStoreApplicationUpdated);
+        disconnect(dataStore, &DesktopDataStore::desktopEntryRemoved, this, &ApplicationsMenuApplet::onDataStoreApplicationRemoved);
+    }
+}
+
 ApplicationsMenuApplet::~ApplicationsMenuApplet()
 {
+    // Ensure close() was called (disconnect signals)
+    close();
+    
     foreach(QAction* action, m_actions)
     {
         delete action;
     }
 
     delete m_textItem;
+    delete m_iconItem;
     delete m_menu;
 }
 
@@ -172,15 +244,42 @@ bool ApplicationsMenuApplet::init()
 
 QSize ApplicationsMenuApplet::desiredSize()
 {
-#if QT_VERSION >= 0x050000
-    if (!m_textItem) return QSize(100, 24);
-    return QSize(m_textItem->boundingRect().size().width() + 16,
-                 m_textItem->boundingRect().size().height());
-#else
-    if (!m_textItem) return QSize(100, 24);
-    return QSize(m_textItem->boundingRect().size().width(),
-                 m_textItem->boundingRect().size().height());
-#endif
+    if (!m_panelWindow) {
+        return QSize(100, 48);
+    }
+
+    PanelWindow::Orientation orientation = m_panelWindow->orientation();
+    PanelWindow::Position position = m_panelWindow->position();
+
+    const bool isSide = (position == PanelWindow::Left || position == PanelWindow::Right);
+    const bool horizontalPanel = (orientation == PanelWindow::Horizontal) && !isSide;
+
+    const int thickness = isSide ? m_panelWindow->panelWidth()
+                                 : m_panelWindow->panelHeight();
+
+    const bool showText = horizontalPanel || (!isSide ? true : (thickness >= 100));
+
+    const int icon = (m_iconSize > 0 ? m_iconSize : 22);
+
+    if (showText) {
+        // Match StartApplet spacing
+        QFontMetrics metrics(m_panelWindow->font());
+        const QString label = tr("Applications");
+        const int textW = metrics.horizontalAdvance(label);
+
+        const int leftPadding  = 12;
+        const int gap          = 12;
+        const int rightPadding = 16;
+
+        const int w = leftPadding + icon + gap + textW + rightPadding;
+        const int h = m_panelWindow->panelHeight();
+        return QSize(w, h);
+    }
+
+    // Narrow side-panel: square tile
+    int t = m_panelWindow->panelWidth();
+    if (t < 10) t = 10;
+    return QSize(t, t);
 }
 
 void ApplicationsMenuApplet::clicked()
@@ -197,12 +296,62 @@ void ApplicationsMenuApplet::clicked()
 
 void ApplicationsMenuApplet::layoutChanged()
 {
-#if QT_VERSION >= 0x050000
-    m_textItem->setPos(8,
-        (m_panelWindow->height() - m_textItem->boundingRect().height()) / 2);
-#else
-    m_textItem->setPos(8, m_panelWindow->textBaseLine());
-#endif
+    if (!m_panelWindow || !m_textItem || !m_iconItem)
+        return;
+
+    refreshIcons();
+
+    PanelWindow::Orientation orientation = m_panelWindow->orientation();
+    PanelWindow::Position position = m_panelWindow->position();
+
+    const bool isSide = (position == PanelWindow::Left || position == PanelWindow::Right);
+    const bool horizontalPanel = (orientation == PanelWindow::Horizontal) && !isSide;
+
+    const int cellW = (m_size.width()  > 0) ? m_size.width()  : (isSide ? m_panelWindow->panelWidth()  : m_panelWindow->panelHeight());
+    const int cellH = (m_size.height() > 0) ? m_size.height() : m_panelWindow->panelHeight();
+
+    const bool showText = horizontalPanel || (!isSide ? true : (m_panelWindow->panelWidth() >= 100));
+
+    const int sideMargin  = 5;
+    const int leftPadding = 12;
+    const int gap         = 12;
+
+    const int iconSize = (m_iconSize > 0 ? m_iconSize : 22);
+
+    if (showText) {
+        // Icon left, text right (even on wide left/right panels)
+        const int iconX = leftPadding;
+        int iconY = (cellH - iconSize) / 2;
+        if (iconY < 0) iconY = 0;
+        m_iconItem->setPos(iconX, iconY);
+
+        m_textItem->setText(tr("Applications"));
+        m_textItem->setVisible(true);
+
+        const int textX = iconX + iconSize + gap;
+
+        // Use the same baseline logic as StartApplet for horizontal,
+        // and visually centered text for side panels.
+        int textY;
+        if (!isSide) {
+            textY = m_panelWindow->textBaseLine();
+        } else {
+            QFontMetrics fm(m_panelWindow->font());
+            textY = (cellH - fm.height()) / 2 + fm.ascent();
+        }
+
+        m_textItem->setPos(textX, textY);
+    } else {
+        // Narrow side panel: icon-only and inset by 5px from left/right
+        m_textItem->setText(QString());
+        m_textItem->setVisible(false);
+
+        const int iconX = sideMargin;
+        int iconY = (cellH - iconSize) / 2;
+        if (iconY < 0) iconY = 0;
+
+        m_iconItem->setPos(iconX, iconY);
+    }
 }
 
 bool ApplicationsMenuApplet::isHighlighted()

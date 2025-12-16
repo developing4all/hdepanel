@@ -48,9 +48,7 @@ private slots:
 
     void handleThemeActivated(const QString &theme);
 
-    void on_verticalPosition_activated(int index);
-
-    void on_horizontalPosition_activated(int index);
+    void on_position_activated(int index);
 
     void handleScreenActivated(const QString &screen);
 
@@ -70,8 +68,10 @@ private slots:
 
     void on_backgroundColorButton_clicked();
     void on_borderColorButton_clicked();
-    void on_backgroundColorTransparency_changed(int value);
-    void on_borderColorTransparency_changed(int value);
+    void handleBackgroundColorTransparencyChanged(int value);
+    void handleBorderColorTransparencyChanged(int value);
+    void on_panelHeight_valueChanged(int value);
+    void on_panelWidth_valueChanged(int value);
 
 private:
     void readSettings();

@@ -51,22 +51,26 @@ public:
 public slots:
     void fontChanged();
     void clicked();
+    void showConfigurationDialog();
 
 protected:
 	void layoutChanged();
     bool isHighlighted(){ return isUnderMouse();}
+    void contextMenuEvent(QGraphicsSceneContextMenuEvent *event);
 
 private slots:
 	void updateContent();
 
 private:
 	void scheduleUpdate();
+    void readSettings();
 
 	// IMPORTANT: initialize pointers to avoid random non-null garbage (Qt6 crash in scheduleUpdate)
 	QTimer* m_timer = nullptr;
 	QString m_text;
 	TextGraphicsItem* m_textItem = nullptr;
     Calendar *m_calendar = nullptr;
+    bool m_use24HourFormat = false;
 };
 
 

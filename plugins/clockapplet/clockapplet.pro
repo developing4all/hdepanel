@@ -10,12 +10,14 @@ INCLUDEPATH    += ../../lib/
 
 HEADERS += \
     clockapplet.h \
+    clockconfigurationdialog.h \
     ../../lib/applet.h \
     calendar.h
 
 
 SOURCES += \
     clockapplet.cpp \
+    clockconfigurationdialog.cpp \
     calendar.cpp
 
 
@@ -23,4 +25,5 @@ SOURCES += \
 LIBS += -L../../ -lhdepanel
 
 FORMS += \
-    calendar.ui
+    calendar.ui \
+    clockconfigurationdialog.ui

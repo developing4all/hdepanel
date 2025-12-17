@@ -26,9 +26,19 @@
  * END_COMMON_COPYRIGHT_HEADER */
 
 #include "clockapplet.h"
+#include "clockconfigurationdialog.h"
 
 #include <QtCore/QTimer>
 #include <QtCore/QDateTime>
+#include <settings.h>
+#include <QMenu>
+#include "hpopupmenu.h"
+#include <QApplication>
+#if QT_VERSION >= 0x050000
+#include <QGraphicsSceneContextMenuEvent>
+#else
+#include <QtGui/QGraphicsSceneContextMenuEvent>
+#endif
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <chrono>
 #endif
@@ -49,37 +59,69 @@
 static QString formatClockText(const QDateTime& dt,
     int availableWidthPx,
     const QFontMetrics& fm,
-    bool verticalPanel)
+    bool verticalPanel,
+    bool use24HourFormat)
 {
-// Horizontal panels always use one line.
-if (!verticalPanel)
-return dt.toString("h:mm AP");
-
-const QString oneLine = dt.toString("h:mm AP");          // "12:25 PM"
-const QString time    = dt.toString("h:mm");             // "12:25"
-const QString ap      = dt.toString("AP");               // "PM"
-const QString twoLine = time + "\n" + ap;                // "12:25\nPM"
-const QString hColon  = dt.toString("h") + ":";          // "12:"
-const QString mm      = dt.toString("mm");               // "25"
-const QString threeLine = hColon + "\n" + mm + "\n" + ap;// "12:\n25\nPM"
-
-// Measure required widths for each layout.
-const int oneW = fm.horizontalAdvance(oneLine);
-
-const int twoW = qMax(fm.horizontalAdvance(time),
-fm.horizontalAdvance(ap));
-
-const int threeW = qMax(fm.horizontalAdvance(hColon),
-qMax(fm.horizontalAdvance(mm),
-fm.horizontalAdvance(ap)));
-
-if (oneW <= availableWidthPx)
-return oneLine;
-
-if (twoW <= availableWidthPx)
-return twoLine;
-
-return threeLine;
+    if (use24HourFormat) {
+        // 24-hour format
+        if (!verticalPanel) {
+            // Horizontal: single line
+            return dt.toString("HH:mm");
+        }
+        
+        // Vertical: can split across lines if needed
+        const QString oneLine = dt.toString("HH:mm");      // "16:14"
+        const QString hh      = dt.toString("HH");          // "16"
+        const QString mm      = dt.toString("mm");          // "14"
+        const QString twoLine = hh + "\n" + mm;             // "16\n14"
+        
+        const int oneW = fm.horizontalAdvance(oneLine);
+        
+        if (oneW <= availableWidthPx) {
+            return oneLine;
+        }
+        
+        // Split into two lines if one line doesn't fit
+        return twoLine;
+    } else {
+        // 12-hour format - manually convert to ensure correct format
+        QTime time = dt.time();
+        int hour24 = time.hour();
+        int hour12 = hour24 % 12;
+        if (hour12 == 0) hour12 = 12;  // 0 or 12 both become 12
+        QString ap = (hour24 < 12) ? "AM" : "PM";
+        
+        QString hourStr = QString::number(hour12);
+        QString minuteStr = QString("%1").arg(time.minute(), 2, 10, QChar('0'));
+        QString timeStr = hourStr + ":" + minuteStr;
+        QString oneLine = timeStr + " " + ap;
+        
+        if (!verticalPanel) {
+            // Horizontal: single line
+            return oneLine;
+        }
+        
+        const QString twoLine = timeStr + "\n" + ap;                // "4:14\nPM"
+        const QString hColon  = hourStr + ":";                       // "4:"
+        const QString threeLine = hColon + "\n" + minuteStr + "\n" + ap;// "4:\n14\nPM"
+        
+        // Measure required widths for each layout.
+        const int oneW = fm.horizontalAdvance(oneLine);
+        
+        const int twoW = qMax(fm.horizontalAdvance(timeStr),
+                              fm.horizontalAdvance(ap));
+        
+        if (oneW <= availableWidthPx) {
+            return oneLine;
+        }
+        
+        if (twoW <= availableWidthPx) {
+            return twoLine;
+        }
+        
+        // Three line format if two lines don't fit
+        return threeLine;
+    }
 }
 
 ClockApplet::ClockApplet(PanelWindow* panelWindow)
@@ -145,6 +187,7 @@ void ClockApplet::fontChanged()
 bool ClockApplet::init()
 {
     setInteractive(true);
+    readSettings();
     updateContent();
     return true;
 }
@@ -167,7 +210,7 @@ void ClockApplet::layoutChanged()
     const QDateTime now = QDateTime::currentDateTime();
     const QFontMetrics fm(m_panelWindow->font());
 
-    const QString newText = formatClockText(now, usableW, fm, verticalPanel);
+    const QString newText = formatClockText(now, usableW, fm, verticalPanel, m_use24HourFormat);
     if (m_text != newText) {
         m_text = newText;
         m_textItem->setText(m_text);
@@ -214,7 +257,9 @@ QSize ClockApplet::desiredSize()
 
     if (!verticalPanel) {
         // Stable width (avoid jitter when digits change)
-        const int w = fm.horizontalAdvance(QStringLiteral("88:88 PM")) + 16;
+        // Use appropriate format based on setting
+        const QString sampleText = m_use24HourFormat ? QStringLiteral("88:88") : QStringLiteral("88:88 PM");
+        const int w = fm.horizontalAdvance(sampleText) + 16;
         return QSize(w, m_panelWindow->panelHeight());
     }
 
@@ -277,4 +322,34 @@ void ClockApplet::clicked()
     m_calendar->show();
     m_calendar->setFocused();
 }
+}
+
+void ClockApplet::readSettings()
+{
+    m_use24HourFormat = Settings::value(m_id, "use24HourFormat", false).toBool();
+}
+
+void ClockApplet::showConfigurationDialog()
+{
+    ClockConfigurationDialog dialog(m_id, m_panelWindow);
+    if (dialog.exec()) {
+        readSettings();
+        updateContent();
+    }
+}
+
+void ClockApplet::contextMenuEvent(QGraphicsSceneContextMenuEvent *event)
+{
+    HPopupMenu menu;
+
+    menu.addTitle(tr("Clock Applet"));
+    menu.addAction(QIcon::fromTheme("preferences-other"), tr("Configure Clock"), this, SLOT(showConfigurationDialog()));
+
+    menu.addTitle(tr("Panel"));
+    menu.addAction(QIcon::fromTheme("preferences-desktop"), tr("Configure Panel"), m_panelWindow, SLOT(showConfigurationDialog()));
+
+    menu.addAction(QIcon::fromTheme("list-add"), tr("Add Panel"), QApplication::instance(), SLOT(addPanel()));
+    menu.addAction(QIcon::fromTheme("list-remove"), tr("Remove Panel"), m_panelWindow, SLOT(removePanel()));
+
+    menu.exec(event->screenPos());
 }

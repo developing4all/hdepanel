@@ -364,7 +364,7 @@ Contributions are welcome! Please:
 
 ## License
 
-GPL 3.0 - See [LICENSE](LICENSE) file
+LGPL 3.0+ - See [LICENSE](LICENSE) file
 
 ## Credits
 

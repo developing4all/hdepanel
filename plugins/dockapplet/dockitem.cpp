@@ -174,7 +174,14 @@ void DockItem::updateContent()
             displayIcon = QIcon(m_iconItem->pixmap());
     }
 
-    setToolTip(displayText);
+    // Ensure tooltip is always set with a non-empty text
+    // If displayText is empty, don't set tooltip (Qt will not show empty tooltips)
+    if (!displayText.isEmpty()) {
+        setToolTip(displayText);
+    } else {
+        // Clear tooltip if text is empty to avoid showing stale tooltips
+        setToolTip(QString());
+    }
 
     // --- sizing rules ---
     const int sideMargin = 5;   // outer margin for narrow side panels

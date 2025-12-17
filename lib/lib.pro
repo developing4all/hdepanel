@@ -81,6 +81,7 @@ contains(DEFINES, HDE_HAVE_WAYLAND) {
 ######################################################################
 HEADERS += animationutils.h \
            applet.h \
+           customtooltip.h \
            desktopapplications.h \
            desktopdatastore.h \
            dpisupport.h \
@@ -89,6 +90,7 @@ HEADERS += animationutils.h \
            panelapplication.h \
            panelwindow.h \
            textgraphicsitem.h \
+           tooltipeventfilter.h \
            x11support.h \
            waylandsupport.h \
            waylandlayershell.h \
@@ -107,6 +109,7 @@ FORMS += panelsettings.ui \
          appletslistdialog.ui
 
 SOURCES += applet.cpp \
+           customtooltip.cpp \
            desktopapplications.cpp \
            desktopdatastore.cpp \
            dpisupport.cpp \
@@ -115,6 +118,7 @@ SOURCES += applet.cpp \
            panelapplication.cpp \
            panelwindow.cpp \
            textgraphicsitem.cpp \
+           tooltipeventfilter.cpp \
            x11support.cpp \
            waylandsupport.cpp \
            waylandlayershell.cpp \

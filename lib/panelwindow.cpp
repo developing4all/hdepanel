@@ -75,6 +75,9 @@
 #  include <X11/Xatom.h>
 #endif
 
+#include "customtooltip.h"
+#include "tooltipeventfilter.h"
+
 class PanelWindow::RootEventFilter final : public QAbstractNativeEventFilter {
 public:
     explicit RootEventFilter(PanelWindow* panel)
@@ -228,9 +231,32 @@ PanelWindow::PanelWindow(QString id)
     m_view->setRenderHint(QPainter::Antialiasing);
     m_view->move(0, 0);
     m_view->setMouseTracking(true);
+    if (m_view->viewport()) {
+        m_view->viewport()->setMouseTracking(true);
+    }
     m_view->setAttribute(Qt::WA_NoMousePropagation);
     m_view->setAttribute(Qt::WA_TransparentForMouseEvents, false);
     m_view->setBackgroundBrush(Qt::NoBrush);
+    
+    // Create custom tooltip widget (no parent - it's a top-level window)
+    m_customTooltip = new CustomTooltip();
+    
+    // Disable default tooltips on the view
+    m_view->setAttribute(Qt::WA_AlwaysShowToolTips, false);
+    m_view->setToolTip(QString());
+    if (m_view->viewport()) {
+        m_view->viewport()->setAttribute(Qt::WA_AlwaysShowToolTips, false);
+        m_view->viewport()->setToolTip(QString());
+    }
+    
+    // Install event filter on the view to show custom tooltip widget
+    auto* tooltipFilter = new TooltipEventFilter(m_view, this, this);
+    // QGraphicsView sends mouse/tooltip events to its viewport, so filter there.
+    if (m_view->viewport()) {
+        m_view->viewport()->installEventFilter(tooltipFilter);
+    } else {
+        m_view->installEventFilter(tooltipFilter);
+    }
      
     setAttribute(Qt::WA_TranslucentBackground);
     setAutoFillBackground(false);
@@ -1751,6 +1777,79 @@ Applet* PanelWindow::getAppletById(const QString& appletId) const
         }
     }
     return nullptr;
+}
+
+void PanelWindow::showCustomTooltip(const QString& text, const QPoint& itemPos)
+{
+    if (!m_customTooltip || text.isEmpty()) {
+        hideCustomTooltip();
+        return;
+    }
+    
+    // Convert item position (in view coordinates) to global coordinates
+    QPoint globalPos = m_view->mapToGlobal(itemPos);
+    
+    // Calculate tooltip position based on panel position
+    m_customTooltip->setText(text);
+    m_customTooltip->adjustSize();
+    QSize tooltipSize = m_customTooltip->sizeHint();
+    if (tooltipSize.width() < 50) tooltipSize.setWidth(50); // Minimum width
+    if (tooltipSize.height() < 20) tooltipSize.setHeight(20); // Minimum height
+    QPoint tooltipPos = calculateTooltipPosition(globalPos, tooltipSize);
+    
+    m_customTooltip->showAtPosition(tooltipPos);
+}
+
+void PanelWindow::hideCustomTooltip()
+{
+    if (m_customTooltip) {
+        m_customTooltip->hide();
+    }
+}
+
+QPoint PanelWindow::calculateTooltipPosition(const QPoint& itemGlobalPos, const QSize& tooltipSize) const
+{
+    QPoint pos = itemGlobalPos;
+    const int spacing = 8; // Space between panel and tooltip
+    
+    switch (m_position) {
+        case Left:
+            // Panel on left, tooltip on right
+            pos.setX(itemGlobalPos.x() + width() + spacing);
+            pos.setY(itemGlobalPos.y() - tooltipSize.height() / 2);
+            break;
+        case Right:
+            // Panel on right, tooltip on left
+            pos.setX(itemGlobalPos.x() - tooltipSize.width() - spacing);
+            pos.setY(itemGlobalPos.y() - tooltipSize.height() / 2);
+            break;
+        case Bottom:
+            // Panel at bottom, tooltip on top
+            pos.setX(itemGlobalPos.x() - tooltipSize.width() / 2);
+            pos.setY(itemGlobalPos.y() - tooltipSize.height() - spacing);
+            break;
+        case Top:
+            // Panel at top, tooltip on bottom
+            pos.setX(itemGlobalPos.x() - tooltipSize.width() / 2);
+            pos.setY(itemGlobalPos.y() + height() + spacing);
+            break;
+    }
+    
+    // Ensure tooltip stays on screen
+    QRect screenRect = currentScreenGeometry();
+    if (pos.x() < screenRect.left()) {
+        pos.setX(screenRect.left() + 5);
+    } else if (pos.x() + tooltipSize.width() > screenRect.right()) {
+        pos.setX(screenRect.right() - tooltipSize.width() - 5);
+    }
+    
+    if (pos.y() < screenRect.top()) {
+        pos.setY(screenRect.top() + 5);
+    } else if (pos.y() + tooltipSize.height() > screenRect.bottom()) {
+        pos.setY(screenRect.bottom() - tooltipSize.height() - 5);
+    }
+    
+    return pos;
 }
 
 void PanelWindow::resetApplets()

@@ -163,8 +163,17 @@ class QGraphicsScene;
 	 // Size settings
 	 int           m_panelHeight = 48;  // Height for horizontal panels (Top/Bottom)
 	 int           m_panelWidth = 48;    // Width for vertical panels (Left/Right)
- 
+
+	 // Custom tooltip
+	 class CustomTooltip* m_customTooltip = nullptr;
+
+	 // Tooltip management
+	 void showCustomTooltip(const QString& text, const QPoint& itemPos);
+	 void hideCustomTooltip();
+	 QPoint calculateTooltipPosition(const QPoint& itemGlobalPos, const QSize& tooltipSize) const;
+
 	 friend class PanelWindowGraphicsItem;
+	 friend class TooltipEventFilter;
  
  public:
 	 // Used by graphics item

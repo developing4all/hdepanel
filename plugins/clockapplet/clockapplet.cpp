@@ -241,6 +241,16 @@ void ClockApplet::updateContent()
     // Update text + position together
     layoutChanged();
 
+    // Update tooltip with current date and time
+    const QDateTime now = QDateTime::currentDateTime();
+    QString tooltipText;
+    if (m_use24HourFormat) {
+        tooltipText = now.toString("dddd, MMMM d, yyyy\nHH:mm:ss");
+    } else {
+        tooltipText = now.toString("dddd, MMMM d, yyyy\nh:mm:ss AP");
+    }
+    setToolTip(tooltipText);
+
     update();
     scheduleUpdate();
 }

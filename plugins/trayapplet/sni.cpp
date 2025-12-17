@@ -30,6 +30,18 @@ QIcon SniItemProxy::icon() const
     return QIcon();
 }
 
+void SniItemProxy::activate(int x, int y)
+{
+    QDBusInterface iface(m_service, m_path, SNI_ITEM_IFACE, QDBusConnection::sessionBus());
+    iface.call("Activate", x, y);
+}
+
+void SniItemProxy::contextMenu(int x, int y)
+{
+    QDBusInterface iface(m_service, m_path, SNI_ITEM_IFACE, QDBusConnection::sessionBus());
+    iface.call("ContextMenu", x, y);
+}
+
 SniWatcher::SniWatcher(QObject *parent)
     : QObject(parent), m_bus(QDBusConnection::sessionBus())
 {

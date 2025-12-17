@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>DockConfigurationDialog</class>
- <widget class="QDialog" name="DockConfigurationDialog">
+ <class>TaskBarConfigurationDialog</class>
+ <widget class="QDialog" name="TaskBarConfigurationDialog">
   <property name="geometry">
    <rect>
     <x>0</x>
@@ -189,7 +189,7 @@
   <connection>
    <sender>buttonBox</sender>
    <signal>accepted()</signal>
-   <receiver>DockConfigurationDialog</receiver>
+   <receiver>TaskBarConfigurationDialog</receiver>
    <slot>accept()</slot>
    <hints>
     <hint type="sourcelabel">
@@ -205,7 +205,7 @@
   <connection>
    <sender>buttonBox</sender>
    <signal>rejected()</signal>
-   <receiver>DockConfigurationDialog</receiver>
+   <receiver>TaskBarConfigurationDialog</receiver>
    <slot>reject()</slot>
    <hints>
     <hint type="sourcelabel">

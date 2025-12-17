@@ -126,7 +126,7 @@ void PanelApplication::addPanel(int standard)
         // Add Standard items to the panel
         QStringList applets;
         applets << "StartApplet_" + QString::number(QDateTime::currentMSecsSinceEpoch())
-                << "DockApplet_"  + QString::number(QDateTime::currentMSecsSinceEpoch())
+                << "TaskBarApplet_"  + QString::number(QDateTime::currentMSecsSinceEpoch())
                 << "TrayApplet_" + QString::number(QDateTime::currentMSecsSinceEpoch())
                 << "ClockApplet_" + QString::number(QDateTime::currentMSecsSinceEpoch());
         Settings::setValue(panel_id, "applets", applets );

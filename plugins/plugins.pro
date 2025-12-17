@@ -3,7 +3,7 @@
 TEMPLATE    = subdirs
 SUBDIRS     = testapplet  \
               applicationsmenuapplet \
-	      dockapplet \
+	      taskbarapplet \
 	      trayapplet \
 	      clockapplet \
               startapplet \

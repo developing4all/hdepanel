@@ -16,6 +16,8 @@ public:
     explicit SniItemProxy(const QString &service, const QString &path, QObject *parent = nullptr);
     QString id() const { return m_id; }
     QIcon icon() const;
+    void activate(int x, int y);
+    void contextMenu(int x, int y);
 
 signals:
     void changed();

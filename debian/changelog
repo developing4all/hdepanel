@@ -1,14 +1,14 @@
 hdepanel (1.0.6-1.1) UNRELEASED; urgency=medium
 
   * Added an id for every applet to be able to configure every indevidual applet.
-  * Added the ability to show only minimized windows in dockapplet
-  * Added the ability to show only windows from the same screen in dockapplet
+  * Added the ability to show only minimized windows in taskbarapplet
+  * Added the ability to show only windows from the same screen in taskbarapplet
 
  -- Haydar Alkaduhimi <haydar@hosting4all.com>  Tue, 15 Nov 2016 15:49:45 +0200
 
 hdepanel (1.0.5-1.1) UNRELEASED; urgency=medium
 
-  * Added general menu to dockapplet.
+  * Added general menu to taskbarapplet.
   * Added global shortcut to keyboard layout
   * Added Calendar widget to ClockApplet
 

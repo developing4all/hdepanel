@@ -25,8 +25,8 @@
  *
  * END_COMMON_COPYRIGHT_HEADER */
 
-#include "dockitem.h"
-#include "dockapplet.h"
+#include "taskbaritem.h"
+#include "taskbarapplet.h"
 #include "client.h"
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 #include <chrono>
@@ -59,7 +59,7 @@
 #endif
 #include <X11/Xlib.h>
 
-DockItem::DockItem(DockApplet* dockApplet)
+TaskBarItem::TaskBarItem(TaskBarApplet* dockApplet)
 {
     m_dragging = false;
     m_highlightIntensity = 0.0;
@@ -105,19 +105,19 @@ DockItem::DockItem(DockApplet* dockApplet)
 
     // Don't auto-register - let the caller decide when to register
     // if (m_dockApplet && m_dockApplet->panelWindow() && m_dockApplet->panelWindow()->panelItem())
-    //     m_dockApplet->registerDockItem(this);
+    //     m_dockApplet->registerTaskBarItem(this);
 }
 
-DockItem::~DockItem()
+TaskBarItem::~TaskBarItem()
 {
 	// Clear the dock applet pointer to prevent any access during destruction
-	DockApplet* applet = m_dockApplet;
+	TaskBarApplet* applet = m_dockApplet;
 	m_dockApplet = nullptr;
 	
 	// Unregister first, before deleting child items
-	// (scene removal already handled by DockApplet::close during shutdown)
+	// (scene removal already handled by TaskBarApplet::close during shutdown)
 	if (applet && !applet->isDestroying()) {
-		applet->unregisterDockItem(this);
+		applet->unregisterTaskBarItem(this);
 	}
 
 	delete m_iconItem;
@@ -128,7 +128,7 @@ DockItem::~DockItem()
 	m_animationTimer = nullptr;
 }
 
-void DockItem::updateContent()
+void TaskBarItem::updateContent()
 {
     if (!m_textItem ||
         !m_iconItem ||
@@ -275,7 +275,7 @@ void DockItem::updateContent()
     update();
 }
 
-void DockItem::fontChanged()
+void TaskBarItem::fontChanged()
 {
     // Safety check: ensure dock item and applet are still valid before updating
     if (!m_textItem || !m_dockApplet || m_dockApplet->isDestroying() || !m_dockApplet->panelWindow()) {
@@ -286,14 +286,14 @@ void DockItem::fontChanged()
     update();
 }
 
-void DockItem::addClient(Client* client)
+void TaskBarItem::addClient(Client* client)
 {
 	m_clients.append(client);
 	updateClientsIconGeometry();
 	updateContent();
 }
 
-void DockItem::removeClient(Client* client)
+void TaskBarItem::removeClient(Client* client)
 {
 	int index = m_clients.indexOf(client);
 	if (index >= 0) {
@@ -301,8 +301,8 @@ void DockItem::removeClient(Client* client)
 	}
 	if(m_clients.isEmpty())
 	{
-		// Mark for deletion - the DockApplet will handle the actual deletion
-		// Don't call unregisterDockItem here as it will be called from destructor
+		// Mark for deletion - the TaskBarApplet will handle the actual deletion
+		// Don't call unregisterTaskBarItem here as it will be called from destructor
 		// Just mark that this item should be deleted
 		m_shouldDelete = true;
 	}
@@ -312,7 +312,7 @@ void DockItem::removeClient(Client* client)
 	}
 }
 
-void DockItem::setWaylandClient(WaylandClient* waylandClient)
+void TaskBarItem::setWaylandClient(WaylandClient* waylandClient)
 {
     if (!waylandClient || !m_textItem || !m_iconItem) {
         return;
@@ -334,7 +334,7 @@ void DockItem::setWaylandClient(WaylandClient* waylandClient)
     }
 }
 
-void DockItem::setText(const QString& text)
+void TaskBarItem::setText(const QString& text)
 {
     // Safety check: ensure dock item and applet are still valid before updating
     if (!m_textItem || !m_dockApplet || m_dockApplet->isDestroying()) {
@@ -350,7 +350,7 @@ void DockItem::setText(const QString& text)
     updateContent();
 }
 
-void DockItem::setIcon(const QIcon& icon)
+void TaskBarItem::setIcon(const QIcon& icon)
 {
     // Safety check: ensure dock item and applet are still valid before updating
     if (!m_iconItem || !m_dockApplet || m_dockApplet->isDestroying()) {
@@ -362,7 +362,7 @@ void DockItem::setIcon(const QIcon& icon)
     updateContent();
 }
 
-QString DockItem::text() const
+QString TaskBarItem::text() const
 {
     if (m_textItem) {
         return m_textItem->text();
@@ -370,20 +370,20 @@ QString DockItem::text() const
     return QString();
 }
 
-void DockItem::setTargetPosition(const QPoint& targetPosition)
+void TaskBarItem::setTargetPosition(const QPoint& targetPosition)
 {
 	m_targetPosition = targetPosition;
 	updateClientsIconGeometry();
 }
 
-void DockItem::setTargetSize(const QSize& targetSize)
+void TaskBarItem::setTargetSize(const QSize& targetSize)
 {
 	m_targetSize = targetSize;
 	updateClientsIconGeometry();
 	updateContent();
 }
 
-void DockItem::moveInstantly()
+void TaskBarItem::moveInstantly()
 {
 	m_position = m_targetPosition;
 	m_size = m_targetSize;
@@ -391,13 +391,13 @@ void DockItem::moveInstantly()
 	update();
 }
 
-void DockItem::startAnimation()
+void TaskBarItem::startAnimation()
 {
 	if(!m_animationTimer->isActive())
 		m_animationTimer->start();
 }
 
-void DockItem::animate()
+void TaskBarItem::animate()
 {
 	bool needAnotherStep = false;
 
@@ -439,7 +439,7 @@ void DockItem::animate()
 		m_animationTimer->start();
 }
 
-void DockItem::close()
+void TaskBarItem::close()
 {
 	// Close X11 windows
 	for(int i = 0; i < m_clients.size(); i++)
@@ -449,7 +449,7 @@ void DockItem::close()
 	
 	// Close Wayland windows
 	if (m_waylandClient) {
-		// Get the WaylandSupport instance from the DockApplet
+		// Get the WaylandSupport instance from the TaskBarApplet
 		WaylandSupport* waylandSupport = m_dockApplet->waylandSupport();
 		if (waylandSupport) {
 			QString appId = m_waylandClient->appId();
@@ -460,12 +460,12 @@ void DockItem::close()
 	}
 }
 
-QRectF DockItem::boundingRect() const
+QRectF TaskBarItem::boundingRect() const
 {
 	return QRectF(0.0, 0.0, m_size.width() - 1, m_size.height() - 1);
 }
 
-void DockItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
+void TaskBarItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
 {
     Q_UNUSED(widget)
     Q_UNUSED(option)
@@ -575,19 +575,19 @@ void DockItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     }
 }
 
-void DockItem::hoverEnterEvent(QGraphicsSceneHoverEvent* event)
+void TaskBarItem::hoverEnterEvent(QGraphicsSceneHoverEvent* event)
 {
     Q_UNUSED(event)
     startAnimation();
 }
 
-void DockItem::hoverLeaveEvent(QGraphicsSceneHoverEvent* event)
+void TaskBarItem::hoverLeaveEvent(QGraphicsSceneHoverEvent* event)
 {
     Q_UNUSED(event)
     startAnimation();
 }
 
-void DockItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
+void TaskBarItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
 {
 	if(event->button() == Qt::LeftButton)
 	{
@@ -599,7 +599,7 @@ void DockItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
 	}
 }
 
-void DockItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
+void TaskBarItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 {
 	if (event->button() == Qt::LeftButton) {
 		m_dragging = false;
@@ -619,7 +619,7 @@ void DockItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
                 
                 // Handle Wayland clients
                 if (m_waylandClient) {
-                    DockApplet* dockApplet = qobject_cast<DockApplet*>(m_dockApplet);
+                    TaskBarApplet* dockApplet = qobject_cast<TaskBarApplet*>(m_dockApplet);
                     if (dockApplet && dockApplet->waylandSupport()) {
                         QString appId = m_waylandClient->appId();
                         if (!appId.isEmpty()) {
@@ -666,7 +666,7 @@ void DockItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 	}
 }
 
-void DockItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
+void TaskBarItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 {
 	// Mouse events are sent only when mouse button is pressed.
 	if(!m_dragging)
@@ -717,7 +717,7 @@ void DockItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 	update();
 }
 
-void DockItem::updateClientsIconGeometry()
+void TaskBarItem::updateClientsIconGeometry()
 {
     // Only meaningful on X11
 #if QT_VERSION < 0x060000
@@ -736,7 +736,7 @@ void DockItem::updateClientsIconGeometry()
 
     if (m_targetSize.width() <= 0 || m_targetSize.height() <= 0) return;
 
-    // If this DockApplet is not in a scene anymore, mapToScene can be unreliable
+    // If this TaskBarApplet is not in a scene anymore, mapToScene can be unreliable
     // but it usually still works; keep it guarded.
     QPointF topLeft = m_dockApplet->mapToScene(m_targetPosition);
 
@@ -755,7 +755,7 @@ void DockItem::updateClientsIconGeometry()
     }
 }
 
-bool DockItem::isUrgent()
+bool TaskBarItem::isUrgent()
 {
 	for(int i = 0; i < m_clients.size(); i++)
 	{
@@ -765,7 +765,7 @@ bool DockItem::isUrgent()
 	return false;
 }
 
-bool DockItem::isFocused() const
+bool TaskBarItem::isFocused() const
 {
 	if (!m_dockApplet)
 		return false;
@@ -784,26 +784,26 @@ bool DockItem::isFocused() const
 	return false;
 }
 
-void DockItem::setButtonColor(const QColor& color, int transparency)
+void TaskBarItem::setButtonColor(const QColor& color, int transparency)
 {
     m_buttonColor = color;
     m_buttonColorTransparency = transparency;
     update();
 }
 
-void DockItem::setFocusColor(const QColor& color, int transparency)
+void TaskBarItem::setFocusColor(const QColor& color, int transparency)
 {
     m_focusColor = color;
     m_focusColorTransparency = transparency;
     update();
 }
 
-bool DockItem::hasClient(Client* client) const
+bool TaskBarItem::hasClient(Client* client) const
 {
 	return m_clients.contains(client);
 }
 
-bool DockItem::hasWaylandClient(WaylandClient* client) const
+bool TaskBarItem::hasWaylandClient(WaylandClient* client) const
 {
 	return m_waylandClient == client;
 }

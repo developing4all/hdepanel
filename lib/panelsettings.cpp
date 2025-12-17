@@ -512,7 +512,7 @@ QString PanelSettings::translateAppletName(const QString &appletName)
     // Translate applet names for the settings dialog
     if (appletName == "StartApplet") return tr("Start Menu");
     if (appletName == "ApplicationsMenuApplet") return tr("Applications Menu");
-    if (appletName == "DockApplet") return tr("Task Bar");
+    if (appletName == "TaskBarApplet") return tr("Task Bar");
     if (appletName == "TrayApplet") return tr("System Tray");
     if (appletName == "ClockApplet") return tr("Clock");
     if (appletName == "KeyboardApplet") return tr("Keyboard Layout");

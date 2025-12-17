@@ -33,14 +33,14 @@
 
 // Forward declarations
 struct WaylandWindow;
-class DockApplet;
-class DockItem;
+class TaskBarApplet;
+class TaskBarItem;
 
 // Used for tracking Wayland windows
 class WaylandClient
 {
 public:
-	WaylandClient(DockApplet* dockApplet, const WaylandWindow& window);
+	WaylandClient(TaskBarApplet* dockApplet, const WaylandWindow& window);
 	~WaylandClient();
 
 	void* surface() const
@@ -78,7 +78,7 @@ public:
 		return m_focused;
 	}
 
-	DockItem* dockItem() const
+	TaskBarItem* dockItem() const
 	{
 		return m_dockItem;
 	}
@@ -91,7 +91,7 @@ private:
 	void updateIcon();
 	void updateUrgency();
 
-	DockApplet* m_dockApplet;
+	TaskBarApplet* m_dockApplet;
 	void* m_surface;
 	QString m_name;
 	QString m_appId;
@@ -99,7 +99,7 @@ private:
 	bool m_isUrgent;
 	bool m_focused;
 	bool m_visible;
-	DockItem* m_dockItem;
+	TaskBarItem* m_dockItem;
 };
 
 #endif

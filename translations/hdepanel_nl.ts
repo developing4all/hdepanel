@@ -90,32 +90,32 @@
 <context>
     <name>DockConfigurationDialog</name>
     <message>
-        <location filename="../plugins/dockapplet/dockconfigurationdialog.ui" line="14" />
-        <location filename="../build/plugins/dockapplet/ui_dockconfigurationdialog.h" line="88" />
+        <location filename="../plugins/taskbarapplet/taskbarconfigurationdialog.ui" line="14" />
+        <location filename="../build/plugins/taskbarapplet/ui_taskbarconfigurationdialog.h" line="88" />
         <source>Dialog</source>
         <translation type="unfinished" />
     </message>
     <message>
-        <location filename="../plugins/dockapplet/dockconfigurationdialog.ui" line="20" />
-        <location filename="../build/plugins/dockapplet/ui_dockconfigurationdialog.h" line="89" />
+        <location filename="../plugins/taskbarapplet/taskbarconfigurationdialog.ui" line="20" />
+        <location filename="../build/plugins/taskbarapplet/ui_taskbarconfigurationdialog.h" line="89" />
         <source>GroupBox</source>
         <translation type="unfinished" />
     </message>
     <message>
-        <location filename="../plugins/dockapplet/dockconfigurationdialog.ui" line="29" />
-        <location filename="../build/plugins/dockapplet/ui_dockconfigurationdialog.h" line="90" />
+        <location filename="../plugins/taskbarapplet/taskbarconfigurationdialog.ui" line="29" />
+        <location filename="../build/plugins/taskbarapplet/ui_taskbarconfigurationdialog.h" line="90" />
         <source>Only from current desktop</source>
         <translation type="unfinished" />
     </message>
     <message>
-        <location filename="../plugins/dockapplet/dockconfigurationdialog.ui" line="39" />
-        <location filename="../build/plugins/dockapplet/ui_dockconfigurationdialog.h" line="91" />
+        <location filename="../plugins/taskbarapplet/taskbarconfigurationdialog.ui" line="39" />
+        <location filename="../build/plugins/taskbarapplet/ui_taskbarconfigurationdialog.h" line="91" />
         <source>Only from current screen</source>
         <translation type="unfinished" />
     </message>
     <message>
-        <location filename="../plugins/dockapplet/dockconfigurationdialog.ui" line="46" />
-        <location filename="../build/plugins/dockapplet/ui_dockconfigurationdialog.h" line="92" />
+        <location filename="../plugins/taskbarapplet/taskbarconfigurationdialog.ui" line="46" />
+        <location filename="../build/plugins/taskbarapplet/ui_taskbarconfigurationdialog.h" line="92" />
         <source>only minimized</source>
         <translation type="unfinished" />
     </message>
@@ -123,42 +123,42 @@
 <context>
     <name>DockItem</name>
     <message>
-        <location filename="../plugins/dockapplet/dockitem.cpp" line="436" />
+        <location filename="../plugins/taskbarapplet/taskbaritem.cpp" line="436" />
         <source>Application</source>
         <translation>Toepassing</translation>
     </message>
     <message>
-        <location filename="../plugins/dockapplet/dockitem.cpp" line="437" />
+        <location filename="../plugins/taskbarapplet/taskbaritem.cpp" line="437" />
         <source>Close</source>
         <translation>Sluiten</translation>
     </message>
     <message>
-        <location filename="../plugins/dockapplet/dockitem.cpp" line="438" />
+        <location filename="../plugins/taskbarapplet/taskbaritem.cpp" line="438" />
         <source>Dock Applet</source>
         <translation>Dock Applet</translation>
     </message>
     <message>
-        <location filename="../plugins/dockapplet/dockitem.cpp" line="439" />
+        <location filename="../plugins/taskbarapplet/taskbaritem.cpp" line="439" />
         <source>Configure Dock Applet</source>
         <translation>Dock Applet configureren</translation>
     </message>
     <message>
-        <location filename="../plugins/dockapplet/dockitem.cpp" line="441" />
+        <location filename="../plugins/taskbarapplet/taskbaritem.cpp" line="441" />
         <source>Panel</source>
         <translation type="unfinished">Paneel</translation>
     </message>
     <message>
-        <location filename="../plugins/dockapplet/dockitem.cpp" line="442" />
+        <location filename="../plugins/taskbarapplet/taskbaritem.cpp" line="442" />
         <source>Configure Panel</source>
         <translation type="unfinished">Paneel configureren</translation>
     </message>
     <message>
-        <location filename="../plugins/dockapplet/dockitem.cpp" line="444" />
+        <location filename="../plugins/taskbarapplet/taskbaritem.cpp" line="444" />
         <source>Add Panel</source>
         <translation type="unfinished">Paneel toevoegen</translation>
     </message>
     <message>
-        <location filename="../plugins/dockapplet/dockitem.cpp" line="445" />
+        <location filename="../plugins/taskbarapplet/taskbaritem.cpp" line="445" />
         <source>Remove Panel</source>
         <translation type="unfinished">Paneel verwijderen</translation>
     </message>

@@ -26,12 +26,12 @@
  * END_COMMON_COPYRIGHT_HEADER */
 
 #include "client.h"
-#include "dockapplet.h"
-#include "dockitem.h"
+#include "taskbarapplet.h"
+#include "taskbaritem.h"
 #include "x11support.h"
 #include <X11/Xlib.h>
 
-Client::Client(DockApplet* dockApplet, unsigned long handle)
+Client::Client(TaskBarApplet* dockApplet, unsigned long handle)
 	: m_dockItem(NULL)
 {
 	m_dockApplet = dockApplet;
@@ -51,11 +51,11 @@ Client::Client(DockApplet* dockApplet, unsigned long handle)
 
 Client::~Client()
 {
-    // During DockApplet shutdown we don't want to touch DockItem at all,
+    // During TaskBarApplet shutdown we don't want to touch TaskBarItem at all,
     // because the applet might already be tearing down its internal state.
     if (m_dockItem != NULL) {
         if (!m_dockApplet || m_dockApplet->isDestroying()) {
-            // Just drop the pointer; DockItem lifetime is managed elsewhere.
+            // Just drop the pointer; TaskBarItem lifetime is managed elsewhere.
             m_dockItem = NULL;
         } else {
             m_dockItem->removeClient(this);

@@ -26,8 +26,8 @@
  * END_COMMON_COPYRIGHT_HEADER */
 
 #include "waylandclient.h"
-#include "dockapplet.h"
-#include "dockitem.h"
+#include "taskbarapplet.h"
+#include "taskbaritem.h"
 #include "waylandsupport.h"
 #include "../../lib/unifiediconservice.h"
 #include <QtCore/QDebug>
@@ -35,7 +35,7 @@
 #include <QGraphicsScene>
 
 // WaylandClient implementation
-WaylandClient::WaylandClient(DockApplet* dockApplet, const WaylandWindow& window)
+WaylandClient::WaylandClient(TaskBarApplet* dockApplet, const WaylandWindow& window)
     : m_dockApplet(dockApplet)
     , m_surface(window.surface)
     , m_isUrgent(false)
@@ -47,13 +47,13 @@ WaylandClient::WaylandClient(DockApplet* dockApplet, const WaylandWindow& window
     
     // Create a dock item for this Wayland client
     try {
-        m_dockItem = new DockItem(dockApplet);
+        m_dockItem = new TaskBarItem(dockApplet);
         if (m_dockItem) {
             m_dockItem->setWaylandClient(this);
-            dockApplet->registerDockItem(m_dockItem);
+            dockApplet->registerTaskBarItem(m_dockItem);
         }
     } catch (...) {
-        qDebug() << "Failed to create or register DockItem for" << window.appId;
+        qDebug() << "Failed to create or register TaskBarItem for" << window.appId;
         if (m_dockItem) {
             delete m_dockItem;
             m_dockItem = nullptr;
@@ -65,12 +65,12 @@ WaylandClient::WaylandClient(DockApplet* dockApplet, const WaylandWindow& window
 WaylandClient::~WaylandClient()
 {
     if (m_dockItem) {
-        DockItem* item = m_dockItem;
+        TaskBarItem* item = m_dockItem;
         m_dockItem = nullptr;
         
         // Check if applet is being destroyed
         if (m_dockApplet && m_dockApplet->isDestroying()) {
-            // Direct deletion during shutdown - scene removal handled by DockApplet::close()
+            // Direct deletion during shutdown - scene removal handled by TaskBarApplet::close()
             delete item;
         } else {
             // Normal operation: remove from scene before deletion

@@ -25,26 +25,20 @@
  *
  * END_COMMON_COPYRIGHT_HEADER */
 
-#ifndef DOCKAPPLETPLUGIN_H
-#define DOCKAPPLETPLUGIN_H
+#include "taskbarappletplugin.h"
+#include "taskbarapplet.h"
 
-#include <QtCore/QObject>
-#include "applet.h"
-
-// Forward declarations
-class DockApplet;
-
-class DockAppletPlugin: public QObject, public AppletPlugin
+TaskBarAppletPlugin::TaskBarAppletPlugin()
 {
-    Q_OBJECT
-    Q_PLUGIN_METADATA(IID "hde.panel.appletplugin")
-    Q_INTERFACES(AppletPlugin)
+}
 
-public:
-    DockAppletPlugin();
-    ~DockAppletPlugin();
+TaskBarAppletPlugin::~TaskBarAppletPlugin()
+{
+}
 
-    Applet* createApplet(PanelWindow* panelWindow);
-};
+Applet* TaskBarAppletPlugin::createApplet(PanelWindow* panelWindow)
+{
+    return new TaskBarApplet(panelWindow);
+}
 
-#endif
+#include "moc_taskbarappletplugin.cpp"

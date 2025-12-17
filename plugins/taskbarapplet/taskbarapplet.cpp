@@ -42,8 +42,8 @@
 #include <QDebug>
 #include <QScreen>
 
-#include "dockapplet.h"
-#include "dockitem.h"
+#include "taskbarapplet.h"
+#include "taskbaritem.h"
 #include "client.h"
 #include "waylandclient.h"
 #include "textgraphicsitem.h"
@@ -53,7 +53,7 @@
 #include "waylandsupport.h"
 #include "animationutils.h"
 #include "dpisupport.h"
-#include <dockconfigurationdialog.h>
+#include <taskbarconfigurationdialog.h>
 
 #include "../../lib/hpopupmenu.h"
 
@@ -63,7 +63,7 @@
 // Include Xlib locally to access XSelectInput and event masks without leaking macros globally
 #include <X11/Xlib.h>
 
-DockApplet::DockApplet(PanelWindow* panelWindow)
+TaskBarApplet::TaskBarApplet(PanelWindow* panelWindow)
 	: Applet(panelWindow), m_dragging(false), m_initialized(false), m_destroying(false), m_waylandSupport(nullptr),
 	  m_buttonColor(255, 255, 255), m_buttonColorTransparency(80),
 	  m_focusColor(0, 0, 0), m_focusColorTransparency(128)
@@ -86,19 +86,19 @@ DockApplet::DockApplet(PanelWindow* panelWindow)
     m_waylandSupport = new WaylandSupport(this);
     if (m_waylandSupport->isAvailable() && m_waylandSupport->initialize()) {
         // Connect to the windowsUpdated signal
-        connect(m_waylandSupport, &WaylandSupport::windowsUpdated, this, &DockApplet::updateWaylandClientList);
+        connect(m_waylandSupport, &WaylandSupport::windowsUpdated, this, &TaskBarApplet::updateWaylandClientList);
     } else {
         delete m_waylandSupport;
         m_waylandSupport = nullptr;
     }
 }
 
-DockApplet::~DockApplet()
+TaskBarApplet::~TaskBarApplet()
 {
     close();
 }
 
-void DockApplet::close()
+void TaskBarApplet::close()
 {
     // Set destroying flag to prevent callbacks
     m_destroying = true;
@@ -109,9 +109,9 @@ void DockApplet::close()
         m_waylandSupport = nullptr;
     }
     
-    // Remove ALL DockItems from the scene first
+    // Remove ALL TaskBarItems from the scene first
     QGraphicsScene* panelScene = scene();
-    for (DockItem* item : m_dockItems) {
+    for (TaskBarItem* item : m_dockItems) {
         if (item && panelScene && item->scene() == panelScene) {
             try {
                 panelScene->removeItem(item);
@@ -121,7 +121,7 @@ void DockApplet::close()
         }
     }
     
-    // Clear all lists - DockItems will be deleted by their owning clients
+    // Clear all lists - TaskBarItems will be deleted by their owning clients
     m_dockItems.clear();
     
     QList<WaylandClient*> waylandClientsToDelete = m_waylandClients.values();
@@ -133,7 +133,7 @@ void DockApplet::close()
     QList<Client*> loopClientsToDelete = m_in_loop;
     m_in_loop.clear();
     
-    // Delete clients - they will handle deleting their DockItems
+    // Delete clients - they will handle deleting their TaskBarItems
     for (WaylandClient* client : waylandClientsToDelete) {
         if (client) {
             try {
@@ -161,29 +161,29 @@ void DockApplet::close()
     }
 }
 
-void DockApplet::setPanelWindow(PanelWindow *panelWindow)
+void TaskBarApplet::setPanelWindow(PanelWindow *panelWindow)
 {
     Applet::setPanelWindow(panelWindow);
 }
 
-void DockApplet::layoutChanged()
+void TaskBarApplet::layoutChanged()
 {
 	updateLayout();
 }
 
-void DockApplet::fontChanged()
+void TaskBarApplet::fontChanged()
 {
     for(int i = 0; i < m_dockItems.size(); i++)
         m_dockItems[i]->fontChanged();
     updateLayout();
 }
 
-bool DockApplet::init()
+bool TaskBarApplet::init()
 {
     readSettings();
 
     // IMPORTANT:
-    // Allow the first population of clients. Otherwise a newly created DockApplet
+    // Allow the first population of clients. Otherwise a newly created TaskBarApplet
     // won't show already-open windows until _NET_CLIENT_LIST changes.
     m_initialized = true;
 
@@ -199,22 +199,22 @@ bool DockApplet::init()
     return true;
 }
 
-QSize DockApplet::desiredSize()
+QSize TaskBarApplet::desiredSize()
 {
 	return QSize(-1, -1); // Take all available space.
 }
 
-void DockApplet::updateLayout()
+void TaskBarApplet::updateLayout()
 {
     // Clean up dock items marked for deletion
-    QVector<DockItem*> itemsToDelete;
+    QVector<TaskBarItem*> itemsToDelete;
     for (int i = 0; i < m_dockItems.size(); i++) {
         if (m_dockItems[i]->shouldDelete()) {
             itemsToDelete.append(m_dockItems[i]);
         }
     }
-    for (DockItem* item : itemsToDelete) {
-        unregisterDockItem(item);
+    for (TaskBarItem* item : itemsToDelete) {
+        unregisterTaskBarItem(item);
         m_dockItems.removeAll(item);
         delete item;
     }
@@ -323,19 +323,19 @@ void DockApplet::updateLayout()
     }
 }
 
-void DockApplet::draggingStarted()
+void TaskBarApplet::draggingStarted()
 {
 	m_dragging = true;
 }
 
-void DockApplet::draggingStopped()
+void TaskBarApplet::draggingStopped()
 {
 	m_dragging = false;
 	// Since we don't update it when dragging, we should do it now.
 	updateClientList();
 }
 
-void DockApplet::moveItem(DockItem* dockItem, bool right)
+void TaskBarApplet::moveItem(TaskBarItem* dockItem, bool right)
 {
 	int index = m_dockItems.indexOf(dockItem);
 	if(index == -1)
@@ -359,7 +359,7 @@ void DockApplet::moveItem(DockItem* dockItem, bool right)
 	updateLayout();
 }
 
-void DockApplet::registerDockItem(DockItem* dockItem)
+void TaskBarApplet::registerTaskBarItem(TaskBarItem* dockItem)
 {
 	m_dockItems.append(dockItem);
     updateLayout();
@@ -371,7 +371,7 @@ void DockApplet::registerDockItem(DockItem* dockItem)
 	}
 }
 
-void DockApplet::unregisterDockItem(DockItem* dockItem)
+void TaskBarApplet::unregisterTaskBarItem(TaskBarItem* dockItem)
 {
 	int index = m_dockItems.indexOf(dockItem);
 	if (index >= 0) {
@@ -389,57 +389,57 @@ void DockApplet::unregisterDockItem(DockItem* dockItem)
 	}
 }
 
-DockItem* DockApplet::dockItemForClient(Client* client)
+TaskBarItem* TaskBarApplet::dockItemForClient(Client* client)
 {
 	if (!client) {
 		return nullptr;
 	}
 	
 	// Check if we already have a dock item for this client
-	for (DockItem* item : m_dockItems) {
+	for (TaskBarItem* item : m_dockItems) {
 		if (item->hasClient(client)) {
 			return item;
 		}
 	}
 	
 	// Create a new dock item for this client
-	DockItem* dockItem = new DockItem(this);
+	TaskBarItem* dockItem = new TaskBarItem(this);
 	dockItem->setButtonColor(m_buttonColor, m_buttonColorTransparency);
 	dockItem->setFocusColor(m_focusColor, m_focusColorTransparency);
 	dockItem->addClient(client);
 	
 	// Register the dock item immediately
-	registerDockItem(dockItem);
+	registerTaskBarItem(dockItem);
 	
 	return dockItem;
 }
 
-DockItem* DockApplet::dockItemForWaylandClient(WaylandClient* client)
+TaskBarItem* TaskBarApplet::dockItemForWaylandClient(WaylandClient* client)
 {
 	if (!client) {
 		return nullptr;
 	}
 	
 	// Check if we already have a dock item for this wayland client
-	for (DockItem* item : m_dockItems) {
+	for (TaskBarItem* item : m_dockItems) {
 		if (item->hasWaylandClient(client)) {
 			return item;
 		}
 	}
 	
 	// Create a new dock item for this wayland client
-	DockItem* dockItem = new DockItem(this);
+	TaskBarItem* dockItem = new TaskBarItem(this);
 	dockItem->setButtonColor(m_buttonColor, m_buttonColorTransparency);
 	dockItem->setFocusColor(m_focusColor, m_focusColorTransparency);
 	dockItem->setWaylandClient(client);
 	
 	// Register the dock item immediately
-	registerDockItem(dockItem);
+	registerTaskBarItem(dockItem);
 	
 	return dockItem;
 }
 
-void DockApplet::updateClientList()
+void TaskBarApplet::updateClientList()
 {
     // Prevent multiple calls during initialization
     if (!m_initialized) {
@@ -453,7 +453,7 @@ void DockApplet::updateClientList()
     }
 
     // Deduplicate dock items after updating (FIXED implementation below)
-    deduplicateDockItems();
+    deduplicateTaskBarItems();
 
     // Update layout after deduplication to recalculate positions
     updateLayout();
@@ -468,7 +468,7 @@ void DockApplet::updateClientList()
     }
 }
 
-void DockApplet::updateWaylandClientList(const QList<WaylandWindow>& windows)
+void TaskBarApplet::updateWaylandClientList(const QList<WaylandWindow>& windows)
 {
     // Safety check to prevent execution during destruction
     if (!m_waylandSupport || m_destroying) {
@@ -551,7 +551,7 @@ void DockApplet::updateWaylandClientList(const QList<WaylandWindow>& windows)
     }
 }
 
-void DockApplet::updateX11ClientList()
+void TaskBarApplet::updateX11ClientList()
 {
 #if QT_VERSION >= 0x050000
     if (qApp->platformName().toLower().contains("xcb") == false) return; 
@@ -596,7 +596,7 @@ void DockApplet::updateX11ClientList()
                               windowClassLower.contains("hdepanel");
         
         if (isSystemService) {
-            qDebug() << "DockApplet::updateX11ClientList - Skipping system service window" << QString::number(windows[i], 16) << "name:" << windowName << "class:" << windowClass;
+            qDebug() << "TaskBarApplet::updateX11ClientList - Skipping system service window" << QString::number(windows[i], 16) << "name:" << windowName << "class:" << windowClass;
             continue;
         }
 
@@ -693,7 +693,7 @@ void DockApplet::updateX11ClientList()
 }
 
 
-void DockApplet::updateActiveWindow()
+void TaskBarApplet::updateActiveWindow()
 {
 #if QT_VERSION >= 0x050000
     if (qApp->platformName().toLower().contains("xcb") == false) {
@@ -729,7 +729,7 @@ void DockApplet::updateActiveWindow()
 	}
 }
 
-void DockApplet::windowPropertyChanged(unsigned long window, unsigned long atom)
+void TaskBarApplet::windowPropertyChanged(unsigned long window, unsigned long atom)
 {
 #if QT_VERSION >= 0x050000
     if (qApp->platformName().toLower().contains("xcb") == false) return; 
@@ -752,7 +752,7 @@ void DockApplet::windowPropertyChanged(unsigned long window, unsigned long atom)
 		m_clients[window]->windowPropertyChanged(atom);
 }
 
-void DockApplet::windowReconfigured(unsigned long window, int x, int y, int width, int height)
+void TaskBarApplet::windowReconfigured(unsigned long window, int x, int y, int width, int height)
 {
 #if QT_VERSION >= 0x050000
     if (qApp->platformName().toLower().contains("xcb") == false) return; 
@@ -770,7 +770,7 @@ void DockApplet::windowReconfigured(unsigned long window, int x, int y, int widt
     updateClientList();
 }
 
-void DockApplet::windowClosed(unsigned long window)
+void TaskBarApplet::windowClosed(unsigned long window)
 {
 #if QT_VERSION >= 0x050000
     //if (qApp->platformName().toLower().contains("xcb") == false) return; 
@@ -785,7 +785,7 @@ void DockApplet::windowClosed(unsigned long window)
     }
 }
 
-void DockApplet::readSettings()
+void TaskBarApplet::readSettings()
 {
     m_only_current_screen = Settings::value(m_id, "only_current_screen", true).toBool();
     m_only_current_desktop = Settings::value(m_id, "only_current_desktop", true).toBool();
@@ -798,21 +798,21 @@ void DockApplet::readSettings()
     m_focusColorTransparency = Settings::value(m_id, "focusColorTransparency", 128).toInt();
     
     // Update all existing dock items with new colors
-    for (DockItem* item : m_dockItems) {
+    for (TaskBarItem* item : m_dockItems) {
         item->setButtonColor(m_buttonColor, m_buttonColorTransparency);
         item->setFocusColor(m_focusColor, m_focusColorTransparency);
     }
 }
 
-void DockApplet::deduplicateDockItems()
+void TaskBarApplet::deduplicateTaskBarItems()
 {
-    QVector<DockItem*> itemsToRemove;
+    QVector<TaskBarItem*> itemsToRemove;
 
     // Dedup by *identity*, NOT by item->text() (text can be empty/elided)
     QSet<qulonglong> seenX11Handles;
     QSet<qulonglong> seenWaylandPtrs;
 
-    for (DockItem* item : m_dockItems) {
+    for (TaskBarItem* item : m_dockItems) {
         if (!item) continue;
 
         bool matched = false;
@@ -857,7 +857,7 @@ void DockApplet::deduplicateDockItems()
     }
 
     // Remove duplicates safely
-    for (DockItem* item : itemsToRemove) {
+    for (TaskBarItem* item : itemsToRemove) {
         if (!item) continue;
         if (!m_dockItems.contains(item)) continue;
 
@@ -873,10 +873,10 @@ void DockApplet::deduplicateDockItems()
     }
 }
 
-DockItem* DockApplet::createDockItem(const QString& name, const QIcon& icon, const QString& objectName)
+TaskBarItem* TaskBarApplet::createTaskBarItem(const QString& name, const QIcon& icon, const QString& objectName)
 {
 	// Create the dock item
-	DockItem* dockItem = new DockItem(this);
+	TaskBarItem* dockItem = new TaskBarItem(this);
 	dockItem->setButtonColor(m_buttonColor, m_buttonColorTransparency);
 	dockItem->setFocusColor(m_focusColor, m_focusColorTransparency);
 	
@@ -886,7 +886,7 @@ DockItem* DockApplet::createDockItem(const QString& name, const QIcon& icon, con
 	}
 	
 	// Register the dock item first (this will trigger updateLayout which sets target size)
-	registerDockItem(dockItem);
+	registerTaskBarItem(dockItem);
 	
 	// Now set text and icon (this will call updateContent with proper target size)
 	dockItem->setText(name);
@@ -895,9 +895,9 @@ DockItem* DockApplet::createDockItem(const QString& name, const QIcon& icon, con
 	return dockItem;
 }
 
-void DockApplet::showConfigurationDialog()
+void TaskBarApplet::showConfigurationDialog()
 {
-    DockConfigurationDialog dialog(m_id, panelWindow());
+    TaskBarConfigurationDialog dialog(m_id, panelWindow());
     if(dialog.exec())
     {
         readSettings();
@@ -906,5 +906,5 @@ void DockApplet::showConfigurationDialog()
 }
 
 
-#include "moc_dockapplet.cpp"
+#include "moc_taskbarapplet.cpp"
 

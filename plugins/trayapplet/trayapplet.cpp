@@ -109,23 +109,28 @@ void TrayItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     Q_UNUSED(option)
     Q_UNUSED(widget)
 
-    // Background.
-	painter->setPen(Qt::NoPen);
-	QPointF center(m_size.width()/2.0, m_size.height()/2.0);
-	QRadialGradient gradient(center, m_size.width()/2.0, center);
-	gradient.setColorAt(0.0, QColor(255, 255, 255, 80));
-	gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
-	painter->setBrush(QBrush(gradient));
-	painter->drawRect(boundingRect());
-
 	// Icon itself.
     QPixmap pix = X11Support::getWindowPixmap(m_window);
     if (!pix.isNull()) {
+        // Background - only if icon exists.
+        painter->setPen(Qt::NoPen);
+        QPointF center(m_size.width()/2.0, m_size.height()/2.0);
+        QRadialGradient gradient(center, m_size.width()/2.0, center);
+        gradient.setColorAt(0.0, QColor(255, 255, 255, 80));
+        gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
+        painter->setBrush(QBrush(gradient));
+        painter->drawRect(boundingRect());
+
         // Center the icon using its actual size
         int iconX = m_size.width()/2 - pix.width()/2;
         int iconY = m_size.height()/2 - pix.height()/2;
         painter->drawPixmap(iconX, iconY, pix);
     }
+}
+
+void TrayItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
+{
+    event->ignore();
 }
 
 SniTrayItem::SniTrayItem(TrayApplet* trayApplet, SniItemProxy* sniItem)
@@ -164,21 +169,21 @@ void SniTrayItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* optio
 	Q_UNUSED(option)
 	Q_UNUSED(widget)
 
-	// Background.
-	painter->setPen(Qt::NoPen);
-	QPointF center(m_size.width()/2.0, m_size.height()/2.0);
-	QRadialGradient gradient(center, m_size.width()/2.0, center);
-	gradient.setColorAt(0.0, QColor(255, 255, 255, 80));
-	gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
-	painter->setBrush(QBrush(gradient));
-	painter->drawRect(boundingRect());
-
 	// Icon itself.
 	if (m_sniItem) {
 		QIcon icon = m_sniItem->icon();
 		if (!icon.isNull()) {
 			QPixmap pix = icon.pixmap(m_trayApplet->iconSize(), m_trayApplet->iconSize());
 			if (!pix.isNull()) {
+                // Background - only if icon exists.
+                painter->setPen(Qt::NoPen);
+                QPointF center(m_size.width()/2.0, m_size.height()/2.0);
+                QRadialGradient gradient(center, m_size.width()/2.0, center);
+                gradient.setColorAt(0.0, QColor(255, 255, 255, 80));
+                gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
+                painter->setBrush(QBrush(gradient));
+                painter->drawRect(boundingRect());
+
 				// Center the icon using its actual size
 				int iconX = m_size.width()/2 - pix.width()/2;
 				int iconY = m_size.height()/2 - pix.height()/2;
@@ -186,6 +191,17 @@ void SniTrayItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* optio
 			}
 		}
 	}
+}
+
+void SniTrayItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
+{
+    if (!m_sniItem) return;
+    QPoint globalPos = event->screenPos();
+    if (event->button() == Qt::LeftButton) {
+        m_sniItem->activate(globalPos.x(), globalPos.y());
+    } else if (event->button() == Qt::RightButton) {
+        m_sniItem->contextMenu(globalPos.x(), globalPos.y());
+    }
 }
 
 TrayApplet::TrayApplet(PanelWindow* panelWindow)
@@ -321,17 +337,19 @@ QSize TrayApplet::desiredSize()
         thickness = adjustHardcodedPixelSize(24);
 
     // Margin inside each tray tile (matches your other applets)
-    const int tileMargin = adjustHardcodedPixelSize(5);
+    const int tileMargin = adjustHardcodedPixelSize(2);
 
-    // Tile side equals panel thickness; icon size is thickness minus margins.
-    const int tileSide = thickness;
-    int icon = tileSide - 2 * tileMargin;
+    // icon size is thickness minus margins, capped at maxIcon.
+    int icon = thickness - 2 * tileMargin;
 
     const int minIcon = adjustHardcodedPixelSize(12);
-    const int maxIcon = adjustHardcodedPixelSize(48);
+    const int maxIcon = adjustHardcodedPixelSize(24);
     m_iconSize = qBound(minIcon, icon, maxIcon);
 
-    m_spacing = adjustHardcodedPixelSize(4);
+    // Tile side is based on icon size for compactness.
+    const int tileSide = m_iconSize + 2 * tileMargin;
+
+    m_spacing = adjustHardcodedPixelSize(2);
 
     const int totalItems = m_trayItems.size() + m_sniTrayItems.size();
     if (totalItems <= 0) {
@@ -492,16 +510,17 @@ void TrayApplet::updateLayout()
     if (thickness <= 0)
         thickness = adjustHardcodedPixelSize(24);
 
-    const int tileMargin = adjustHardcodedPixelSize(5);
-    const int tileSide = thickness;
+    const int tileMargin = adjustHardcodedPixelSize(2);
 
-    int icon = tileSide - 2 * tileMargin;
+    int icon = thickness - 2 * tileMargin;
     const int minIcon = adjustHardcodedPixelSize(12);
-    const int maxIcon = adjustHardcodedPixelSize(48);
+    const int maxIcon = adjustHardcodedPixelSize(24);
     m_iconSize = qBound(minIcon, icon, maxIcon);
 
+    const int tileSide = m_iconSize + 2 * tileMargin;
+
     if (m_spacing <= 0)
-        m_spacing = adjustHardcodedPixelSize(4);
+        m_spacing = adjustHardcodedPixelSize(2);
 
     // Fallback applet size if not assigned yet
     int appW = m_size.width();

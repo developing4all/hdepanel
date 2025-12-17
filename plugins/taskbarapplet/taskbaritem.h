@@ -38,7 +38,7 @@
 #endif
 
 // Forward declarations
-class DockApplet;
+class TaskBarApplet;
 class Client;
 class WaylandClient;
 class QGraphicsPixmapItem;
@@ -48,12 +48,12 @@ class TextGraphicsItem;
 // There isn't one to one relationship between window (client) and dock item, that's why
 // it's separate entity. One dock item can represent pinned launcher and one or more opened
 // windows of that application.
-class DockItem: public QObject, public QGraphicsItem
+class TaskBarItem: public QObject, public QGraphicsItem
 {
 	Q_OBJECT
 public:
-	DockItem(DockApplet* dockApplet);
-	~DockItem();
+	TaskBarItem(TaskBarApplet* dockApplet);
+	~TaskBarItem();
 
 	void updateContent();
 
@@ -100,7 +100,7 @@ private:
 	bool isFocused() const;
 
 	QTimer* m_animationTimer;
-	DockApplet* m_dockApplet;
+	TaskBarApplet* m_dockApplet;
 	TextGraphicsItem* m_textItem;
 	QGraphicsPixmapItem* m_iconItem;
 	QVector<Client*> m_clients;

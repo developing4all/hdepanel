@@ -48,6 +48,7 @@ public:
 
 	QRectF boundingRect() const;
 	void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget);
+	void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
 
 	unsigned long window() const
 	{
@@ -73,6 +74,7 @@ public:
 
 	QRectF boundingRect() const;
 	void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget);
+	void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
 
 	SniItemProxy* sniItem() const
 	{

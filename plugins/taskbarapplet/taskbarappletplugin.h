@@ -25,64 +25,26 @@
  *
  * END_COMMON_COPYRIGHT_HEADER */
 
-#ifndef CLIENT_H
-#define CLIENT_H
+#ifndef DOCKAPPLETPLUGIN_H
+#define DOCKAPPLETPLUGIN_H
 
-#include <QtCore/QString>
-#include <QtGui/QIcon>
+#include <QtCore/QObject>
+#include "applet.h"
 
 // Forward declarations
-class DockApplet;
-class DockItem;
+class TaskBarApplet;
 
-// Used for tracking connected windows (X11 clients).
-// Client may have it's DockItem, but not necessary (for example, special windows are not shown in dock).
-class Client
+class TaskBarAppletPlugin: public QObject, public AppletPlugin
 {
+    Q_OBJECT
+    Q_PLUGIN_METADATA(IID "hde.panel.appletplugin")
+    Q_INTERFACES(AppletPlugin)
+
 public:
-	Client(DockApplet* dockApplet, unsigned long handle);
-	~Client();
+    TaskBarAppletPlugin();
+    ~TaskBarAppletPlugin();
 
-	unsigned long handle() const
-	{
-		return m_handle;
-	}
-
-	bool isVisible()
-	{
-		return m_visible;
-	}
-
-	const QString& name() const
-	{
-		return m_name;
-	}
-
-	const QIcon& icon() const
-	{
-		return m_icon;
-	}
-
-	bool isUrgent() const
-	{
-		return m_isUrgent;
-	}
-
-	void windowPropertyChanged(unsigned long atom);
-
-private:
-	void updateVisibility();
-	void updateName();
-	void updateIcon();
-	void updateUrgency();
-
-	DockApplet* m_dockApplet;
-	unsigned long m_handle;
-	QString m_name;
-	QIcon m_icon;
-	bool m_isUrgent;
-	bool m_visible;
-	DockItem* m_dockItem;
+    Applet* createApplet(PanelWindow* panelWindow);
 };
 
 #endif

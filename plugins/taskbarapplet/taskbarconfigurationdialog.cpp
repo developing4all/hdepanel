@@ -1,12 +1,12 @@
-#include "dockconfigurationdialog.h"
-#include "ui_dockconfigurationdialog.h"
+#include "taskbarconfigurationdialog.h"
+#include "ui_taskbarconfigurationdialog.h"
 
 #include <settings.h>
 #include <QColorDialog>
 
-DockConfigurationDialog::DockConfigurationDialog(QString id, QWidget *parent) :
+TaskBarConfigurationDialog::TaskBarConfigurationDialog(QString id, QWidget *parent) :
     QDialog(parent),
-    ui(new Ui::DockConfigurationDialog)
+    ui(new Ui::TaskBarConfigurationDialog)
 {
     ui->setupUi(this);
     m_id = id;
@@ -35,20 +35,20 @@ DockConfigurationDialog::DockConfigurationDialog(QString id, QWidget *parent) :
     }
 
     // Connect signals
-    connect(ui->buttonColorButton, &QPushButton::clicked, this, &DockConfigurationDialog::on_buttonColorButton_clicked);
-    connect(ui->focusColorButton, &QPushButton::clicked, this, &DockConfigurationDialog::on_focusColorButton_clicked);
+    connect(ui->buttonColorButton, &QPushButton::clicked, this, &TaskBarConfigurationDialog::on_buttonColorButton_clicked);
+    connect(ui->focusColorButton, &QPushButton::clicked, this, &TaskBarConfigurationDialog::on_focusColorButton_clicked);
     connect(ui->buttonColorTransparency, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &DockConfigurationDialog::on_buttonColorTransparency_changed);
+            this, &TaskBarConfigurationDialog::on_buttonColorTransparency_changed);
     connect(ui->focusColorTransparency, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &DockConfigurationDialog::on_focusColorTransparency_changed);
+            this, &TaskBarConfigurationDialog::on_focusColorTransparency_changed);
 }
 
-DockConfigurationDialog::~DockConfigurationDialog()
+TaskBarConfigurationDialog::~TaskBarConfigurationDialog()
 {
     delete ui;
 }
 
-void DockConfigurationDialog::on_buttonBox_accepted()
+void TaskBarConfigurationDialog::on_buttonBox_accepted()
 {
     Settings::setValue(m_id, "only_current_screen", ui->only_current_screen->isChecked());
     Settings::setValue(m_id, "only_current_desktop", ui->only_current_desktop->isChecked());
@@ -64,7 +64,7 @@ void DockConfigurationDialog::on_buttonBox_accepted()
     Settings::setValue(m_id, "focusColorTransparency", ui->focusColorTransparency->value());
 }
 
-void DockConfigurationDialog::on_buttonColorButton_clicked()
+void TaskBarConfigurationDialog::on_buttonColorButton_clicked()
 {
     QColor currentColor = Settings::value(m_id, "buttonColor", QColor(255, 255, 255)).value<QColor>();
     QColor color = QColorDialog::getColor(currentColor, this, "Choose Button Color");
@@ -74,7 +74,7 @@ void DockConfigurationDialog::on_buttonColorButton_clicked()
     }
 }
 
-void DockConfigurationDialog::on_focusColorButton_clicked()
+void TaskBarConfigurationDialog::on_focusColorButton_clicked()
 {
     QColor currentColor = Settings::value(m_id, "focusColor", QColor(0, 0, 0)).value<QColor>();
     QColor color = QColorDialog::getColor(currentColor, this, "Choose Focus Color");
@@ -84,12 +84,12 @@ void DockConfigurationDialog::on_focusColorButton_clicked()
     }
 }
 
-void DockConfigurationDialog::on_buttonColorTransparency_changed(int value)
+void TaskBarConfigurationDialog::on_buttonColorTransparency_changed(int value)
 {
     Settings::setValue(m_id, "buttonColorTransparency", value);
 }
 
-void DockConfigurationDialog::on_focusColorTransparency_changed(int value)
+void TaskBarConfigurationDialog::on_focusColorTransparency_changed(int value)
 {
     Settings::setValue(m_id, "focusColorTransparency", value);
 }

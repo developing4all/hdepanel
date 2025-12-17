@@ -4,16 +4,16 @@
 #include <QDialog>
 
 namespace Ui {
-class DockConfigurationDialog;
+class TaskBarConfigurationDialog;
 }
 
-class DockConfigurationDialog : public QDialog
+class TaskBarConfigurationDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit DockConfigurationDialog(QString id,QWidget *parent = 0);
-    ~DockConfigurationDialog();
+    explicit TaskBarConfigurationDialog(QString id,QWidget *parent = 0);
+    ~TaskBarConfigurationDialog();
 
 private slots:
     void on_buttonBox_accepted();
@@ -23,7 +23,7 @@ private slots:
     void on_focusColorTransparency_changed(int value);
 
 private:
-    Ui::DockConfigurationDialog *ui;
+    Ui::TaskBarConfigurationDialog *ui;
     QString m_id;
 };
 

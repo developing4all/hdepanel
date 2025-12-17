@@ -318,7 +318,7 @@ hdepanel/
 ├── lib/              # Core panel library
 ├── plugins/          # Applet plugins
 │   ├── startapplet/
-│   ├── dockapplet/
+│   ├── taskbarapplet/
 │   ├── trayapplet/
 │   ├── clockapplet/
 │   └── keyboardapplet/

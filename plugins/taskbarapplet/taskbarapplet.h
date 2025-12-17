@@ -38,16 +38,16 @@
 struct WaylandWindow;
 class WaylandSupport;
 class WaylandClient;
-class DockItem;
+class TaskBarItem;
 class Client;
-class DockConfigurationDialog;
+class TaskBarConfigurationDialog;
 
-class DockApplet: public Applet
+class TaskBarApplet: public Applet
 {
 	Q_OBJECT
 public:
-	DockApplet(PanelWindow* panelWindow);
-	~DockApplet();
+	TaskBarApplet(PanelWindow* panelWindow);
+	~TaskBarApplet();
     void close();
     virtual void setPanelWindow(PanelWindow* panelWindow);
 
@@ -55,11 +55,11 @@ public:
 	QSize desiredSize();
     void startPlugin(){}
 
-	void registerDockItem(DockItem* dockItem);
-	void unregisterDockItem(DockItem* dockItem);
+	void registerTaskBarItem(TaskBarItem* dockItem);
+	void unregisterTaskBarItem(TaskBarItem* dockItem);
 
-	DockItem* dockItemForClient(Client* client);
-	DockItem* dockItemForWaylandClient(WaylandClient* client);
+	TaskBarItem* dockItemForClient(Client* client);
+	TaskBarItem* dockItemForWaylandClient(WaylandClient* client);
 
 	void updateLayout();
 
@@ -67,7 +67,7 @@ public:
 
 	void draggingStarted();
 	void draggingStopped();
-	void moveItem(DockItem* dockItem, bool right);
+	void moveItem(TaskBarItem* dockItem, bool right);
 	
 	// Public accessor for WaylandSupport
 	WaylandSupport* waylandSupport() const { return m_waylandSupport; }
@@ -96,13 +96,13 @@ private:
     void updateX11ClientList();
     void updateActiveWindow();
     void readSettings();
-    void deduplicateDockItems();
-    DockItem* createDockItem(const QString& name, const QIcon& icon, const QString& objectName = QString());
+    void deduplicateTaskBarItems();
+    TaskBarItem* createTaskBarItem(const QString& name, const QIcon& icon, const QString& objectName = QString());
 
 	QMap<unsigned long, Client*> m_clients;
 	QMap<void*, WaylandClient*> m_waylandClients;
     QList <Client*> m_in_loop;
-	QVector<DockItem*> m_dockItems;
+	QVector<TaskBarItem*> m_dockItems;
 	unsigned long m_activeWindow;
 	bool m_dragging;
     bool m_only_minimized;

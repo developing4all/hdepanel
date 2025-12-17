@@ -164,10 +164,12 @@ void TaskBarItem::updateContent()
     if (!m_clients.isEmpty()) {
         displayText = m_clients[0]->name();
         displayIcon = m_clients[0]->icon();
-    } else if (!m_waylandText.isEmpty()) {
-        displayText = m_waylandText;
-        if (m_iconItem && !m_iconItem->pixmap().isNull())
-            displayIcon = QIcon(m_iconItem->pixmap());
+    } else if (m_waylandClient) {
+        displayText = m_waylandClient->name();
+        displayIcon = m_waylandClient->icon();
+    } else if (!m_icon.isNull()) {
+        displayText = m_waylandText; // fallback text
+        displayIcon = m_icon;
     } else {
         displayText = m_textItem ? m_textItem->text() : QString();
         if (m_iconItem && !m_iconItem->pixmap().isNull())
@@ -190,7 +192,7 @@ void TaskBarItem::updateContent()
     const int leftPad    = 12;
     const int rightPad   = 8;
 
-    int iconSize = adjustHardcodedPixelSize(16);
+    int iconSize = adjustHardcodedPixelSize(24);
 
     if (isVerticalPanel && !showText) {
         // Narrow side panel: icon = (thickness - 2*(sideMargin + iconPad))
@@ -207,29 +209,47 @@ void TaskBarItem::updateContent()
             iconSize = adjustHardcodedPixelSize(8);
     } else if (isVerticalPanel && showText) {
         int maxByHeight = (cellH > 0) ? (cellH - 6 - 2*iconPad) : (panelWindow->panelHeight() - 6 - 2*iconPad);
-        iconSize = qMin(adjustHardcodedPixelSize(24), maxByHeight);
+        iconSize = qMin(adjustHardcodedPixelSize(32), maxByHeight);
         if (iconSize < adjustHardcodedPixelSize(8))
             iconSize = adjustHardcodedPixelSize(8);
     } else {
         int maxByHeight = (cellH > 0) ? (cellH - 8 - 2*iconPad) : (panelWindow->panelHeight() - 8 - 2*iconPad);
-        iconSize = qMin(adjustHardcodedPixelSize(16), maxByHeight);
+        iconSize = qMin(adjustHardcodedPixelSize(24), maxByHeight);
         if (iconSize < adjustHardcodedPixelSize(8))
             iconSize = adjustHardcodedPixelSize(8);
     }
 
-    if (!displayIcon.isNull())
-        m_iconItem->setPixmap(displayIcon.pixmap(iconSize, iconSize));
+    if (!displayIcon.isNull()) {
+        QPixmap pix = displayIcon.pixmap(iconSize, iconSize);
+        m_iconItem->setPixmap(pix);
+        if (!pix.isNull()) {
+            iconSize = pix.height(); // Use actual height for centering
+        }
+    }
 
     // --- positioning ---
     int iconX = 0;
     int iconY = 0;
 
     if (!isVerticalPanel) {
-        iconX = adjustHardcodedPixelSize(8) + iconPad; // ✅ inset from left
+        // For horizontal panels, we center the content (icon + text) horizontally
+        // if there's enough space, otherwise we left-align with padding.
+        int textW = showText ? (gap + fm.horizontalAdvance(displayText)) : 0;
+        int contentW = iconSize + textW;
+        
+        if (cellW > contentW + adjustHardcodedPixelSize(32)) {
+            // Button is wide enough to center content
+            iconX = (cellW - contentW) / 2;
+        } else {
+            // Left-align with standard padding
+            iconX = adjustHardcodedPixelSize(8) + iconPad;
+        }
+        
         iconY = (cellH > 0) ? (cellH - iconSize) / 2 : 0;
     } else {
         if (!showText) {
-            iconX = sideMargin + iconPad;              // ✅ inset on narrow side panels
+            // Center icon horizontally in vertical narrow panel
+            iconX = (cellW > 0) ? (cellW - m_iconItem->pixmap().width()) / 2 : (sideMargin + iconPad);
             iconY = (cellH > 0) ? (cellH - iconSize) / 2 : 0;
         } else {
             iconX = leftPad + iconPad;                 // ✅ inset even when text is shown
@@ -242,12 +262,13 @@ void TaskBarItem::updateContent()
     // --- text ---
     if (showText) {
         int availableW = 0;
+        QString textToElide = displayText;
 
         if (!isVerticalPanel) {
             availableW = (cellW > 0 ? cellW : 200) - (iconX + iconSize + gap + rightPad);
             if (availableW < 0) availableW = 0;
 
-            QString shortName = fm.elidedText(displayText, Qt::ElideRight, availableW);
+            QString shortName = fm.elidedText(textToElide, Qt::ElideRight, availableW);
             m_textItem->setText(shortName);
             m_textItem->setVisible(true);
 
@@ -258,7 +279,7 @@ void TaskBarItem::updateContent()
             availableW = (cellW > 0 ? cellW : panelWindow->panelWidth()) - (iconX + iconSize + gap + rightPad);
             if (availableW < 0) availableW = 0;
 
-            QString shortName = fm.elidedText(displayText, Qt::ElideRight, availableW);
+            QString shortName = fm.elidedText(textToElide, Qt::ElideRight, availableW);
             m_textItem->setText(shortName);
             m_textItem->setVisible(true);
 
@@ -324,10 +345,6 @@ void TaskBarItem::setWaylandClient(WaylandClient* waylandClient)
         // Store Wayland client text separately
         m_waylandText = waylandClient->name();
         
-        // Set up display using the actual Wayland client data
-        setText(waylandClient->name());
-        setIcon(waylandClient->icon());
-        
         updateContent();
     } catch (...) {
         // Silently handle any errors
@@ -357,7 +374,7 @@ void TaskBarItem::setIcon(const QIcon& icon)
         return;
     }
     
-    m_iconItem->setPixmap(icon.pixmap(16, 16));
+    m_icon = icon;
     // Use updateContent() for consistent styling with X11 applications
     updateContent();
 }
@@ -495,22 +512,8 @@ void TaskBarItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* optio
 
     const int buttonW = qMax(1, w - 2 * outerMarginX);
 
-    // Height clamp 24..30 for wide panels, and for icon-only small panels.
-    const int maxH = qMax(1, h - 2 * outerMarginY);
-    const int desiredMinH = dp(24);
-    const int desiredMaxH = dp(30);
-
-    int buttonH = maxH;
-    if (buttonH > desiredMaxH) buttonH = desiredMaxH;
-
-    // If we are too small to reach 24px, just use what we have
-    if (buttonH < desiredMinH) buttonH = maxH;
-
-    // If it's a vertical *wide* panel (text shown), you might want taller buttons.
-    // If you still want 24..30 there too, remove this block.
-    if (isVerticalPanel && showText) {
-        buttonH = maxH; // allow full height when vertical panel is wide enough for text
-    }
+    // Height uses available space minus margins.
+    int buttonH = qMax(1, h - 2 * outerMarginY);
 
     const int buttonX = outerMarginX;
     const int buttonY = (h - buttonH) / 2;

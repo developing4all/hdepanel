@@ -252,7 +252,7 @@ void TaskBarApplet::updateLayout()
 
         for (int i = 0; i < m_dockItems.size(); i++) {
             int spaceForThisClient = spaceForOneClient;
-            static const int maxSpace = adjustHardcodedPixelSize(256);
+            static const int maxSpace = adjustHardcodedPixelSize(160);
             if (spaceForThisClient > maxSpace)
                 spaceForThisClient = maxSpace;
 

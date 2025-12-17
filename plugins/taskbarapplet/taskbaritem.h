@@ -103,6 +103,7 @@ private:
 	TaskBarApplet* m_dockApplet;
 	TextGraphicsItem* m_textItem;
 	QGraphicsPixmapItem* m_iconItem;
+    QIcon m_icon;
 	QVector<Client*> m_clients;
 	WaylandClient* m_waylandClient;
 	QString m_waylandText;  // Store Wayland client text separately

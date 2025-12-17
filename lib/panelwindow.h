@@ -77,6 +77,7 @@ class QGraphicsScene;
  	 inline const QString& id() const { return m_id; }
 	 inline int panelHeight() const { return m_panelHeight; }
 	 inline int panelWidth() const { return m_panelWidth; }
+	 Applet* getAppletById(const QString& appletId) const;
  	 // Context menu / settings UI
 	 void showPanelContextMenu(const QPoint& point);
 	 bool init();

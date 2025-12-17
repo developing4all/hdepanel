@@ -65,6 +65,7 @@ private slots:
     void on_appletRemove_clicked();
 
     void on_appletSettings_clicked();
+    void on_appletsList_itemSelectionChanged();
 
     void on_backgroundColorButton_clicked();
     void on_borderColorButton_clicked();

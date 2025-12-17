@@ -69,6 +69,7 @@ public:
 	 virtual QMargins buttonMargins() const { return QMargins(0,0,0,0); }
  
 	 void setId(QString id){ m_id = id; }
+	 QString id() const { return m_id; }
  
 	 void setPosition(const QPoint& position);
 	 void setSize(const QSize& size);

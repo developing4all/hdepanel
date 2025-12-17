@@ -56,3 +56,4 @@ void ClockConfigurationDialog::on_buttonBox_accepted()
 }
 
 
+

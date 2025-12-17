@@ -26,9 +26,12 @@
 #include "ui_panelsettings.h"
 
 #include "panelwindow.h"
+#include "applet.h"
 
 #include "settings.h"
 #include <QTimer>
+#include <QMetaObject>
+#include <QMetaMethod>
 
 #include <QDir>
 #include <QStringList>
@@ -118,8 +121,15 @@ PanelSettings::PanelSettings(QString panel_id, QWidget *parent) :
             this, &PanelSettings::on_panelHeight_valueChanged);
     connect(ui->panelWidth, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &PanelSettings::on_panelWidth_valueChanged);
+    connect(ui->appletsList, &QListWidget::itemSelectionChanged,
+            this, &PanelSettings::on_appletsList_itemSelectionChanged);
 
     readSettings();
+    
+    // Initially hide the settings button
+    if (ui->appletSettings) {
+        ui->appletSettings->setVisible(false);
+    }
 }
 
 PanelSettings::~PanelSettings()
@@ -267,6 +277,9 @@ void PanelSettings::setPanelWindow(PanelWindow *panel)
 
     //ui->appletsList->addItems(applets);
     //ui->appletsList->addItems(Settings::value(m_panel_id, "applets", QStringList()).toStringList());
+    
+    // Check initial selection to show/hide settings button
+    on_appletsList_itemSelectionChanged();
 }
 
 void PanelSettings::on_resetButton_clicked()
@@ -430,6 +443,68 @@ void PanelSettings::on_appletRemove_clicked()
 
 void PanelSettings::on_appletSettings_clicked()
 {
+    if (!m_panel || !ui->appletsList) {
+        return;
+    }
+    
+    QListWidgetItem* selectedItem = ui->appletsList->currentItem();
+    if (!selectedItem) {
+        return;
+    }
+    
+    QString appletId = selectedItem->data(Qt::UserRole).toString();
+    if (appletId.isEmpty()) {
+        return;
+    }
+    
+    // Find the applet instance in the panel
+    Applet* applet = m_panel->getAppletById(appletId);
+    if (!applet) {
+        return;
+    }
+    
+    // Check if the applet has a showConfigurationDialog() method using QMetaObject
+    const QMetaObject* metaObj = applet->metaObject();
+    int methodIndex = metaObj->indexOfMethod("showConfigurationDialog()");
+    
+    if (methodIndex != -1) {
+        // Invoke the method
+        QMetaMethod method = metaObj->method(methodIndex);
+        method.invoke(applet, Qt::QueuedConnection);
+    }
+}
+
+void PanelSettings::on_appletsList_itemSelectionChanged()
+{
+    if (!m_panel || !ui->appletsList || !ui->appletSettings) {
+        return;
+    }
+    
+    QListWidgetItem* selectedItem = ui->appletsList->currentItem();
+    if (!selectedItem) {
+        ui->appletSettings->setVisible(false);
+        return;
+    }
+    
+    QString appletId = selectedItem->data(Qt::UserRole).toString();
+    if (appletId.isEmpty()) {
+        ui->appletSettings->setVisible(false);
+        return;
+    }
+    
+    // Find the applet instance in the panel
+    Applet* applet = m_panel->getAppletById(appletId);
+    if (!applet) {
+        ui->appletSettings->setVisible(false);
+        return;
+    }
+    
+    // Check if the applet has a showConfigurationDialog() method
+    const QMetaObject* metaObj = applet->metaObject();
+    int methodIndex = metaObj->indexOfMethod("showConfigurationDialog()");
+    
+    // Show button only if the applet has a configuration dialog
+    ui->appletSettings->setVisible(methodIndex != -1);
 }
 
 QString PanelSettings::translateAppletName(const QString &appletName)

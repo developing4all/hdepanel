@@ -1743,6 +1743,16 @@ void PanelWindow::setFontName(const QString& fontName)
     for (Applet* a : m_applets) a->fontChanged();
 }
 
+Applet* PanelWindow::getAppletById(const QString& appletId) const
+{
+    for (Applet* applet : m_applets) {
+        if (applet && applet->id() == appletId) {
+            return applet;
+        }
+    }
+    return nullptr;
+}
+
 void PanelWindow::resetApplets()
 {
     removeApplets();

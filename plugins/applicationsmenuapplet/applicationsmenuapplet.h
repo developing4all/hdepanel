@@ -130,6 +130,7 @@ class ApplicationsMenuAppletPlugin: public QObject, public AppletPlugin
     Q_INTERFACES(AppletPlugin)
 public:
     Applet* createApplet(PanelWindow* panelWindow);
+    QString name() const override { return tr("Applications Menu"); }
 };
 
 

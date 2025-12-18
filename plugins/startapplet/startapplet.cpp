@@ -18,7 +18,7 @@ StartApplet::StartApplet(PanelWindow* panelWindow)
     // Create text item for "Start" text
     m_textItem = new TextGraphicsItem(this);
     m_textItem->setColor(Qt::white);
-    m_textItem->setText("Start");
+    m_textItem->setText(tr("Start"));
     
     // Create icon item for start icon (size will be adjusted in refreshIcons)
     m_iconItem = new TextGraphicsItem(this);
@@ -116,7 +116,7 @@ QSize StartApplet::desiredSize()
         !(position == PanelWindow::Left || position == PanelWindow::Right);
 
     QFontMetrics metrics(m_panelWindow->font());
-    const QString label = QStringLiteral("Start");
+    const QString label = tr("Start");
 
     const int topMargin   = 5;
     const int leftPadding = 12;
@@ -258,7 +258,7 @@ void StartApplet::layoutChanged()
         }
 
         if (m_textItem) {
-            m_textItem->setText(QStringLiteral("Start"));
+            m_textItem->setText(tr("Start"));
             m_textItem->setVisible(true);
 
             int textX = leftPadding + iconSize + gap;
@@ -281,7 +281,7 @@ void StartApplet::layoutChanged()
 
         if (m_textItem) {
             if (showText) {
-                m_textItem->setText(QStringLiteral("Start"));
+                m_textItem->setText(tr("Start"));
                 m_textItem->setVisible(true);
 
                 int textX = leftPadding + iconSize + gap;

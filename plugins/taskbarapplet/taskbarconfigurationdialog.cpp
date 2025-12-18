@@ -67,7 +67,7 @@ void TaskBarConfigurationDialog::on_buttonBox_accepted()
 void TaskBarConfigurationDialog::on_buttonColorButton_clicked()
 {
     QColor currentColor = Settings::value(m_id, "buttonColor", QColor(255, 255, 255)).value<QColor>();
-    QColor color = QColorDialog::getColor(currentColor, this, "Choose Button Color");
+    QColor color = QColorDialog::getColor(currentColor, this, tr("Choose Button Color"));
     if (color.isValid()) {
         Settings::setValue(m_id, "buttonColor", color);
         ui->buttonColorButton->setStyleSheet(QString("background-color: %1;").arg(color.name()));
@@ -77,7 +77,7 @@ void TaskBarConfigurationDialog::on_buttonColorButton_clicked()
 void TaskBarConfigurationDialog::on_focusColorButton_clicked()
 {
     QColor currentColor = Settings::value(m_id, "focusColor", QColor(0, 0, 0)).value<QColor>();
-    QColor color = QColorDialog::getColor(currentColor, this, "Choose Focus Color");
+    QColor color = QColorDialog::getColor(currentColor, this, tr("Choose Focus Color"));
     if (color.isValid()) {
         Settings::setValue(m_id, "focusColor", color);
         ui->focusColorButton->setStyleSheet(QString("background-color: %1;").arg(color.name()));

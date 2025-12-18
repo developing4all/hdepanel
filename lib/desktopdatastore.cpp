@@ -888,9 +888,12 @@ DesktopApplication DesktopDataStore::convertToDesktopApplication(const DesktopEn
 {
     DesktopApplication app;
     
+    // Get current locale language
+    QString language = QLocale::system().name();
+    
     // Set basic properties
     app.m_path = entryData.desktopFile;
-    app.m_name = entryData.getDisplayName();
+    app.m_name = entryData.getDisplayName(language);
     app.m_iconName = entryData.icon;
     app.m_categories = entryData.categories;
     app.m_isNoDisplay = entryData.noDisplay || entryData.hidden;

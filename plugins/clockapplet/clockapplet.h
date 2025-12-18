@@ -86,5 +86,6 @@ public:
     ~ClockAppletPlugin(){}
 
     Applet* createApplet(PanelWindow* panelWindow) {return new ClockApplet(panelWindow);}
+    QString name() const override { return tr("Clock"); }
 };
 #endif

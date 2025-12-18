@@ -655,8 +655,8 @@ void TaskBarItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 
             menu.addTitle(tr("Application"));
             menu.addAction(QIcon::fromTheme("window-close"), tr("Close"), this, SLOT(close()));
-            menu.addTitle(tr("Dock Applet"));
-            menu.addAction(QIcon::fromTheme("preferences-other"), tr("Configure Dock Applet"), m_dockApplet, SLOT(showConfigurationDialog()));
+            menu.addTitle(tr("Task Bar"));
+            menu.addAction(QIcon::fromTheme("preferences-other"), tr("Configure Task Bar"), m_dockApplet, SLOT(showConfigurationDialog()));
 
             menu.addTitle(tr("Panel"));
             menu.addAction(QIcon::fromTheme("preferences-desktop"), tr("Configure Panel"), m_dockApplet->panelWindow(), SLOT(showConfigurationDialog()));

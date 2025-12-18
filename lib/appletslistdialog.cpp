@@ -1,5 +1,6 @@
 #include "appletslistdialog.h"
 #include "ui_appletslistdialog.h"
+#include "panelwindow.h"
 
 #include <QDir>
 #include <QApplication>
@@ -26,12 +27,15 @@ AppletsListDialog::AppletsListDialog(QWidget *parent) :
     {
         foreach (QString plugin, plugins) {
             // Remove lib from the begin and .so from the end
-            plugin.replace(0, 3, "").replace(".so","").replace("applet", "Applet");
+            QString appletName = plugin;
+            appletName.replace(0, 3, "").replace(".so","").replace("applet", "Applet");
             // Captilize the first letter
-            plugin[0] = plugin.at(0).toTitleCase();
+            appletName[0] = appletName.at(0).toTitleCase();
 
-            QString applet_id = plugin  + "_" + QString::number(QDateTime::currentMSecsSinceEpoch());
-            QListWidgetItem *item = new QListWidgetItem(plugin);
+            QString translated_name = PanelWindow::getAppletPluginName(appletName);
+
+            QString applet_id = appletName  + "_" + QString::number(QDateTime::currentMSecsSinceEpoch());
+            QListWidgetItem *item = new QListWidgetItem(translated_name);
             item->setData(Qt::UserRole, applet_id);
             ui->aplletsList->addItem(item);
         }

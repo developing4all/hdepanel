@@ -22,6 +22,7 @@ public:
     ~StartAppletPlugin(){}
 
     Applet* createApplet(PanelWindow* panelWindow) Q_DECL_OVERRIDE;
+    QString name() const override { return tr("Start Menu"); }
 };
 
 

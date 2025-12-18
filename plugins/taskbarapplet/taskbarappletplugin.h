@@ -45,6 +45,7 @@ public:
     ~TaskBarAppletPlugin();
 
     Applet* createApplet(PanelWindow* panelWindow);
+    QString name() const override { return tr("Task Bar"); }
 };
 
 #endif

@@ -509,22 +509,13 @@ void PanelSettings::on_appletsList_itemSelectionChanged()
 
 QString PanelSettings::translateAppletName(const QString &appletName)
 {
-    // Translate applet names for the settings dialog
-    if (appletName == "StartApplet") return tr("Start Menu");
-    if (appletName == "ApplicationsMenuApplet") return tr("Applications Menu");
-    if (appletName == "TaskBarApplet") return tr("Task Bar");
-    if (appletName == "TrayApplet") return tr("System Tray");
-    if (appletName == "ClockApplet") return tr("Clock");
-    if (appletName == "KeyboardApplet") return tr("Keyboard Layout");
-    
-    // Return original name if no translation found
-    return appletName;
+    return PanelWindow::getAppletPluginName(appletName);
 }
 
 void PanelSettings::on_backgroundColorButton_clicked()
 {
     QColor currentColor = Settings::value(m_panel_id, "backgroundColor", QColor(0, 0, 0)).value<QColor>();
-    QColor color = QColorDialog::getColor(currentColor, this, "Choose Background Color");
+    QColor color = QColorDialog::getColor(currentColor, this, tr("Choose Background Color"));
     if (color.isValid()) {
         Settings::setValue(m_panel_id, "backgroundColor", color);
         ui->backgroundColorButton->setStyleSheet(QString("background-color: %1;").arg(color.name()));
@@ -537,7 +528,7 @@ void PanelSettings::on_backgroundColorButton_clicked()
 void PanelSettings::on_borderColorButton_clicked()
 {
     QColor currentColor = Settings::value(m_panel_id, "borderColor", QColor(255, 255, 255)).value<QColor>();
-    QColor color = QColorDialog::getColor(currentColor, this, "Choose Border Color");
+    QColor color = QColorDialog::getColor(currentColor, this, tr("Choose Border Color"));
     if (color.isValid()) {
         Settings::setValue(m_panel_id, "borderColor", color);
         ui->borderColorButton->setStyleSheet(QString("background-color: %1;").arg(color.name()));

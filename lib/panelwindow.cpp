@@ -728,6 +728,10 @@ bool PanelWindow::init()
     return true;
 }
  
+#include <QSet>
+#include <QTranslator>
+#include <QLocale>
+
 void PanelWindow::setApplets()
 {
     QDir plugDir(qApp->applicationDirPath() + "/plugins");
@@ -748,6 +752,9 @@ void PanelWindow::loadApplet(QString applet_id, QDir &plugDir)
     if (QLibrary::isLibrary(path)) {
         QPluginLoader loader(path, this);
         if (auto* plugin = qobject_cast<AppletPlugin*>(loader.instance())) {
+            // Load applet translation from plugin directory or system plugin directory
+            loadAppletTranslation(name, plugDir.absolutePath());
+
             if (Applet* a = plugin->createApplet(this)) {
                 a->setId(applet_id);
                 m_applets.append(a);
@@ -756,6 +763,43 @@ void PanelWindow::loadApplet(QString applet_id, QDir &plugDir)
         } else {
             qDebug() << loader.errorString();
         }
+    }
+}
+
+void PanelWindow::loadAppletTranslation(const QString& name, const QString& plugDir)
+{
+    static QSet<QString> loadedTranslators;
+    QString locale = QLocale::system().name();
+    QString lang = locale.split('_').first();
+    
+    QString key = name + "_" + locale;
+    if (loadedTranslators.contains(key)) return;
+    
+    QTranslator* translator = new QTranslator(qApp);
+    
+    // Look in the plugin directory for <appletname>_<locale>.qm
+    // We expect translations to be named e.g. "taskbarapplet_ar.qm"
+    QString baseName = name.toLower();
+    
+    if (translator->load(baseName + "_" + locale, plugDir) ||
+        translator->load(baseName + "_" + lang, plugDir)) {
+        qApp->installTranslator(translator);
+        loadedTranslators.insert(key);
+        qDebug() << "✓ Loaded applet translation for" << name << "(" << locale << ") from" << plugDir;
+    } else {
+        // Also try standard system path if plugDir wasn't it
+        QString systemPath = "/usr/share/hdepanel/translations";
+        if (plugDir != systemPath) {
+            if (translator->load(baseName + "_" + locale, systemPath) ||
+                translator->load(baseName + "_" + lang, systemPath)) {
+                qApp->installTranslator(translator);
+                loadedTranslators.insert(key);
+                qDebug() << "✓ Loaded applet translation for" << name << "(" << locale << ") from" << systemPath;
+                return;
+            }
+        }
+        delete translator;
+        qDebug() << "✗ No translation found for applet" << name << "in" << plugDir;
     }
 }
  
@@ -1777,6 +1821,29 @@ Applet* PanelWindow::getAppletById(const QString& appletId) const
         }
     }
     return nullptr;
+}
+
+QString PanelWindow::getAppletPluginName(const QString& appletName)
+{
+    QDir plugDir(qApp->applicationDirPath() + "/plugins");
+    if (!plugDir.exists() && QDir("/usr/lib/hde/panel/plugins").exists())
+        plugDir.cd("/usr/lib/hde/panel/plugins");
+
+    QString pluginBaseName = appletName;
+    if (pluginBaseName.endsWith("Applet")) {
+        pluginBaseName.chop(6);
+    }
+    QString path = plugDir.absolutePath() + "/lib" + pluginBaseName.toLower() + "applet.so";
+
+    if (QLibrary::isLibrary(path)) {
+        QPluginLoader loader(path);
+        if (auto* plugin = qobject_cast<AppletPlugin*>(loader.instance())) {
+            // Load applet translation to ensure plugin->name() returns translated string
+            loadAppletTranslation(appletName, plugDir.absolutePath());
+            return plugin->name();
+        }
+    }
+    return appletName;
 }
 
 void PanelWindow::showCustomTooltip(const QString& text, const QPoint& itemPos)

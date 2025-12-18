@@ -475,10 +475,12 @@ void ApplicationsMenuApplet::addApplicationToMenu(const DesktopEntryData& entryD
     // Remove existing action if it exists
     removeApplicationFromMenu(entryData.desktopFile);
     
+    QString language = QLocale::system().name();
+    
     QAction* action = new QAction(m_menu);
     action->setIconVisibleInMenu(true);
     action->setData(entryData.desktopFile);
-    action->setText(entryData.getDisplayName());
+    action->setText(entryData.getDisplayName(language));
     
     // Use unified icon service for consistent icon loading
     QIcon icon = UnifiedIconService::instance()->loadIcon(entryData.icon, 32);
@@ -501,7 +503,7 @@ void ApplicationsMenuApplet::addApplicationToMenu(const DesktopEntryData& entryD
     
     // Insert in alphabetical order
     for (int i = 0; i < actions.size(); i++) {
-        if (entryData.getDisplayName() < actions[i]->text()) {
+        if (entryData.getDisplayName(language) < actions[i]->text()) {
             before = actions[i];
             break;
         }

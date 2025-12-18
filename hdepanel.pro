@@ -39,3 +39,8 @@ translations.path = $$PREFIX/share/hdepanel/translations
 translations.files = translations/*.qm
 INSTALLS += translations
 
+# Install applet translations
+applet_translations.path = $$PREFIX/lib/hde/panel/plugins
+applet_translations.files = plugins/*.qm
+INSTALLS += applet_translations
+

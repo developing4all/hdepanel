@@ -78,6 +78,7 @@ class QGraphicsScene;
 	 inline int panelHeight() const { return m_panelHeight; }
 	 inline int panelWidth() const { return m_panelWidth; }
 	 Applet* getAppletById(const QString& appletId) const;
+	 static QString getAppletPluginName(const QString& appletName);
  	 // Context menu / settings UI
 	 void showPanelContextMenu(const QPoint& point);
 	 bool init();
@@ -102,6 +103,7 @@ class QGraphicsScene;
 	 void readSettings();
 	 void setApplets();
 	 void loadApplet(QString applet_id, class QDir &plugDir);
+	 static void loadAppletTranslation(const QString& name, const QString& plugDir);
 	 void removeApplets();
  
 	 // Geometry / WM integration

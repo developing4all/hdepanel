@@ -95,6 +95,8 @@ StartWindow::StartWindow(QWidget *parent) :
 
     m_favorites  = new QMenu();
 
+    ui->searchEdit->setPlaceholderText(tr("Search..."));
+
     // Remove backgroud color from lists
     ui->menuList->viewport()->setAutoFillBackground( false );
     ui->itemsList->viewport()->setAutoFillBackground( false );

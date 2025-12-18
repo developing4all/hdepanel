@@ -148,5 +148,6 @@ public:
     ~TrayAppletPlugin(){}
 
     Applet* createApplet(PanelWindow* panelWindow) {return new TrayApplet(panelWindow);}
+    QString name() const override { return tr("System Tray"); }
 };
 #endif

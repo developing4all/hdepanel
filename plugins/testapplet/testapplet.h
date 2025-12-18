@@ -48,6 +48,7 @@ public:
     ~TestAppletPlugin(){}
 
     Applet* createApplet(PanelWindow* panelWindow) Q_DECL_OVERRIDE;
+    QString name() const override { return "Test Applet"; }
 };
 
 /**

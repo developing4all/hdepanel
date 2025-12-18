@@ -47,6 +47,7 @@ public:
 	AppletPlugin(){}
 	virtual ~AppletPlugin(){}
 	virtual Applet* createApplet(PanelWindow* panelWindow) = 0;
+	virtual QString name() const = 0;
 };
 
 Q_DECLARE_INTERFACE(AppletPlugin, "hde.panel.appletplugin")

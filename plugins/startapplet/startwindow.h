@@ -12,9 +12,11 @@
 #endif
 
 #include <QWidget>
+#include <QObject>
 
 class QMenu;
 class DesktopEntryData;
+class QEvent;
 
 namespace Ui {
 class StartWindow;
@@ -64,6 +66,8 @@ protected:
     void layoutChanged();
     bool isHighlighted();
     void focusOutEvent(QFocusEvent *);
+    void keyPressEvent(QKeyEvent *event) override;
+    bool eventFilter(QObject *obj, QEvent *event) override;
 
 private slots:
     void actionTriggered();
@@ -111,6 +115,7 @@ private:
     QMap<QString, QAction*> m_actions;
     QPixmap m_profileImage;
     bool m_initialized;
+    bool m_focusInMenuList; // true if menuList has focus, false if itemsList has focus
 };
 
 #endif // STARTWINDOW_H

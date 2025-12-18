@@ -16,6 +16,7 @@
 #include <QSettings>
 
 #include <QFocusEvent>
+#include <QKeyEvent>
 #include <QDebug>
 #include <QSettings>
 #include <QStyledItemDelegate>
@@ -87,7 +88,8 @@ static const char* menuStyleSheet =
 StartWindow::StartWindow(QWidget *parent) :
     QWidget(parent),
     ui(new Ui::StartWindow),
-    m_initialized(false)
+    m_initialized(false),
+    m_focusInMenuList(true)
 {
     ui->setupUi(this);
     setWindowFlags(Qt::Widget | Qt::Popup);
@@ -108,8 +110,9 @@ StartWindow::StartWindow(QWidget *parent) :
     ui->profilePicture->setPixmap(QIcon::fromTheme("system-users").pixmap(64,64));
 
     ui->exitButton->setFocusProxy(this);
-    ui->itemsList->setFocusProxy(this);
-    ui->menuList->setFocusProxy(this);
+    // Don't set focus proxy for lists - we want to handle keyboard navigation manually
+    ui->menuList->setFocusPolicy(Qt::NoFocus);
+    ui->itemsList->setFocusPolicy(Qt::NoFocus);
     //ui->menuList->setSpacing(3);
     ui->itemsList->setSpacing(3);
     
@@ -117,7 +120,11 @@ StartWindow::StartWindow(QWidget *parent) :
     ui->menuList->setItemDelegate(new SeparatorDelegate());
 
     ui->profilePicture->setFocusProxy(this);
-    ui->searchEdit->setFocusProxy(this);
+    // Don't set focus proxy for searchEdit - we want it to receive focus directly
+    ui->searchEdit->setFocusPolicy(Qt::StrongFocus); // Allow focus and text selection
+    
+    // Install event filter on searchEdit to capture arrow keys
+    ui->searchEdit->installEventFilter(this);
 
     // Set fixed icon size for all menu group items
     ui->menuList->setIconSize(QSize(24, 24));
@@ -747,11 +754,13 @@ void StartWindow::on_itemsList_itemActivated(QListWidgetItem *item)
 
 void StartWindow::on_menuList_itemClicked(QListWidgetItem *item)
 {
+    m_focusInMenuList = true;
     return on_menuList_itemActivated(item);
 }
 
 void StartWindow::on_itemsList_itemClicked(QListWidgetItem *item)
 {
+    m_focusInMenuList = false;
     return on_itemsList_itemActivated(item);
 }
 
@@ -784,20 +793,32 @@ void StartWindow::on_searchEdit_textChanged(const QString &arg1)
             searchItem->setData(Qt::UserRole, action->data());
         }
     }
+    
+    // When searching, move focus to itemsList if there are results
+    if (!arg1.isEmpty() && ui->itemsList->count() > 0) {
+        m_focusInMenuList = false;
+        ui->itemsList->setCurrentRow(0);
+    }
 }
 
 void StartWindow::setFocused()
 {
-    //ui->searchEdit->setFocus();
-    ui->searchEdit->grabKeyboard();
-    setFocus();
-
     ui->searchEdit->clear();
     ui->menuList->setCurrentRow(0);
+    m_focusInMenuList = true;
+    
+    // Set focus on search bar
+    ui->searchEdit->setFocus();
+    ui->searchEdit->selectAll(); // Select all text so user can immediately start typing
     
     // Only call itemActivated if there are items in the menu list
     if (ui->menuList->count() > 0) {
         on_menuList_itemActivated(ui->menuList->currentItem());
+    }
+    
+    // Set initial focus in menuList
+    if (ui->menuList->count() > 0) {
+        ui->menuList->setCurrentRow(0);
     }
 }
 
@@ -808,4 +829,226 @@ void StartWindow::focusOutEvent(QFocusEvent *)
         return;
 
     hide();
+}
+
+void StartWindow::keyPressEvent(QKeyEvent *event)
+{
+    // Handle Escape to close
+    if (event->key() == Qt::Key_Escape) {
+        hide();
+        event->accept();
+        return;
+    }
+    
+    // Handle Enter to activate current item
+    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+        if (m_focusInMenuList) {
+            // When in menuList, select the highlighted group
+            QListWidgetItem *item = ui->menuList->currentItem();
+            if (item && item->data(Qt::UserRole + 1).toString() != "separator") {
+                on_menuList_itemActivated(item);
+                // After selecting a group, move focus to itemsList
+                if (ui->itemsList->count() > 0) {
+                    m_focusInMenuList = false;
+                    ui->itemsList->setCurrentRow(0);
+                }
+            }
+        } else {
+            // When in itemsList, launch the application
+            QListWidgetItem *item = ui->itemsList->currentItem();
+            if (item) {
+                on_itemsList_itemActivated(item);
+            }
+        }
+        event->accept();
+        return;
+    }
+    
+    // Handle Left/Right arrows to navigate between menus/groups (within menuList)
+    if (event->key() == Qt::Key_Left || event->key() == Qt::Key_Right) {
+        if (m_focusInMenuList) {
+            // Navigate within menuList (between categories)
+            int currentRow = ui->menuList->currentRow();
+            int newRow = currentRow;
+            
+            if (event->key() == Qt::Key_Left) {
+                newRow = (currentRow > 0) ? currentRow - 1 : ui->menuList->count() - 1;
+            } else {
+                newRow = (currentRow < ui->menuList->count() - 1) ? currentRow + 1 : 0;
+            }
+            
+            // Skip separators
+            QListWidgetItem *item = ui->menuList->item(newRow);
+            int attempts = 0;
+            while (item && item->data(Qt::UserRole + 1).toString() == "separator" && attempts < ui->menuList->count()) {
+                if (event->key() == Qt::Key_Left) {
+                    newRow = (newRow > 0) ? newRow - 1 : ui->menuList->count() - 1;
+                } else {
+                    newRow = (newRow < ui->menuList->count() - 1) ? newRow + 1 : 0;
+                }
+                item = ui->menuList->item(newRow);
+                attempts++;
+            }
+            
+            // Set the new selection
+            ui->menuList->setCurrentRow(newRow);
+            
+            // Activate the selected item to show its contents (but keep focus in menuList)
+            QListWidgetItem *selectedItem = ui->menuList->currentItem();
+            if (selectedItem && selectedItem->data(Qt::UserRole + 1).toString() != "separator") {
+                on_menuList_itemActivated(selectedItem);
+                // Keep focus in menuList so user can continue navigating
+            }
+            
+            event->accept();
+            return;
+        } else {
+            // When in itemsList, Left arrow moves focus back to menuList
+            if (event->key() == Qt::Key_Left) {
+                m_focusInMenuList = true;
+                if (ui->menuList->count() > 0) {
+                    int currentRow = ui->menuList->currentRow();
+                    if (currentRow < 0) currentRow = 0;
+                    ui->menuList->setCurrentRow(currentRow);
+                    // Activate the current menu item to show its contents
+                    QListWidgetItem *item = ui->menuList->currentItem();
+                    if (item && item->data(Qt::UserRole + 1).toString() != "separator") {
+                        on_menuList_itemActivated(item);
+                    }
+                }
+                event->accept();
+                return;
+            }
+            // Right arrow in itemsList moves focus to menuList (for consistency)
+            if (event->key() == Qt::Key_Right) {
+                m_focusInMenuList = true;
+                if (ui->menuList->count() > 0) {
+                    int currentRow = ui->menuList->currentRow();
+                    if (currentRow < 0) currentRow = 0;
+                    ui->menuList->setCurrentRow(currentRow);
+                    // Activate the current menu item to show its contents
+                    QListWidgetItem *item = ui->menuList->currentItem();
+                    if (item && item->data(Qt::UserRole + 1).toString() != "separator") {
+                        on_menuList_itemActivated(item);
+                    }
+                }
+                event->accept();
+                return;
+            }
+        }
+    }
+    
+    // Handle Up/Down arrows for navigation within itemsList
+    if (event->key() == Qt::Key_Up || event->key() == Qt::Key_Down) {
+        if (!m_focusInMenuList) {
+            // Navigate within itemsList
+            int currentRow = ui->itemsList->currentRow();
+            int newRow = currentRow;
+            
+            if (event->key() == Qt::Key_Up) {
+                newRow = (currentRow > 0) ? currentRow - 1 : ui->itemsList->count() - 1;
+            } else {
+                newRow = (currentRow < ui->itemsList->count() - 1) ? currentRow + 1 : 0;
+            }
+            
+            ui->itemsList->setCurrentRow(newRow);
+            event->accept();
+            return;
+        } else {
+            // Up/Down in menuList also works (for vertical navigation)
+            int currentRow = ui->menuList->currentRow();
+            int newRow = currentRow;
+            
+            if (event->key() == Qt::Key_Up) {
+                newRow = (currentRow > 0) ? currentRow - 1 : ui->menuList->count() - 1;
+            } else {
+                newRow = (currentRow < ui->menuList->count() - 1) ? currentRow + 1 : 0;
+            }
+            
+            // Skip separators
+            QListWidgetItem *item = ui->menuList->item(newRow);
+            int attempts = 0;
+            while (item && item->data(Qt::UserRole + 1).toString() == "separator" && attempts < ui->menuList->count()) {
+                if (event->key() == Qt::Key_Up) {
+                    newRow = (newRow > 0) ? newRow - 1 : ui->menuList->count() - 1;
+                } else {
+                    newRow = (newRow < ui->menuList->count() - 1) ? newRow + 1 : 0;
+                }
+                item = ui->menuList->item(newRow);
+                attempts++;
+            }
+            
+            // Set the new selection
+            ui->menuList->setCurrentRow(newRow);
+            
+            // Activate the selected item to show its contents (but keep focus in menuList)
+            QListWidgetItem *selectedItem = ui->menuList->currentItem();
+            if (selectedItem && selectedItem->data(Qt::UserRole + 1).toString() != "separator") {
+                on_menuList_itemActivated(selectedItem);
+                // Keep focus in menuList so user can continue navigating
+            }
+            
+            event->accept();
+            return;
+        }
+    }
+    
+    // Let searchEdit handle text input
+    if (event->text().length() > 0 && !event->text().isEmpty() && 
+        !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
+        ui->searchEdit->setFocus();
+        ui->searchEdit->setText(ui->searchEdit->text() + event->text());
+        event->accept();
+        return;
+    }
+    
+    // Pass other keys to parent
+    QWidget::keyPressEvent(event);
+}
+
+bool StartWindow::eventFilter(QObject *obj, QEvent *event)
+{
+    // Intercept key events from searchEdit and handle navigation keys
+    if (obj == ui->searchEdit && event->type() == QEvent::KeyPress) {
+        QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
+        QLineEdit *searchEdit = ui->searchEdit;
+        
+        // For arrow keys, only intercept if:
+        // - Up/Down: always intercept (these don't make sense in a text field)
+        // - Left/Right: only intercept if cursor is at the boundary and would move beyond text
+        // - Or if the search box is empty
+        bool interceptArrow = false;
+        
+        if (keyEvent->key() == Qt::Key_Up || keyEvent->key() == Qt::Key_Down) {
+            interceptArrow = true;
+        } else if (keyEvent->key() == Qt::Key_Left || keyEvent->key() == Qt::Key_Right) {
+            QString text = searchEdit->text();
+            int cursorPos = searchEdit->cursorPosition();
+            
+            // Intercept if search box is empty
+            if (text.isEmpty()) {
+                interceptArrow = true;
+            }
+            // Intercept Left arrow if cursor is at the beginning
+            else if (keyEvent->key() == Qt::Key_Left && cursorPos == 0) {
+                interceptArrow = true;
+            }
+            // Intercept Right arrow if cursor is at the end
+            else if (keyEvent->key() == Qt::Key_Right && cursorPos == text.length()) {
+                interceptArrow = true;
+            }
+        }
+        
+        // Forward navigation keys to StartWindow's keyPressEvent
+        if (interceptArrow ||
+            keyEvent->key() == Qt::Key_Return ||
+            keyEvent->key() == Qt::Key_Enter ||
+            keyEvent->key() == Qt::Key_Escape) {
+            keyPressEvent(keyEvent);
+            return true; // Event handled
+        }
+    }
+    
+    // Let other events pass through (including double-click for text selection)
+    return QWidget::eventFilter(obj, event);
 }

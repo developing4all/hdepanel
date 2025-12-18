@@ -199,15 +199,15 @@ void StartApplet::clicked()
             break;
 
         case PanelWindow::Left:
-            // Right of panel, aligned to panel top
+            // Right of panel, aligned to start button y
             x = panelGeom.right() + 1;
-            y = panelGeom.top();
+            y = panelGeom.top() + m_position.y();
             break;
 
         case PanelWindow::Right:
-            // Left of panel, aligned to panel top (your case)
+            // Left of panel, aligned to start button y
             x = panelGeom.left() - menuW;
-            y = panelGeom.top();
+            y = panelGeom.top() + m_position.y();
             break;
     }
 

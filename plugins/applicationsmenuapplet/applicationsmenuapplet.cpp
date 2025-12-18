@@ -233,6 +233,9 @@ bool ApplicationsMenuApplet::init()
         connect(dataStore, &DesktopDataStore::desktopEntryAdded, this, &ApplicationsMenuApplet::onDataStoreApplicationAdded);
         connect(dataStore, &DesktopDataStore::desktopEntryUpdated, this, &ApplicationsMenuApplet::onDataStoreApplicationUpdated);
         connect(dataStore, &DesktopDataStore::desktopEntryRemoved, this, &ApplicationsMenuApplet::onDataStoreApplicationRemoved);
+
+        // Populate menu with existing entries
+        populateMenuFromDataStore();
     }
 
 
@@ -284,11 +287,40 @@ QSize ApplicationsMenuApplet::desiredSize()
 
 void ApplicationsMenuApplet::clicked()
 {
+    if (!m_panelWindow || !m_menu)
+        return;
+
     m_menuOpened = true;
     animateHighlight();
 
-    m_menu->move(localToScreen(QPoint(0, m_size.height())));
-    m_menu->exec();
+    const QRect panelGeom = m_panelWindow->geometry();
+    const PanelWindow::Position pos = m_panelWindow->position();
+    
+    QPoint menuPos;
+    
+    // For standard QMenu, we can just use exec(point)
+    // We calculate the point where the menu should sprout from
+    switch (pos) {
+        case PanelWindow::Top:
+            menuPos = localToScreen(QPoint(0, m_size.height()));
+            break;
+        case PanelWindow::Bottom:
+            // QMenu will automatically flip up if there's no space below, 
+            // but we'll give it the top-left of the button
+            menuPos = localToScreen(QPoint(0, 0));
+            break;
+        case PanelWindow::Left:
+            menuPos = localToScreen(QPoint(m_size.width(), 0));
+            break;
+        case PanelWindow::Right:
+            // We want it to the left of the panel
+            // Since we don't know the menu width yet, we'll use a point that 
+            // will likely trigger QMenu's internal "fit to screen" logic
+            menuPos = localToScreen(QPoint(0, 0));
+            break;
+    }
+
+    m_menu->exec(menuPos);
 
     m_menuOpened = false;
     animateHighlight();

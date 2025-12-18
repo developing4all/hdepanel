@@ -86,7 +86,8 @@ static const char* menuStyleSheet =
 
 StartWindow::StartWindow(QWidget *parent) :
     QWidget(parent),
-    ui(new Ui::StartWindow)
+    ui(new Ui::StartWindow),
+    m_initialized(false)
 {
     ui->setupUi(this);
     setWindowFlags(Qt::Widget | Qt::Popup);
@@ -432,11 +433,10 @@ void StartWindow::addMenuItems()
 bool StartWindow::init()
 {
     // Check if already initialized to prevent duplicate connections
-    static QSet<StartWindow*> initializedInstances;
-    if (initializedInstances.contains(this)) {
+    if (m_initialized) {
         return true;
     }
-    initializedInstances.insert(this);
+    m_initialized = true;
     
     // Connect to DesktopDataStore signals to get notified when applications are loaded
     // Note: Each StartWindow instance gets these signals, so each panel will update independently
@@ -445,6 +445,12 @@ bool StartWindow::init()
         connect(dataStore, SIGNAL(desktopEntryAdded(DesktopEntryData)), this, SLOT(onDesktopEntryAdded(DesktopEntryData)));
         connect(dataStore, SIGNAL(desktopEntryUpdated(DesktopEntryData)), this, SLOT(onDesktopEntryUpdated(DesktopEntryData)));
         connect(dataStore, SIGNAL(desktopEntryRemoved(QString)), this, SLOT(onDesktopEntryRemoved(QString)));
+
+        // Load existing entries if any are already available in the data store
+        QList<DesktopEntryData> entries = dataStore->getAllDesktopEntries();
+        for (const DesktopEntryData& entry : entries) {
+            onDesktopEntryAdded(entry);
+        }
     }
     
     // DesktopApplications signals are no longer needed since we use DesktopDataStore signals directly
@@ -467,6 +473,11 @@ bool StartWindow::init()
 
 void StartWindow::initAsync()
 {
+    if (m_initialized) {
+        return;
+    }
+    m_initialized = true;
+
     // Initialize the UI immediately without waiting for applications
     qDebug() << "StartWindow::initAsync: Initializing UI immediately";
     
@@ -492,6 +503,12 @@ void StartWindow::initAsync()
         connect(dataStore, SIGNAL(desktopEntryAdded(DesktopEntryData)), this, SLOT(onDesktopEntryAdded(DesktopEntryData)));
         connect(dataStore, SIGNAL(desktopEntryUpdated(DesktopEntryData)), this, SLOT(onDesktopEntryUpdated(DesktopEntryData)));
         connect(dataStore, SIGNAL(desktopEntryRemoved(QString)), this, SLOT(onDesktopEntryRemoved(QString)));
+
+        // Load existing entries if any are already available in the data store
+        QList<DesktopEntryData> entries = dataStore->getAllDesktopEntries();
+        for (const DesktopEntryData& entry : entries) {
+            onDesktopEntryAdded(entry);
+        }
     }
 
     qDebug() << "StartWindow::initAsync: Background application loading started";

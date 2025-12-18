@@ -110,6 +110,7 @@ private:
     QList<SubMenu> m_subMenus;
     QMap<QString, QAction*> m_actions;
     QPixmap m_profileImage;
+    bool m_initialized;
 };
 
 #endif // STARTWINDOW_H

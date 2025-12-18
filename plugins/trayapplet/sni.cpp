@@ -10,6 +10,24 @@
 #include <QImage>
 #include <QtEndian>
 #include <QPixmap>
+#include <QFile>
+#include <QDBusMetaType>
+
+QDBusArgument &operator<<(QDBusArgument &argument, const SniPixmap &pixmap)
+{
+    argument.beginStructure();
+    argument << pixmap.width << pixmap.height << pixmap.data;
+    argument.endStructure();
+    return argument;
+}
+
+const QDBusArgument &operator>>(const QDBusArgument &argument, SniPixmap &pixmap)
+{
+    argument.beginStructure();
+    argument >> pixmap.width >> pixmap.height >> pixmap.data;
+    argument.endStructure();
+    return argument;
+}
 
 static const char* SNI_WATCHER = "org.kde.StatusNotifierWatcher";
 static const char* SNI_ITEM_IFACE = "org.kde.StatusNotifierItem";
@@ -18,10 +36,16 @@ SniItemProxy::SniItemProxy(const QString &service, const QString &path, QObject 
     : QObject(parent), m_service(service), m_path(path)
 {
     m_id = service + path;
+    m_iface = new QDBusInterface(m_service, m_path, SNI_ITEM_IFACE, QDBusConnection::sessionBus(), this);
+    m_ifaceFd = new QDBusInterface(m_service, m_path, "org.freedesktop.StatusNotifierItem", QDBusConnection::sessionBus(), this);
     
     // Monitor property changes to update the icon/status dynamically
     QDBusConnection::sessionBus().connect(m_service, m_path, "org.freedesktop.DBus.Properties", "PropertiesChanged",
                                            this, SLOT(onPropertiesChanged(QString,QVariantMap,QStringList)));
+}
+
+SniItemProxy::~SniItemProxy()
+{
 }
 
 void SniItemProxy::onPropertiesChanged(const QString &iface, const QVariantMap &changedProps, const QStringList &invalidatedProps)
@@ -34,68 +58,100 @@ void SniItemProxy::onPropertiesChanged(const QString &iface, const QVariantMap &
 
 QIcon SniItemProxy::icon() const
 {
-    QDBusInterface iface(m_service, m_path, SNI_ITEM_IFACE, QDBusConnection::sessionBus());
-    
-    // Try IconName first
-    QString name = iface.property("IconName").toString();
-    QString themePath = iface.property("IconThemePath").toString();
+    if (!m_iface || !m_iface->isValid()) {
+        if (!m_ifaceFd || !m_ifaceFd->isValid()) {
+            return QIcon::fromTheme("image-missing");
+        }
+    }
 
-    if (!name.isEmpty()) {
+    QDBusInterface *iface = (m_iface && m_iface->isValid()) ? m_iface : m_ifaceFd;
+    QString ifaceName = (m_iface && m_iface->isValid()) ? SNI_ITEM_IFACE : "org.freedesktop.StatusNotifierItem";
+    
+    auto tryIcon = [&](const QString &propName) -> QIcon {
+        QVariant v = iface->property(propName.toUtf8().constData());
+        if (!v.isValid()) return QIcon();
+        QString name = v.toString();
+        if (name.isEmpty()) return QIcon();
+
+        // Check if it's an absolute path
+        if (name.startsWith('/') && QFile::exists(name)) {
+            return QIcon(name);
+        }
+
+        QString themePath = iface->property("IconThemePath").toString();
         if (!themePath.isEmpty()) {
-            // Some apps like kdeconnect use custom icons. Add to search path.
             QStringList paths = QIcon::themeSearchPaths();
             if (!paths.contains(themePath)) {
                 paths.prepend(themePath);
                 QIcon::setThemeSearchPaths(paths);
             }
         }
-        return QIcon::fromTheme(name);
-    }
+        
+        QIcon icon = QIcon::fromTheme(name);
+        if (!icon.isNull() && !icon.availableSizes().isEmpty()) {
+            return icon;
+        }
+        
+        return QIcon();
+    };
 
-    // Try AttentionIconName
-    name = iface.property("AttentionIconName").toString();
-    if (!name.isEmpty()) {
-        return QIcon::fromTheme(name);
-    }
+    // 1. Try IconName
+    QIcon icon = tryIcon("IconName");
+    if (!icon.isNull()) return icon;
 
-    // Try IconPixmap as a last resort
-    QVariant pixmapProp = iface.property("IconPixmap");
-    if (pixmapProp.isValid()) {
-        const QDBusArgument arg = pixmapProp.value<QDBusArgument>();
-        if (arg.currentType() == QDBusArgument::ArrayType) {
-            arg.beginArray();
-            QImage bestImg;
-            while (!arg.atEnd()) {
-                int w, h;
-                QByteArray data;
-                arg.beginStructure();
-                arg >> w >> h >> data;
-                arg.endStructure();
-                
-                if (w > 0 && h > 0 && data.size() == w * h * 4) {
-                    // The spec says ARGB32 in network byte order. 
-                    // In practice, this is often just the raw bytes.
-                    // We'll try to convert from the raw bytes.
-                    QImage img(w, h, QImage::Format_ARGB32);
-                    // Copy bytes and fix byte order if needed (ARGB32 is usually BGRA or similar depending on endianness)
-                    // But QImage::Format_ARGB32 is usually what's expected.
-                    for (int y = 0; y < h; ++y) {
-                        uint *dest = (uint*)img.scanLine(y);
-                        const uint *src = (const uint*)(data.constData() + y * w * 4);
-                        for (int x = 0; x < w; ++x) {
-                            // Swap network byte order (Big Endian) to Host Endian for ARGB
-                            dest[x] = qFromBigEndian(src[x]);
-                        }
+    // 2. Try AttentionIconName
+    icon = tryIcon("AttentionIconName");
+    if (!icon.isNull()) return icon;
+
+    // 3. Try IconPixmap using a low-level call to avoid the Qt5 "QDBusRawType" crash
+    QDBusMessage msg = QDBusMessage::createMethodCall(m_service, m_path, "org.freedesktop.DBus.Properties", "Get");
+    msg << ifaceName << "IconPixmap";
+    
+    QDBusReply<QVariant> reply = QDBusConnection::sessionBus().call(msg);
+    if (reply.isValid()) {
+        QVariant pixmapProp = reply.value();
+        if (pixmapProp.isValid()) {
+            SniPixmapList pixmaps;
+            if (pixmapProp.canConvert<SniPixmapList>()) {
+                pixmaps = qvariant_cast<SniPixmapList>(pixmapProp);
+            } else if (pixmapProp.userType() == qMetaTypeId<QDBusArgument>()) {
+                const QDBusArgument &arg = pixmapProp.value<QDBusArgument>();
+                if (arg.currentType() == QDBusArgument::ArrayType) {
+                    arg.beginArray();
+                    while (!arg.atEnd()) {
+                        SniPixmap p;
+                        arg >> p;
+                        pixmaps.append(p);
                     }
-                    
-                    if (bestImg.isNull() || (w >= 24 && w < bestImg.width())) {
-                        bestImg = img;
-                    }
+                    arg.endArray();
                 }
             }
-            arg.endArray();
-            if (!bestImg.isNull()) {
-                return QIcon(QPixmap::fromImage(bestImg));
+
+            if (!pixmaps.isEmpty()) {
+                QImage bestImg;
+                for (const SniPixmap &sniPix : pixmaps) {
+                    int w = sniPix.width;
+                    int h = sniPix.height;
+                    const QByteArray &data = sniPix.data;
+                    
+                    if (w > 0 && h > 0 && data.size() == w * h * 4) {
+                        QImage img(w, h, QImage::Format_ARGB32);
+                        for (int y = 0; y < h; ++y) {
+                            uint *dest = (uint*)img.scanLine(y);
+                            const uint *src = (const uint*)(data.constData() + y * w * 4);
+                            for (int x = 0; x < w; ++x) {
+                                dest[x] = qFromBigEndian(src[x]);
+                            }
+                        }
+                        
+                        if (bestImg.isNull() || (w >= 24 && w < bestImg.width())) {
+                            bestImg = img;
+                        }
+                    }
+                }
+                if (!bestImg.isNull()) {
+                    return QIcon(QPixmap::fromImage(bestImg));
+                }
             }
         }
     }
@@ -106,32 +162,42 @@ QIcon SniItemProxy::icon() const
 void SniItemProxy::activate(int x, int y)
 {
     qDebug() << "SniItemProxy::activate - service:" << m_service << "path:" << m_path << "x:" << x << "y:" << y;
-    QDBusMessage msg = QDBusMessage::createMethodCall(m_service, m_path, SNI_ITEM_IFACE, "Activate");
-    msg << x << y;
-    QDBusConnection::sessionBus().call(msg, QDBus::NoBlock);
-    
-    // Also try org.freedesktop.StatusNotifierItem as a fallback
-    QDBusMessage msg2 = QDBusMessage::createMethodCall(m_service, m_path, "org.freedesktop.StatusNotifierItem", "Activate");
-    msg2 << x << y;
-    QDBusConnection::sessionBus().call(msg2, QDBus::NoBlock);
+    if (m_iface && m_iface->isValid()) {
+        m_iface->call(QDBus::NoBlock, "Activate", x, y);
+    }
+    if (m_ifaceFd && m_ifaceFd->isValid()) {
+        m_ifaceFd->call(QDBus::NoBlock, "Activate", x, y);
+    }
+}
+
+void SniItemProxy::secondaryActivate(int x, int y)
+{
+    qDebug() << "SniItemProxy::secondaryActivate - service:" << m_service << "path:" << m_path << "x:" << x << "y:" << y;
+    if (m_iface && m_iface->isValid()) {
+        m_iface->call(QDBus::NoBlock, "SecondaryActivate", x, y);
+    }
+    if (m_ifaceFd && m_ifaceFd->isValid()) {
+        m_ifaceFd->call(QDBus::NoBlock, "SecondaryActivate", x, y);
+    }
 }
 
 void SniItemProxy::contextMenu(int x, int y)
 {
     qDebug() << "SniItemProxy::contextMenu - service:" << m_service << "path:" << m_path << "x:" << x << "y:" << y;
-    QDBusMessage msg = QDBusMessage::createMethodCall(m_service, m_path, SNI_ITEM_IFACE, "ContextMenu");
-    msg << x << y;
-    QDBusConnection::sessionBus().call(msg, QDBus::NoBlock);
-
-    // Also try org.freedesktop.StatusNotifierItem as a fallback
-    QDBusMessage msg2 = QDBusMessage::createMethodCall(m_service, m_path, "org.freedesktop.StatusNotifierItem", "ContextMenu");
-    msg2 << x << y;
-    QDBusConnection::sessionBus().call(msg2, QDBus::NoBlock);
+    if (m_iface && m_iface->isValid()) {
+        m_iface->call(QDBus::NoBlock, "ContextMenu", x, y);
+    }
+    if (m_ifaceFd && m_ifaceFd->isValid()) {
+        m_ifaceFd->call(QDBus::NoBlock, "ContextMenu", x, y);
+    }
 }
 
 SniWatcher::SniWatcher(QObject *parent)
     : QObject(parent), m_bus(QDBusConnection::sessionBus())
 {
+    qDBusRegisterMetaType<SniPixmap>();
+    qDBusRegisterMetaType<SniPixmapList>();
+    
     registerWatcher();
     // Listen for items registering via DBus service owner changes under org.kde.StatusNotifierItem.*
     m_bus.connect(QString(), QString(), "org.freedesktop.DBus", "NameOwnerChanged",

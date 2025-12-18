@@ -39,6 +39,7 @@
 #include "dpisupport.h"
 #include "sni.h"
 #include <QTimer>
+#include <QDBusMetaType>
 
 TrayItem::TrayItem(TrayApplet* trayApplet, unsigned long window)
 	: m_trayApplet(trayApplet), m_window(window)
@@ -138,11 +139,11 @@ SniTrayItem::SniTrayItem(TrayApplet* trayApplet, SniItemProxy* sniItem)
 {
 	setParentItem(m_trayApplet);
 	m_trayApplet->registerSniTrayItem(this);
-	
+	m_size = QSize(m_trayApplet->iconSize(), m_trayApplet->iconSize());
+
 	if (m_sniItem) {
-		connect(m_sniItem, &SniItemProxy::changed, this, [this](){
-			update();
-		});
+		connect(m_sniItem, &SniItemProxy::changed, this, &SniTrayItem::updateIcon);
+		updateIcon();
 	}
 }
 
@@ -152,6 +153,14 @@ SniTrayItem::~SniTrayItem()
 	if (m_trayApplet && !m_trayApplet->isDestroying()) {
 		m_trayApplet->unregisterSniTrayItem(this);
 	}
+}
+
+void SniTrayItem::updateIcon()
+{
+	if (m_sniItem) {
+		m_cachedIcon = m_sniItem->icon();
+	}
+	update();
 }
 
 void SniTrayItem::setPosition(const QPoint& position)
@@ -177,9 +186,8 @@ void SniTrayItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* optio
 
 	// Icon itself.
 	if (m_sniItem) {
-		QIcon icon = m_sniItem->icon();
-		if (!icon.isNull()) {
-			QPixmap pix = icon.pixmap(m_trayApplet->iconSize(), m_trayApplet->iconSize());
+		if (!m_cachedIcon.isNull()) {
+			QPixmap pix = m_cachedIcon.pixmap(m_trayApplet->iconSize(), m_trayApplet->iconSize());
 			if (!pix.isNull()) {
                 // Background - only if icon exists.
                 painter->setPen(Qt::NoPen);
@@ -208,6 +216,8 @@ void SniTrayItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
         m_sniItem->activate(globalPos.x(), globalPos.y());
     } else if (event->button() == Qt::RightButton) {
         m_sniItem->contextMenu(globalPos.x(), globalPos.y());
+    } else if (event->button() == Qt::MiddleButton) {
+        m_sniItem->secondaryActivate(globalPos.x(), globalPos.y());
 	}
     event->accept();
 }
@@ -215,6 +225,9 @@ void SniTrayItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
 TrayApplet::TrayApplet(PanelWindow* panelWindow)
 	: Applet(panelWindow), m_initialized(false), m_iconSize(adjustHardcodedPixelSize(24)), m_spacing(adjustHardcodedPixelSize(4))
 {
+    qDBusRegisterMetaType<SniPixmap>();
+    qDBusRegisterMetaType<SniPixmapList>();
+
     setObjectName("Tray");
     // Initialize SNI watcher on both X11 and Wayland
     // Many modern applications (like Unity Hub) use SNI even on X11

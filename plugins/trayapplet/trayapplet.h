@@ -30,6 +30,7 @@
 
 #include <QtCore/QVector>
 #include <QtCore/QSize>
+#include <QtGui/QIcon>
 #include "applet.h"
 
 class TrayApplet;
@@ -81,10 +82,14 @@ public:
 		return m_sniItem;
 	}
 
+private slots:
+	void updateIcon();
+
 private:
 	QSize m_size;
 	TrayApplet* m_trayApplet;
 	SniItemProxy* m_sniItem;
+	QIcon m_cachedIcon;
 };
 
 class TrayApplet: public Applet

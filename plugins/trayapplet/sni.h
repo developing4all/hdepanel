@@ -9,14 +9,34 @@
 #include <QDBusObjectPath>
 #include <QIcon>
 #include <QMap>
+#include <QDBusArgument>
+
+struct SniPixmap {
+    int width;
+    int height;
+    QByteArray data;
+};
+Q_DECLARE_METATYPE(SniPixmap)
+
+typedef QList<SniPixmap> SniPixmapList;
+Q_DECLARE_METATYPE(SniPixmapList)
+
+QDBusArgument &operator<<(QDBusArgument &argument, const SniPixmap &pixmap);
+const QDBusArgument &operator>>(const QDBusArgument &argument, SniPixmap &pixmap);
 
 class SniItemProxy : public QObject {
     Q_OBJECT
 public:
     explicit SniItemProxy(const QString &service, const QString &path, QObject *parent = nullptr);
+    ~SniItemProxy();
+
     QString id() const { return m_id; }
+    QString service() const { return m_service; }
+    QString path() const { return m_path; }
+
     QIcon icon() const;
     void activate(int x, int y);
+    void secondaryActivate(int x, int y);
     void contextMenu(int x, int y);
 
 signals:
@@ -29,6 +49,8 @@ private:
     QString m_service;
     QString m_path;
     QString m_id;
+    class QDBusInterface* m_iface;
+    class QDBusInterface* m_ifaceFd;
 };
 
 class SniWatcher : public QObject {

@@ -213,9 +213,15 @@ void SniTrayItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
     QPoint globalPos = event->screenPos();
     qDebug() << "SniTrayItem::mousePressEvent - button:" << event->button() << "pos:" << globalPos;
     if (event->button() == Qt::LeftButton) {
-        m_sniItem->activate(globalPos.x(), globalPos.y());
+        // Many Ayatana/indicator items only expose a DBusMenu; show it on left-click if available.
+        if (!(m_sniItem->hasMenu() && m_sniItem->popupMenu(globalPos.x(), globalPos.y()))) {
+            m_sniItem->activate(globalPos.x(), globalPos.y());
+        }
     } else if (event->button() == Qt::RightButton) {
-        m_sniItem->contextMenu(globalPos.x(), globalPos.y());
+        // Prefer DBusMenu if exported; otherwise fall back to the SNI ContextMenu call.
+        if (!(m_sniItem->hasMenu() && m_sniItem->popupMenu(globalPos.x(), globalPos.y()))) {
+            m_sniItem->contextMenu(globalPos.x(), globalPos.y());
+        }
     } else if (event->button() == Qt::MiddleButton) {
         m_sniItem->secondaryActivate(globalPos.x(), globalPos.y());
 	}

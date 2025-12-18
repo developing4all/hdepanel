@@ -14,12 +14,14 @@ INCLUDEPATH    += ../../lib/
 HEADERS += \
     trayapplet.h \
     ../../lib/applet.h \
-    sni.h
+    sni.h \
+    dbusmenu.h
 
 
 SOURCES += \
     trayapplet.cpp \
-    sni.cpp
+    sni.cpp \
+    dbusmenu.cpp
 
 TRANSLATIONS += \
     translations/trayapplet_ar.ts \

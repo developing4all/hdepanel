@@ -7,6 +7,7 @@
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusObjectPath>
+#include <QDBusContext>
 #include <QIcon>
 #include <QMap>
 #include <QDBusArgument>
@@ -38,6 +39,8 @@ public:
     void activate(int x, int y);
     void secondaryActivate(int x, int y);
     void contextMenu(int x, int y);
+    bool hasMenu() const;
+    bool popupMenu(int x, int y) const;
 
 signals:
     void changed();
@@ -53,7 +56,7 @@ private:
     class QDBusInterface* m_ifaceFd;
 };
 
-class SniWatcher : public QObject {
+class SniWatcher : public QObject, protected QDBusContext {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.kde.StatusNotifierWatcher")
     Q_PROPERTY(QStringList RegisteredStatusNotifierItems READ registeredItems)

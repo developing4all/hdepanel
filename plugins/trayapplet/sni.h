@@ -22,6 +22,9 @@ public:
 signals:
     void changed();
 
+private slots:
+    void onPropertiesChanged(const QString &iface, const QVariantMap &changedProps, const QStringList &invalidatedProps);
+
 private:
     QString m_service;
     QString m_path;
@@ -32,18 +35,26 @@ class SniWatcher : public QObject {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.kde.StatusNotifierWatcher")
     Q_PROPERTY(QStringList RegisteredStatusNotifierItems READ registeredItems)
+    Q_PROPERTY(bool IsStatusNotifierHostRegistered READ isHostRegistered)
+    Q_PROPERTY(int ProtocolVersion READ protocolVersion)
 public:
     explicit SniWatcher(QObject *parent = nullptr);
     const QMap<QString, SniItemProxy*> &items() const { return m_items; }
     QStringList registeredItems() const;
+    bool isHostRegistered() const { return true; }
+    int protocolVersion() const { return 0; }
 
 signals:
     void itemAdded(SniItemProxy* item);
     void itemRemoved(const QString &id);
+    void StatusNotifierItemRegistered(const QString &service);
+    void StatusNotifierItemUnregistered(const QString &service);
+    void StatusNotifierHostRegistered();
 
 public slots:
     // DBus method called by applications to register their tray icon
     void RegisterStatusNotifierItem(const QString &service);
+    void RegisterStatusNotifierHost(const QString &service);
 
 private slots:
     void onServiceOwnerChanged(const QString &name, const QString &oldOwner, const QString &newOwner);

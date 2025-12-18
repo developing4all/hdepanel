@@ -7,6 +7,9 @@
 #include <QTimer>
 #include <QDebug>
 #include <QStringList>
+#include <QImage>
+#include <QtEndian>
+#include <QPixmap>
 
 static const char* SNI_WATCHER = "org.kde.StatusNotifierWatcher";
 static const char* SNI_ITEM_IFACE = "org.kde.StatusNotifierItem";
@@ -15,31 +18,115 @@ SniItemProxy::SniItemProxy(const QString &service, const QString &path, QObject 
     : QObject(parent), m_service(service), m_path(path)
 {
     m_id = service + path;
+    
+    // Monitor property changes to update the icon/status dynamically
+    QDBusConnection::sessionBus().connect(m_service, m_path, "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                                           this, SLOT(onPropertiesChanged(QString,QVariantMap,QStringList)));
+}
+
+void SniItemProxy::onPropertiesChanged(const QString &iface, const QVariantMap &changedProps, const QStringList &invalidatedProps)
+{
+    Q_UNUSED(iface)
+    Q_UNUSED(changedProps)
+    Q_UNUSED(invalidatedProps)
+    emit changed();
 }
 
 QIcon SniItemProxy::icon() const
 {
     QDBusInterface iface(m_service, m_path, SNI_ITEM_IFACE, QDBusConnection::sessionBus());
     
-    // Try IconName first (simpler, doesn't require complex type registration)
+    // Try IconName first
     QString name = iface.property("IconName").toString();
+    QString themePath = iface.property("IconThemePath").toString();
+
+    if (!name.isEmpty()) {
+        if (!themePath.isEmpty()) {
+            // Some apps like kdeconnect use custom icons. Add to search path.
+            QStringList paths = QIcon::themeSearchPaths();
+            if (!paths.contains(themePath)) {
+                paths.prepend(themePath);
+                QIcon::setThemeSearchPaths(paths);
+            }
+        }
+        return QIcon::fromTheme(name);
+    }
+
+    // Try AttentionIconName
+    name = iface.property("AttentionIconName").toString();
     if (!name.isEmpty()) {
         return QIcon::fromTheme(name);
     }
 
-    return QIcon();
+    // Try IconPixmap as a last resort
+    QVariant pixmapProp = iface.property("IconPixmap");
+    if (pixmapProp.isValid()) {
+        const QDBusArgument arg = pixmapProp.value<QDBusArgument>();
+        if (arg.currentType() == QDBusArgument::ArrayType) {
+            arg.beginArray();
+            QImage bestImg;
+            while (!arg.atEnd()) {
+                int w, h;
+                QByteArray data;
+                arg.beginStructure();
+                arg >> w >> h >> data;
+                arg.endStructure();
+                
+                if (w > 0 && h > 0 && data.size() == w * h * 4) {
+                    // The spec says ARGB32 in network byte order. 
+                    // In practice, this is often just the raw bytes.
+                    // We'll try to convert from the raw bytes.
+                    QImage img(w, h, QImage::Format_ARGB32);
+                    // Copy bytes and fix byte order if needed (ARGB32 is usually BGRA or similar depending on endianness)
+                    // But QImage::Format_ARGB32 is usually what's expected.
+                    for (int y = 0; y < h; ++y) {
+                        uint *dest = (uint*)img.scanLine(y);
+                        const uint *src = (const uint*)(data.constData() + y * w * 4);
+                        for (int x = 0; x < w; ++x) {
+                            // Swap network byte order (Big Endian) to Host Endian for ARGB
+                            dest[x] = qFromBigEndian(src[x]);
+                        }
+                    }
+                    
+                    if (bestImg.isNull() || (w >= 24 && w < bestImg.width())) {
+                        bestImg = img;
+                    }
+                }
+            }
+            arg.endArray();
+            if (!bestImg.isNull()) {
+                return QIcon(QPixmap::fromImage(bestImg));
+            }
+        }
+    }
+
+    return QIcon::fromTheme("image-missing");
 }
 
 void SniItemProxy::activate(int x, int y)
 {
-    QDBusInterface iface(m_service, m_path, SNI_ITEM_IFACE, QDBusConnection::sessionBus());
-    iface.call("Activate", x, y);
+    qDebug() << "SniItemProxy::activate - service:" << m_service << "path:" << m_path << "x:" << x << "y:" << y;
+    QDBusMessage msg = QDBusMessage::createMethodCall(m_service, m_path, SNI_ITEM_IFACE, "Activate");
+    msg << x << y;
+    QDBusConnection::sessionBus().call(msg, QDBus::NoBlock);
+    
+    // Also try org.freedesktop.StatusNotifierItem as a fallback
+    QDBusMessage msg2 = QDBusMessage::createMethodCall(m_service, m_path, "org.freedesktop.StatusNotifierItem", "Activate");
+    msg2 << x << y;
+    QDBusConnection::sessionBus().call(msg2, QDBus::NoBlock);
 }
 
 void SniItemProxy::contextMenu(int x, int y)
 {
-    QDBusInterface iface(m_service, m_path, SNI_ITEM_IFACE, QDBusConnection::sessionBus());
-    iface.call("ContextMenu", x, y);
+    qDebug() << "SniItemProxy::contextMenu - service:" << m_service << "path:" << m_path << "x:" << x << "y:" << y;
+    QDBusMessage msg = QDBusMessage::createMethodCall(m_service, m_path, SNI_ITEM_IFACE, "ContextMenu");
+    msg << x << y;
+    QDBusConnection::sessionBus().call(msg, QDBus::NoBlock);
+
+    // Also try org.freedesktop.StatusNotifierItem as a fallback
+    QDBusMessage msg2 = QDBusMessage::createMethodCall(m_service, m_path, "org.freedesktop.StatusNotifierItem", "ContextMenu");
+    msg2 << x << y;
+    QDBusConnection::sessionBus().call(msg2, QDBus::NoBlock);
 }
 
 SniWatcher::SniWatcher(QObject *parent)
@@ -53,17 +140,18 @@ SniWatcher::SniWatcher(QObject *parent)
 
 void SniWatcher::registerWatcher()
 {
+    // Register the object first so it's available as soon as the service is registered
+    if (!m_bus.registerObject("/StatusNotifierWatcher", "org.kde.StatusNotifierWatcher", this,
+                         QDBusConnection::ExportAllSlots | QDBusConnection::ExportAllProperties)) {
+        qDebug() << "Failed to register SNI watcher object";
+    }
+
     // Announce as SNI watcher to encourage apps to register
     if (!m_bus.registerService(SNI_WATCHER)) {
         qDebug() << "Failed to register SNI watcher service, another watcher may be active";
     }
-    if (!m_bus.registerObject("/StatusNotifierWatcher", this,
-                         QDBusConnection::ExportScriptableSlots | QDBusConnection::ExportScriptableProperties)) {
-        qDebug() << "Failed to register SNI watcher object";
-    }
-    
+
     // Query for existing items that may have registered before we started
-    // Only query once after a short delay to let applications register
     QTimer::singleShot(500, this, &SniWatcher::queryExistingItems);
     QTimer::singleShot(1000, this, &SniWatcher::queryRegisteredItems);
 }
@@ -81,9 +169,16 @@ void SniWatcher::removeItem(const QString &id)
 {
     auto it = m_items.find(id);
     if (it == m_items.end()) return;
+    
+    // id is service + path. Extract service name if possible for the signal.
+    // However, the signal usually wants the same string that was used for registration.
+    // For now, we use the ID as a proxy or just the service part.
+    QString service = it.value()->id(); 
+    
     SniItemProxy* item = it.value();
     m_items.erase(it);
     emit itemRemoved(id);
+    emit StatusNotifierItemUnregistered(id);
     item->deleteLater();
 }
 
@@ -99,6 +194,7 @@ void SniWatcher::RegisterStatusNotifierItem(const QString &service)
     // Add to registered services list
     if (!m_registeredServices.contains(service)) {
         m_registeredServices.append(service);
+        emit StatusNotifierItemRegistered(service);
     }
     
     // Extract service name and path from the service string
@@ -141,6 +237,12 @@ void SniWatcher::RegisterStatusNotifierItem(const QString &service)
     
     qDebug() << "Adding SNI item - service:" << serviceName << "path:" << path;
     addItem(serviceName, path);
+}
+
+void SniWatcher::RegisterStatusNotifierHost(const QString &service)
+{
+    qDebug() << "RegisterStatusNotifierHost called with service:" << service;
+    emit StatusNotifierHostRegistered();
 }
 
 void SniWatcher::queryRegisteredItems()
@@ -262,8 +364,9 @@ void SniWatcher::queryExistingItems()
         QStringList services = reply.value();
         for (const QString &service : services) {
             // Only check services that explicitly have StatusNotifierItem in the name
+            // or known services that use SNI (like kdeconnect)
             // and are not system services
-            if (service.contains("StatusNotifierItem") && !isSystemService(service)) {
+            if ((service.contains("StatusNotifierItem") || service.startsWith("org.kde.kdeconnect")) && !isSystemService(service)) {
                 QDBusInterface iface(service, "/StatusNotifierItem", SNI_ITEM_IFACE, m_bus);
                 if (iface.isValid() && hasTrayIconProperties(service, "/StatusNotifierItem", m_bus)) {
                     QString key = service + "/StatusNotifierItem";
@@ -280,16 +383,28 @@ void SniWatcher::queryExistingItems()
 void SniWatcher::onServiceOwnerChanged(const QString &name, const QString &oldOwner, const QString &newOwner)
 {
     Q_UNUSED(oldOwner)
-    // Items usually register under names like org.kde.StatusNotifierItem-... or app-specific unique names
-    if (name.startsWith("org.kde.StatusNotifierItem") || name.contains("StatusNotifierItem")) {
+    
+    // KDE Connect usually registers with a unique name and then calls RegisterStatusNotifierItem.
+    // However, some apps just own a name. Let's be more liberal in probing.
+    
+    if (name.startsWith("org.kde.StatusNotifierItem") || 
+        name.contains("StatusNotifierItem") ||
+        name.startsWith("org.kde.kdeconnect")) {
+        
         if (!newOwner.isEmpty()) {
-            // Probe the item for ObjectPath property to determine menu/icon path
+            // Probe for the standard path
             QDBusInterface iface(name, "/StatusNotifierItem", SNI_ITEM_IFACE, QDBusConnection::sessionBus());
             if (iface.isValid()) {
                 addItem(name, "/StatusNotifierItem");
             }
         } else {
-            removeItem(name + "/StatusNotifierItem");
+            // Check all items for this service and remove them
+            QStringList keys = m_items.keys();
+            for (const QString &key : keys) {
+                if (key.startsWith(name)) {
+                    removeItem(key);
+                }
+            }
         }
     }
 }

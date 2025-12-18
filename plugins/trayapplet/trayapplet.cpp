@@ -113,13 +113,13 @@ void TrayItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     QPixmap pix = X11Support::getWindowPixmap(m_window);
     if (!pix.isNull()) {
         // Background - only if icon exists.
-        painter->setPen(Qt::NoPen);
-        QPointF center(m_size.width()/2.0, m_size.height()/2.0);
-        QRadialGradient gradient(center, m_size.width()/2.0, center);
-        gradient.setColorAt(0.0, QColor(255, 255, 255, 80));
-        gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
-        painter->setBrush(QBrush(gradient));
-        painter->drawRect(boundingRect());
+	painter->setPen(Qt::NoPen);
+	QPointF center(m_size.width()/2.0, m_size.height()/2.0);
+	QRadialGradient gradient(center, m_size.width()/2.0, center);
+	gradient.setColorAt(0.0, QColor(255, 255, 255, 80));
+	gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
+	painter->setBrush(QBrush(gradient));
+	painter->drawRect(boundingRect());
 
         // Center the icon using its actual size
         int iconX = m_size.width()/2 - pix.width()/2;
@@ -138,6 +138,12 @@ SniTrayItem::SniTrayItem(TrayApplet* trayApplet, SniItemProxy* sniItem)
 {
 	setParentItem(m_trayApplet);
 	m_trayApplet->registerSniTrayItem(this);
+	
+	if (m_sniItem) {
+		connect(m_sniItem, &SniItemProxy::changed, this, [this](){
+			update();
+		});
+	}
 }
 
 SniTrayItem::~SniTrayItem()
@@ -197,11 +203,13 @@ void SniTrayItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
 {
     if (!m_sniItem) return;
     QPoint globalPos = event->screenPos();
+    qDebug() << "SniTrayItem::mousePressEvent - button:" << event->button() << "pos:" << globalPos;
     if (event->button() == Qt::LeftButton) {
         m_sniItem->activate(globalPos.x(), globalPos.y());
     } else if (event->button() == Qt::RightButton) {
         m_sniItem->contextMenu(globalPos.x(), globalPos.y());
-    }
+	}
+    event->accept();
 }
 
 TrayApplet::TrayApplet(PanelWindow* panelWindow)
@@ -239,6 +247,16 @@ TrayApplet::TrayApplet(PanelWindow* panelWindow)
 			new SniTrayItem(this, it.value());
 		}
 	}
+	
+	// Register as StatusNotifierHost. This is required by some applications (like KDE apps)
+	// before they will show their icons.
+    // Use a small delay to ensure SniWatcher is fully registered
+    QTimer::singleShot(100, this, [this]() {
+        QDBusMessage msg = QDBusMessage::createMethodCall("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher", 
+                                                          "org.kde.StatusNotifierWatcher", "RegisterStatusNotifierHost");
+        msg << "hdepanel";
+        QDBusConnection::sessionBus().call(msg);
+    });
 }
 
 TrayApplet::~TrayApplet()

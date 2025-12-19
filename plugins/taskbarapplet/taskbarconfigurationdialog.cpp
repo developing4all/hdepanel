@@ -14,6 +14,7 @@ TaskBarConfigurationDialog::TaskBarConfigurationDialog(QString id, QWidget *pare
     this->ui->only_current_screen->setChecked(Settings::value(m_id, "only_current_screen", false).toBool());
     this->ui->only_current_desktop->setChecked(Settings::value(m_id, "only_current_desktop", true).toBool());
     this->ui->only_minimized->setChecked(Settings::value(m_id, "only_minimized", false).toBool());
+    this->ui->group_windows->setChecked(Settings::value(m_id, "group_windows", false).toBool());
 
     // Load color settings
     QColor buttonColor = Settings::value(m_id, "buttonColor", QColor(255, 255, 255)).value<QColor>();
@@ -38,9 +39,9 @@ TaskBarConfigurationDialog::TaskBarConfigurationDialog(QString id, QWidget *pare
     connect(ui->buttonColorButton, &QPushButton::clicked, this, &TaskBarConfigurationDialog::on_buttonColorButton_clicked);
     connect(ui->focusColorButton, &QPushButton::clicked, this, &TaskBarConfigurationDialog::on_focusColorButton_clicked);
     connect(ui->buttonColorTransparency, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &TaskBarConfigurationDialog::on_buttonColorTransparency_changed);
+            this, &TaskBarConfigurationDialog::buttonColorTransparency_changed);
     connect(ui->focusColorTransparency, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &TaskBarConfigurationDialog::on_focusColorTransparency_changed);
+            this, &TaskBarConfigurationDialog::focusColorTransparency_changed);
 }
 
 TaskBarConfigurationDialog::~TaskBarConfigurationDialog()
@@ -53,6 +54,7 @@ void TaskBarConfigurationDialog::on_buttonBox_accepted()
     Settings::setValue(m_id, "only_current_screen", ui->only_current_screen->isChecked());
     Settings::setValue(m_id, "only_current_desktop", ui->only_current_desktop->isChecked());
     Settings::setValue(m_id, "only_minimized", ui->only_minimized->isChecked());
+    Settings::setValue(m_id, "group_windows", ui->group_windows->isChecked());
     
     // Save color settings
     QColor buttonColor = Settings::value(m_id, "buttonColor", QColor(255, 255, 255)).value<QColor>();
@@ -84,12 +86,12 @@ void TaskBarConfigurationDialog::on_focusColorButton_clicked()
     }
 }
 
-void TaskBarConfigurationDialog::on_buttonColorTransparency_changed(int value)
+void TaskBarConfigurationDialog::buttonColorTransparency_changed(int value)
 {
     Settings::setValue(m_id, "buttonColorTransparency", value);
 }
 
-void TaskBarConfigurationDialog::on_focusColorTransparency_changed(int value)
+void TaskBarConfigurationDialog::focusColorTransparency_changed(int value)
 {
     Settings::setValue(m_id, "focusColorTransparency", value);
 }

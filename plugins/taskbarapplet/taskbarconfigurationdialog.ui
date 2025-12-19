@@ -47,6 +47,16 @@
         </property>
        </widget>
       </item>
+      <item>
+       <widget class="QCheckBox" name="group_windows">
+        <property name="text">
+         <string>Group windows of the same application</string>
+        </property>
+        <property name="checked">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>

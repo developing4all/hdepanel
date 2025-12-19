@@ -89,6 +89,7 @@ public:
     static void getAllWindowsRecursive(void* dpy, unsigned long window, QVector<unsigned long>& windows);
 	static QString getWindowPropertyUTF8String(unsigned long window, const QString& name);
 	static QString getWindowPropertyLatin1String(unsigned long window, const QString& name);
+	static QString getWindowWMClass(unsigned long window); // Returns the class part of WM_CLASS
 	static QString getWindowName(unsigned long window);
 	static QIcon getWindowIcon(unsigned long window);
     static bool getWindowMinimizedState(unsigned long window);

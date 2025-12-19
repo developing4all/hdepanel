@@ -74,6 +74,11 @@ public:
 	
 	// Check if applet is being destroyed
 	bool isDestroying() const { return m_destroying; }
+	
+	// Pinned items management
+	QStringList getPinnedItems() const;
+	void setPinnedItems(const QStringList& items);
+	void savePinnedItems();
 
 public slots:
     void fontChanged();
@@ -95,9 +100,13 @@ private:
     void updateWaylandClientList(const QList<WaylandWindow>& windows);
     void updateX11ClientList();
     void updateActiveWindow();
-    void readSettings();
+    bool readSettings(); // Returns true if grouping setting changed
+	void regroupWindows();
     void deduplicateTaskBarItems();
+    void loadPinnedItems();
+    void matchClientsToPinnedItems();
     TaskBarItem* createTaskBarItem(const QString& name, const QIcon& icon, const QString& objectName = QString());
+    TaskBarItem* findOrCreatePinnedItem(const QString& desktopFile);
 
 	QMap<unsigned long, Client*> m_clients;
 	QMap<void*, WaylandClient*> m_waylandClients;
@@ -108,6 +117,7 @@ private:
     bool m_only_minimized;
     bool m_only_current_screen;
     bool m_only_current_desktop;
+    bool m_group_windows;
     bool m_initialized;
     bool m_destroying;
     WaylandSupport* m_waylandSupport;

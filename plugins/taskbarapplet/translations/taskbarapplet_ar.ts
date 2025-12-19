@@ -37,6 +37,11 @@
         <translation>المصغرة فقط</translation>
     </message>
     <message>
+        <location filename="../taskbarconfigurationdialog.ui" line="52"/>
+        <source>Group windows of the same application</source>
+        <translation>تجميع نوافذ نفس التطبيق</translation>
+    </message>
+    <message>
         <location filename="../taskbarconfigurationdialog.ui" line="56"/>
         <source>Taskbar Colors</source>
         <translation>ألوان شريط المهام</translation>

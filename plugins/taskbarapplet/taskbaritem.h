@@ -66,6 +66,10 @@ public:
 	void setIcon(const QIcon& icon);
 	QString text() const;
 	bool shouldDelete() const { return m_shouldDelete; }
+	void setDesktopFile(const QString& desktopFile);
+	QString desktopFile() const { return m_desktopFile; }
+	bool isPinned() const { return !m_desktopFile.isEmpty(); }
+	void launchApplication();
 
 	void setTargetPosition(const QPoint& targetPosition);
 	void setTargetSize(const QSize& targetSize);
@@ -86,6 +90,8 @@ public slots:
 	void animate();
 	void close();
     void fontChanged();
+	void addToFavorites();
+	void removeFromPinned();
 
 protected:
 	void hoverEnterEvent(QGraphicsSceneHoverEvent* event);
@@ -93,11 +99,13 @@ protected:
 	void mousePressEvent(QGraphicsSceneMouseEvent* event);
 	void mouseReleaseEvent(QGraphicsSceneMouseEvent* event);
 	void mouseMoveEvent(QGraphicsSceneMouseEvent* event);
+	void wheelEvent(QGraphicsSceneWheelEvent* event);
 
 private:
 	void updateClientsIconGeometry();
 	bool isUrgent();
 	bool isFocused() const;
+	QString findDesktopFile();
 
 	QTimer* m_animationTimer;
 	TaskBarApplet* m_dockApplet;
@@ -119,12 +127,16 @@ private:
 	QPoint m_dragStartPosition;
     bool m_isMinimized;
     bool m_shouldDelete;
+    int m_lastClickedIndex; // Track which window was last clicked for cycling
     
     // Color settings
     QColor m_buttonColor;
     int m_buttonColorTransparency;
     QColor m_focusColor;
     int m_focusColorTransparency;
+    
+    // Pinned item support
+    QString m_desktopFile;
 };
 
 #endif

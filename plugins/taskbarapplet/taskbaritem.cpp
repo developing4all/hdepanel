@@ -39,14 +39,20 @@
 #include "animationutils.h"
 #include "dpisupport.h"
 #include "panelwindow.h"
+#include "../../lib/settings.h"
+#include "../../lib/desktopapplications.h"
+#include "../../lib/desktopdatastore.h"
 #include <QtCore/QTimer>
 #include <QtCore/QDateTime>
 #include <QtCore/QDebug>
+#include <QtCore/QFileInfo>
 #if QT_VERSION >= 0x050000
 #include <QGraphicsPixmapItem>
 #include <QPainter>
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsSceneHoverEvent>
+#include <QGraphicsSceneWheelEvent>
+#include <QGraphicsScene>
 #include <QFontMetrics>
 #include <QApplication>
 #else
@@ -69,6 +75,7 @@ TaskBarItem::TaskBarItem(TaskBarApplet* dockApplet)
     m_waylandClient = nullptr;
     m_waylandText = QString();
     m_shouldDelete = false;
+    m_lastClickedIndex = -1;
     m_buttonColor = QColor(255, 255, 255);
     m_buttonColorTransparency = 80;
     m_focusColor = QColor(0, 0, 0);
@@ -102,10 +109,6 @@ TaskBarItem::TaskBarItem(TaskBarApplet* dockApplet)
 	}
 
 	m_iconItem = new QGraphicsPixmapItem(this);
-
-    // Don't auto-register - let the caller decide when to register
-    // if (m_dockApplet && m_dockApplet->panelWindow() && m_dockApplet->panelWindow()->panelItem())
-    //     m_dockApplet->registerTaskBarItem(this);
 }
 
 TaskBarItem::~TaskBarItem()
@@ -252,7 +255,7 @@ void TaskBarItem::updateContent()
             iconX = (cellW > 0) ? (cellW - m_iconItem->pixmap().width()) / 2 : (sideMargin + iconPad);
             iconY = (cellH > 0) ? (cellH - iconSize) / 2 : 0;
         } else {
-            iconX = leftPad + iconPad;                 // ✅ inset even when text is shown
+            iconX = leftPad + iconPad;                 // inset even when text is shown
             iconY = (cellH > 0) ? (cellH - iconSize) / 2 : 0;
         }
     }
@@ -312,6 +315,8 @@ void TaskBarItem::addClient(Client* client)
 	m_clients.append(client);
 	updateClientsIconGeometry();
 	updateContent();
+	// Force a repaint to show the running state (background, etc.)
+	update();
 }
 
 void TaskBarItem::removeClient(Client* client)
@@ -322,14 +327,26 @@ void TaskBarItem::removeClient(Client* client)
 	}
 	if(m_clients.isEmpty())
 	{
-		// Mark for deletion - the TaskBarApplet will handle the actual deletion
-		// Don't call unregisterTaskBarItem here as it will be called from destructor
-		// Just mark that this item should be deleted
-		m_shouldDelete = true;
+		// Don't delete pinned items - they should stay even when no windows are open
+		if (!isPinned()) {
+			// Mark for deletion - the TaskBarApplet will handle the actual deletion
+			// Don't call unregisterTaskBarItem here as it will be called from destructor
+			// Just mark that this item should be deleted
+			m_shouldDelete = true;
+		} else {
+			// Pinned item with no clients - update to show unpinned state (no background)
+			updateContent();
+			update();
+		}
 	}
 	else
 	{
 		updateContent();
+		update(); // Force repaint to update dots indicator
+		// Also update the scene to ensure the dots are redrawn
+		if (scene()) {
+			scene()->update(boundingRect());
+		}
 	}
 }
 
@@ -496,15 +513,10 @@ void TaskBarItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* optio
     const int w = qMax(1, m_size.width());
     const int h = qMax(1, m_size.height());
 
-    const PanelWindow::Position position = panelWindow->position();
-    const PanelWindow::Orientation orientation = panelWindow->orientation();
-
-    const bool isVerticalPanel =
-        (orientation == PanelWindow::Vertical) ||
-        (position == PanelWindow::Left || position == PanelWindow::Right);
-
-    const int textThresholdPx = 100;
-    const bool showText = (!isVerticalPanel) ? true : (w >= textThresholdPx);
+    // Note: position, orientation, isVerticalPanel, showText and textThresholdPx 
+    // are defined in updateContent() but not used in paint() - they're kept for potential future use
+    Q_UNUSED(panelWindow->position());
+    Q_UNUSED(panelWindow->orientation());
 
     // Outer margins: 3px each side (=> width - 6)
     const int outerMarginX = dp(3);
@@ -525,8 +537,11 @@ void TaskBarItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* optio
     static const qreal roundRadius = 3.0; // small radius, dp not critical here
     QPointF center(rect.center().x(), rect.bottom() + dp(20));
 
-    // Base hover background
-    {
+    // Check if this is a pinned item with no running clients
+    bool isPinnedWithoutClients = isPinned() && m_clients.isEmpty() && !m_waylandClient;
+
+    // Base hover background - skip for pinned items without clients (unless hovering)
+    if (!isPinnedWithoutClients || m_highlightIntensity > 0.001) {
         QRadialGradient gradient(center, dp(200), center);
         QColor buttonColorStart = m_buttonColor;
         buttonColorStart.setAlpha(m_buttonColorTransparency +
@@ -576,6 +591,24 @@ void TaskBarItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* optio
         painter->setBrush(QBrush(gradient));
         painter->drawRoundedRect(rect, roundRadius, roundRadius);
     }
+    
+    // Draw dots indicator for grouped windows (when more than one window)
+    int windowCount = m_clients.size() + (m_waylandClient ? 1 : 0);
+    if (windowCount > 1) {
+        const int dotSize = dp(3);
+        const int dotSpacing = dp(4);
+        const int dotsY = buttonY + buttonH - dp(6); // Position at bottom of button
+        const int totalDotsWidth = (windowCount * dotSize) + ((windowCount - 1) * dotSpacing);
+        const int dotsX = buttonX + (buttonW - totalDotsWidth) / 2; // Center the dots
+        
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QBrush(QColor(255, 255, 255, 200))); // Semi-transparent white dots
+        
+        for (int i = 0; i < windowCount; i++) {
+            int x = dotsX + (i * (dotSize + dotSpacing));
+            painter->drawEllipse(x, dotsY, dotSize, dotSize);
+        }
+    }
 }
 
 void TaskBarItem::hoverEnterEvent(QGraphicsSceneHoverEvent* event)
@@ -612,7 +645,8 @@ void TaskBarItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 	}
 
 	if (isUnderMouse()) {
-		if (m_clients.isEmpty() && !m_waylandClient) return;
+		// Allow clicks on pinned items even if no windows are open
+		if (m_clients.isEmpty() && !m_waylandClient && !isPinned()) return;
 
 		if (event->button() == Qt::LeftButton) {
 			static const qreal clickMouseMoveTolerance = 10.0;
@@ -632,20 +666,45 @@ void TaskBarItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
                 }
                 // Handle X11 clients
                 else if (!m_clients.isEmpty()) {
-                    if (m_dockApplet->activeWindow() == m_clients[0]->handle()) {
-#if QT_VERSION >= 0x050000
-                        if (m_isMinimized) {
-                            X11Support::activateWindow(m_clients[0]->handle());
-                            m_isMinimized = false;
-                        } else {
-                            X11Support::minimizeWindow(m_clients[0]->handle());
-                            m_isMinimized = true;
+                    unsigned long activeWindow = m_dockApplet->activeWindow();
+                    
+                    // Find which client (if any) is currently active
+                    int activeIndex = -1;
+                    for (int i = 0; i < m_clients.size(); i++) {
+                        if (m_clients[i]->handle() == activeWindow) {
+                            activeIndex = i;
+                            break;
                         }
+                    }
+                    
+                    if (m_clients.size() == 1) {
+                        // Single window - toggle minimize/restore
+                        if (activeIndex >= 0) {
+#if QT_VERSION >= 0x050000
+                            if (m_isMinimized) {
+                                X11Support::activateWindow(m_clients[0]->handle());
+                                m_isMinimized = false;
+                            } else {
+                                X11Support::minimizeWindow(m_clients[0]->handle());
+                                m_isMinimized = true;
+                            }
 #else
-                        X11Support::minimizeWindow(m_clients[0]->handle());
+                            X11Support::minimizeWindow(m_clients[0]->handle());
 #endif
-                    } else 
-                        X11Support::activateWindow(m_clients[0]->handle());
+                        } else {
+                            X11Support::activateWindow(m_clients[0]->handle());
+                        }
+                    } else {
+                        // Multiple windows - cycle through them
+                        // Start from last clicked index + 1, or 0 if none clicked yet
+                        int nextIndex = (m_lastClickedIndex + 1) % m_clients.size();
+                        X11Support::activateWindow(m_clients[nextIndex]->handle());
+                        m_lastClickedIndex = nextIndex;
+                    }
+                }
+                // Handle pinned items (no windows open) - launch the application
+                else if (isPinned()) {
+                    launchApplication();
                 }
 			}
 		}
@@ -654,7 +713,23 @@ void TaskBarItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
             HPopupMenu menu;
 
             menu.addTitle(tr("Application"));
-            menu.addAction(QIcon::fromTheme("window-close"), tr("Close"), this, SLOT(close()));
+            
+            // Show close only if there are windows open
+            if (!m_clients.isEmpty() || m_waylandClient) {
+                menu.addAction(QIcon::fromTheme("window-close"), tr("Close"), this, SLOT(close()));
+            }
+            
+            // Add "Pin to taskbar" or "Unpin from taskbar" if we can find a desktop file
+            QString desktopFile = findDesktopFile();
+            if (!desktopFile.isEmpty() && m_dockApplet) {
+                QStringList pinnedItems = m_dockApplet->getPinnedItems();
+                if (pinnedItems.contains(desktopFile)) {
+                    menu.addAction(QIcon::fromTheme("emblem-unreadable"), tr("Unpin from taskbar"), this, SLOT(removeFromPinned()));
+                } else {
+                    menu.addAction(QIcon::fromTheme("emblem-favorite"), tr("Pin to taskbar"), this, SLOT(addToFavorites()));
+                }
+            }
+            
             menu.addTitle(tr("Task Bar"));
             menu.addAction(QIcon::fromTheme("preferences-other"), tr("Configure Task Bar"), m_dockApplet, SLOT(showConfigurationDialog()));
 
@@ -667,6 +742,79 @@ void TaskBarItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
             menu.exec(event->screenPos());
         }
 	}
+}
+
+void TaskBarItem::wheelEvent(QGraphicsSceneWheelEvent* event)
+{
+    int windowCount = m_clients.size() + (m_waylandClient ? 1 : 0);
+    
+    // If single window, activate it
+    if (windowCount == 1) {
+        if (!m_clients.isEmpty()) {
+            X11Support::activateWindow(m_clients[0]->handle());
+        } else if (m_waylandClient) {
+            TaskBarApplet* dockApplet = qobject_cast<TaskBarApplet*>(m_dockApplet);
+            if (dockApplet && dockApplet->waylandSupport()) {
+                QString appId = m_waylandClient->appId();
+                if (!appId.isEmpty()) {
+                    dockApplet->waylandSupport()->activateWindow(appId);
+                }
+            }
+        }
+        event->accept();
+        return;
+    }
+    
+    // If no windows, ignore
+    if (windowCount == 0) {
+        event->ignore();
+        return;
+    }
+    
+    // Find the currently active window
+    unsigned long activeWindow = m_dockApplet->activeWindow();
+    int currentIndex = -1;
+    
+    for (int i = 0; i < m_clients.size(); i++) {
+        if (m_clients[i]->handle() == activeWindow) {
+            currentIndex = i;
+            break;
+        }
+    }
+    
+    // If none of our windows are active, start from the first
+    if (currentIndex < 0) {
+        currentIndex = 0;
+    }
+    
+    // Calculate next window index based on scroll direction
+    // QGraphicsSceneWheelEvent uses delta() in both Qt5 and Qt6
+    int delta = event->delta();
+    int nextIndex = currentIndex;
+    
+    if (delta > 0) {
+        // Scroll up - go to previous window
+        nextIndex = (currentIndex - 1 + windowCount) % windowCount;
+    } else {
+        // Scroll down - go to next window
+        nextIndex = (currentIndex + 1) % windowCount;
+    }
+    
+    // Activate the next window
+    if (nextIndex < m_clients.size()) {
+        X11Support::activateWindow(m_clients[nextIndex]->handle());
+    } else if (m_waylandClient) {
+        // Handle Wayland client if needed
+        TaskBarApplet* dockApplet = qobject_cast<TaskBarApplet*>(m_dockApplet);
+        if (dockApplet && dockApplet->waylandSupport()) {
+            QString appId = m_waylandClient->appId();
+            if (!appId.isEmpty()) {
+                dockApplet->waylandSupport()->activateWindow(appId);
+            }
+        }
+    }
+    
+    event->accept();
 }
 
 void TaskBarItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
@@ -785,6 +933,175 @@ bool TaskBarItem::isFocused() const
 		return true;
 	
 	return false;
+}
+
+QString TaskBarItem::findDesktopFile()
+{
+    QString appId;
+    QString wmClass;
+    
+    // Try to get app ID or WM_CLASS from the window
+    if (m_waylandClient) {
+        appId = m_waylandClient->appId();
+    } else if (!m_clients.isEmpty()) {
+        // Get WM_CLASS from the first X11 client (now stored in Client)
+        wmClass = m_clients[0]->wmClass();
+        // If wmClass is empty, try to get it directly as fallback
+        if (wmClass.isEmpty()) {
+            wmClass = X11Support::getWindowWMClass(m_clients[0]->handle());
+        }
+    }
+
+    if (appId.isEmpty() && wmClass.isEmpty()) {
+        return QString();
+    }
+    
+    // Use DesktopDataStore like the start menu does
+    DesktopDataStore* dataStore = DesktopDataStore::instance();
+    if (!dataStore) {
+        return QString();
+    }
+    
+    // Get all desktop entries and search for matches
+    QList<DesktopEntryData> allEntries = dataStore->getAllDesktopEntries();
+    
+    QString appIdLower = appId.toLower();
+    QString wmClassLower = wmClass.toLower();
+    
+    // Try multiple matching strategies
+    foreach (const DesktopEntryData& entry, allEntries) {
+        if (entry.type != "Application" || !entry.shouldShow()) {
+            continue;
+        }
+        
+        // Get desktop file base name (without path and extension)
+        QString fileName = QFileInfo(entry.desktopFile).completeBaseName().toLower();
+        
+        // Match by startupWMClass (most reliable)
+        if (!wmClass.isEmpty() && entry.startupWMClass.toLower() == wmClassLower) {
+            return entry.desktopFile;
+        }
+        
+        // Match by desktop file name
+        if (!appIdLower.isEmpty()) {
+            if (fileName == appIdLower || 
+                fileName.startsWith(appIdLower + "-") || 
+                fileName.startsWith(appIdLower + "_")) {
+                return entry.desktopFile;
+            }
+        }
+        
+        if (!wmClassLower.isEmpty()) {
+            if (fileName == wmClassLower || 
+                fileName.startsWith(wmClassLower + "-") || 
+                fileName.startsWith(wmClassLower + "_")) {
+                return entry.desktopFile;
+            }
+        }
+        
+        // Match by executable name (from Exec= field)
+        if (!entry.exec.isEmpty()) {
+            QString execLower = entry.exec.toLower();
+            // Extract executable name (first word, before any arguments)
+            QString execName = execLower.split(' ').first().split('/').last();
+            
+            if (!appIdLower.isEmpty() && execName == appIdLower) {
+                return entry.desktopFile;
+            }
+            if (!wmClassLower.isEmpty() && execName == wmClassLower) {
+                return entry.desktopFile;
+            }
+        }
+        
+        // Match by application name
+        QString nameLower = entry.name.toLower();
+        if (!appIdLower.isEmpty() && nameLower == appIdLower) {
+            return entry.desktopFile;
+        }
+        if (!wmClassLower.isEmpty() && nameLower == wmClassLower) {
+            return entry.desktopFile;
+        }
+    }
+    
+    return QString();
+}
+
+void TaskBarItem::setDesktopFile(const QString& desktopFile)
+{
+    m_desktopFile = desktopFile;
+}
+
+void TaskBarItem::launchApplication()
+{
+    if (m_desktopFile.isEmpty()) {
+        return;
+    }
+    
+    DesktopDataStore* dataStore = DesktopDataStore::instance();
+    if (dataStore) {
+        dataStore->launchApplication(m_desktopFile);
+    }
+}
+
+void TaskBarItem::addToFavorites()
+{
+    QString desktopFile = findDesktopFile();
+    if (desktopFile.isEmpty()) {
+        return;
+    }
+    
+    if (!m_dockApplet) {
+        return;
+    }
+    
+    // Get current taskbar pinned items (separate from start menu favorites)
+    QStringList pinnedItems = m_dockApplet->getPinnedItems();
+    
+    // Add if not already pinned
+    if (!pinnedItems.contains(desktopFile)) {
+        pinnedItems << desktopFile;
+        m_dockApplet->setPinnedItems(pinnedItems);
+        
+        // Also set the desktop file on this item so it becomes a pinned item
+        setDesktopFile(desktopFile);
+        
+        // Update the item to show it's pinned (even if no windows are open)
+        updateContent();
+        
+        // Save the updated list
+        m_dockApplet->savePinnedItems();
+    }
+}
+
+void TaskBarItem::removeFromPinned()
+{
+    if (m_desktopFile.isEmpty() || !m_dockApplet) {
+        return;
+    }
+    
+    // Get current taskbar pinned items
+    QStringList pinnedItems = m_dockApplet->getPinnedItems();
+    
+    // Remove from pinned items
+    if (pinnedItems.contains(m_desktopFile)) {
+        pinnedItems.removeAll(m_desktopFile);
+        m_dockApplet->setPinnedItems(pinnedItems);
+        
+        // Clear the desktop file
+        m_desktopFile.clear();
+        
+        // Save the updated list
+        m_dockApplet->savePinnedItems();
+        
+        // If no windows are open, mark for deletion
+        if (m_clients.isEmpty() && !m_waylandClient) {
+            m_shouldDelete = true;
+            m_dockApplet->unregisterTaskBarItem(this);
+            deleteLater();
+        } else {
+            updateContent();
+        }
+    }
 }
 
 void TaskBarItem::setButtonColor(const QColor& color, int transparency)

@@ -110,9 +110,9 @@ QIcon SniItemProxy::icon() const
         QIcon icon = QIcon::fromTheme(name);
         if (!icon.isNull() && !icon.availableSizes().isEmpty()) {
             return icon;
-        }
-        
-        return QIcon();
+    }
+
+    return QIcon();
     };
 
     // 1. Try IconName
@@ -297,7 +297,7 @@ void SniWatcher::registerWatcher()
     if (!m_bus.registerService(SNI_WATCHER)) {
         qDebug() << "Failed to register SNI watcher service, another watcher may be active";
     }
-
+    
     // Query for existing items that may have registered before we started.
     // Do this in two phases: first read RegisteredStatusNotifierItems, then resolve/add them.
     QTimer::singleShot(150, this, &SniWatcher::queryRegisteredItems);
@@ -357,19 +357,19 @@ void SniWatcher::RegisterStatusNotifierItem(const QString &service)
         path = service;
     } else {
         // Check for @ separator (used by some implementations)
-        int atPos = service.indexOf('@');
-        if (atPos > 0) {
-            serviceName = service.left(atPos);
-            QString afterAt = service.mid(atPos + 1);
-            if (!afterAt.isEmpty() && afterAt.startsWith('/')) {
-                path = afterAt;
-            }
-        } else {
+    int atPos = service.indexOf('@');
+    if (atPos > 0) {
+        serviceName = service.left(atPos);
+        QString afterAt = service.mid(atPos + 1);
+        if (!afterAt.isEmpty() && afterAt.startsWith('/')) {
+            path = afterAt;
+        }
+    } else {
             // Check for / separator (service/path)
-            int slashPos = service.indexOf('/');
-            if (slashPos > 0) {
-                serviceName = service.left(slashPos);
-                path = service.mid(slashPos);
+        int slashPos = service.indexOf('/');
+        if (slashPos > 0) {
+            serviceName = service.left(slashPos);
+            path = service.mid(slashPos);
             }
         }
     }
@@ -477,7 +477,7 @@ void SniWatcher::queryExistingItems()
         }
         
         serviceName = getNameOwnerOrSelf(serviceName, m_bus);
-
+        
         // Check if it has tray icon properties
         if (hasTrayIconProperties(serviceName, path, m_bus)) {
             QString key = serviceName + path;
@@ -525,8 +525,8 @@ void SniWatcher::onServiceOwnerChanged(const QString &name, const QString &oldOw
         name.contains("StatusNotifierItem")) {
         
         // Probe for the standard path
-        QDBusInterface iface(name, "/StatusNotifierItem", SNI_ITEM_IFACE, QDBusConnection::sessionBus());
-        if (iface.isValid()) {
+            QDBusInterface iface(name, "/StatusNotifierItem", SNI_ITEM_IFACE, QDBusConnection::sessionBus());
+            if (iface.isValid()) {
             addItem(getNameOwnerOrSelf(name, m_bus), "/StatusNotifierItem");
         }
     }

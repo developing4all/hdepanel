@@ -41,6 +41,11 @@
         <translation>only minimized</translation>
     </message>
     <message>
+        <location filename="../taskbarconfigurationdialog.ui" line="52"/>
+        <source>Group windows of the same application</source>
+        <translation>Group windows of the same application</translation>
+    </message>
+    <message>
         <location filename="../taskbarconfigurationdialog.ui" line="56"/>
         <source>Taskbar Colors</source>
         <translation type="unfinished"></translation>

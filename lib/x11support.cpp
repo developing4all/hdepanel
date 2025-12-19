@@ -902,6 +902,30 @@ QString X11Support::getWindowPropertyLatin1String(unsigned long window, const QS
 	return value;
 }
 
+QString X11Support::getWindowWMClass(unsigned long window)
+{
+	int numItems;
+	char* data;
+	QString classPart;
+	if(!getWindowPropertyHelper(window, atom("WM_CLASS"), XA_STRING, numItems, data))
+		return classPart;
+	
+	// WM_CLASS format is "instance\0class\0" - we need to find the class part
+	// The data contains two null-terminated strings
+	// First string is the instance name, second is the class name
+	int instanceLen = strlen(data); // Length of first string (instance)
+	if (instanceLen < numItems - 1) {
+		// Second string starts after the first null byte
+		const char* classStart = data + instanceLen + 1;
+		if (classStart < data + numItems) {
+			classPart = QString::fromLatin1(classStart);
+		}
+	}
+	
+	XFree(data);
+	return classPart;
+}
+
 QString X11Support::getWindowName(unsigned long window)
 {
 	QString result = getWindowPropertyUTF8String(window, "_NET_WM_VISIBLE_NAME");

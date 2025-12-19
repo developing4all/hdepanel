@@ -58,6 +58,11 @@ public:
 		return m_name;
 	}
 
+	const QString& wmClass() const
+	{
+		return m_wmClass;
+	}
+
 	const QIcon& icon() const
 	{
 		return m_icon;
@@ -69,16 +74,20 @@ public:
 	}
 
 	void windowPropertyChanged(unsigned long atom);
+	void clearDockItem(); // Clear the dock item reference (used during regrouping)
+	void setDockItem(TaskBarItem* item); // Set the dock item reference (used during regrouping)
 
 private:
 	void updateVisibility();
 	void updateName();
+	void updateWMClass();
 	void updateIcon();
 	void updateUrgency();
 
 	TaskBarApplet* m_dockApplet;
 	unsigned long m_handle;
 	QString m_name;
+	QString m_wmClass;
 	QIcon m_icon;
 	bool m_isUrgent;
 	bool m_visible;

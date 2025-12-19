@@ -42,6 +42,7 @@ Client::Client(TaskBarApplet* dockApplet, unsigned long handle)
     X11Support::selectInput(m_handle, PropertyChangeMask | StructureNotifyMask);
     updateVisibility();
 	updateName();
+	updateWMClass();
 	updateIcon();
 	updateUrgency();
 	
@@ -76,6 +77,11 @@ void Client::windowPropertyChanged(unsigned long atom)
 		updateName();
 	}
 
+	if(atom == X11Support::atom("WM_CLASS"))
+	{
+		updateWMClass();
+	}
+
 	if(atom == X11Support::atom("_NET_WM_ICON"))
 	{
         updateIcon();
@@ -99,6 +105,11 @@ void Client::updateVisibility()
 	// Show only regular windows in dock.
 	// When no window type is set, assume it's normal window.
 	m_visible = (windowTypes.size() == 0) || (windowTypes.size() == 1 && windowTypes[0] == X11Support::atom("_NET_WM_WINDOW_TYPE_NORMAL"));
+	
+	// Don't show modal/dialog windows
+	if(windowTypes.contains(X11Support::atom("_NET_WM_WINDOW_TYPE_DIALOG")))
+		m_visible = false;
+	
 	// Don't show window if requested explicitly in window states.
 	if(windowStates.contains(X11Support::atom("_NET_WM_STATE_SKIP_TASKBAR")))
 		m_visible = false;
@@ -123,6 +134,12 @@ void Client::updateName()
 		m_dockItem->updateContent();
 }
 
+void Client::updateWMClass()
+{
+	// Use the new helper function that properly extracts the class part
+	m_wmClass = X11Support::getWindowWMClass(m_handle);
+}
+
 void Client::updateIcon()
 {
 	m_icon = X11Support::getWindowIcon(m_handle);
@@ -137,4 +154,14 @@ void Client::updateUrgency()
 	// Safety check: ensure dock item and applet are still valid before updating
 	if(m_dockItem != NULL && m_dockApplet != NULL && !m_dockApplet->isDestroying())
 		m_dockItem->startAnimation();
+}
+
+void Client::clearDockItem()
+{
+	m_dockItem = NULL;
+}
+
+void Client::setDockItem(TaskBarItem* item)
+{
+	m_dockItem = item;
 }

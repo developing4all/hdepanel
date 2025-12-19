@@ -37,6 +37,11 @@
         <translation>alleen geminimaliseerd</translation>
     </message>
     <message>
+        <location filename="../taskbarconfigurationdialog.ui" line="52"/>
+        <source>Group windows of the same application</source>
+        <translation>Vensters van dezelfde applicatie groeperen</translation>
+    </message>
+    <message>
         <location filename="../taskbarconfigurationdialog.ui" line="56"/>
         <source>Taskbar Colors</source>
         <translation>Taakbalk kleuren</translation>

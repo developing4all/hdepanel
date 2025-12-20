@@ -73,6 +73,11 @@ public:
 		return m_isUrgent;
 	}
 
+	TaskBarItem* dockItem() const
+	{
+		return m_dockItem;
+	}
+
 	void windowPropertyChanged(unsigned long atom);
 	void clearDockItem(); // Clear the dock item reference (used during regrouping)
 	void setDockItem(TaskBarItem* item); // Set the dock item reference (used during regrouping)

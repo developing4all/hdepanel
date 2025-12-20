@@ -44,46 +44,13 @@ WaylandClient::WaylandClient(TaskBarApplet* dockApplet, const WaylandWindow& win
     , m_dockItem(nullptr)
 {
     updateFromWindow(window);
-    
-    // Create a dock item for this Wayland client
-    try {
-        m_dockItem = new TaskBarItem(dockApplet);
-        if (m_dockItem) {
-            m_dockItem->setWaylandClient(this);
-            dockApplet->registerTaskBarItem(m_dockItem);
-        }
-    } catch (...) {
-        qDebug() << "Failed to create or register TaskBarItem for" << window.appId;
-        if (m_dockItem) {
-            delete m_dockItem;
-            m_dockItem = nullptr;
-        }
-        throw; // Re-throw to notify caller
-    }
 }
 
 WaylandClient::~WaylandClient()
 {
-    if (m_dockItem) {
-        TaskBarItem* item = m_dockItem;
-        m_dockItem = nullptr;
-        
-        // Check if applet is being destroyed
-        if (m_dockApplet && m_dockApplet->isDestroying()) {
-            // Direct deletion during shutdown - scene removal handled by TaskBarApplet::close()
-            delete item;
-        } else {
-            // Normal operation: remove from scene before deletion
-            if (item->scene()) {
-                item->scene()->removeItem(item);
-            }
-            
-            // Use deferred deletion during normal operation
-            QTimer::singleShot(0, [item]() {
-                delete item;
-            });
-        }
-    }
+    // TaskBarItems are owned/deleted by TaskBarApplet.
+    // Never delete m_dockItem here to avoid double-free and dangling scene pointers.
+    m_dockItem = nullptr;
 }
 
 void WaylandClient::updateFromWindow(const WaylandWindow& window)
@@ -100,17 +67,17 @@ void WaylandClient::updateFromWindow(const WaylandWindow& window)
     // Set name, app ID, and icon from the window data
     m_name = window.title;
     m_appId = window.appId;
-    m_icon = UnifiedIconService::instance()->loadApplicationIcon(window.appId, QString(), 32);
+    // Prefer iconName (from desktop entry), fall back to appId
+    const QString iconName = !window.iconName.isEmpty() ? window.iconName : window.appId;
+    m_icon = UnifiedIconService::instance()->loadIcon(iconName, 32);
     
     // Title change detection removed for cleaner output
     
     updateUrgency();
     
     // Update the dock item if it exists
-    // Safety check: ensure dock item and applet are still valid before updating
     if (m_dockItem && m_dockApplet && !m_dockApplet->isDestroying()) {
-        m_dockItem->setWaylandClient(this);
-        // Trigger animation update to show/hide focus highlight
+        m_dockItem->updateContent();
         m_dockItem->startAnimation();
     }
 }

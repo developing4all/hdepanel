@@ -68,7 +68,7 @@
 #include <X11/Xlib.h>
 
 TaskBarApplet::TaskBarApplet(PanelWindow* panelWindow)
-	: Applet(panelWindow), m_dragging(false), m_initialized(false), m_destroying(false), m_waylandSupport(nullptr),
+	: Applet(panelWindow), m_dragging(false), m_initialized(false), m_destroying(false), m_updatingLayout(false), m_waylandSupport(nullptr),
 	  m_buttonColor(255, 255, 255), m_buttonColorTransparency(80),
 	  m_focusColor(0, 0, 0), m_focusColorTransparency(128)
 {
@@ -86,14 +86,25 @@ TaskBarApplet::TaskBarApplet(PanelWindow* panelWindow)
     }
 #endif
 
-    // Initialize Wayland support if available
-    m_waylandSupport = new WaylandSupport(this);
-    if (m_waylandSupport->isAvailable() && m_waylandSupport->initialize()) {
-        // Connect to the windowsUpdated signal
-        connect(m_waylandSupport, &WaylandSupport::windowsUpdated, this, &TaskBarApplet::updateWaylandClientList);
-    } else {
-        delete m_waylandSupport;
-        m_waylandSupport = nullptr;
+    // Initialize Wayland support (deferred). We intentionally avoid doing Wayland
+    // roundtrips during plugin loading, because that can re-enter Qt internals and
+    // has caused heap corruption/crashes on some setups.
+    if (!qEnvironmentVariableIsSet("HDE_DISABLE_TASKBAR_WAYLAND")) {
+        m_waylandSupport = new WaylandSupport(this);
+        // Small delay gives QtWayland/layer-shell time to finish initial setup
+        // (seat/keymap/etc.) before we create our own Wayland connection.
+        QTimer::singleShot(200, this, [this]() {
+            if (!m_waylandSupport) return;
+            if (m_destroying) return;
+            if (!m_waylandSupport->isAvailable()) return;
+            if (!m_waylandSupport->initialize()) {
+                delete m_waylandSupport;
+                m_waylandSupport = nullptr;
+                return;
+            }
+            connect(m_waylandSupport, &WaylandSupport::windowsUpdated, this, &TaskBarApplet::updateWaylandClientList, Qt::QueuedConnection);
+            connect(m_waylandSupport, &WaylandSupport::windowClosed, this, &TaskBarApplet::onWaylandWindowClosed, Qt::QueuedConnection);
+        });
     }
 }
 
@@ -125,8 +136,16 @@ void TaskBarApplet::close()
         }
     }
     
-    // Clear all lists - TaskBarItems will be deleted by their owning clients
+    // TaskBarItems are owned by the applet; delete them here.
+    QVector<TaskBarItem*> itemsToDelete = m_dockItems;
     m_dockItems.clear();
+    for (TaskBarItem* item : itemsToDelete) {
+        if (!item) continue;
+        if (panelScene && item->scene() == panelScene) {
+            panelScene->removeItem(item);
+        }
+        delete item;
+    }
     
     QList<WaylandClient*> waylandClientsToDelete = m_waylandClients.values();
     m_waylandClients.clear();
@@ -137,7 +156,7 @@ void TaskBarApplet::close()
     QList<Client*> loopClientsToDelete = m_in_loop;
     m_in_loop.clear();
     
-    // Delete clients - they will handle deleting their TaskBarItems
+    // Delete clients
     for (WaylandClient* client : waylandClientsToDelete) {
         if (client) {
             try {
@@ -162,6 +181,49 @@ void TaskBarApplet::close()
         } catch (...) {
             // Ignore exceptions during cleanup
         }
+    }
+}
+
+void TaskBarApplet::onWaylandWindowClosed(const WaylandWindow& window)
+{
+    if (m_destroying) {
+        return;
+    }
+    void* surface = window.surface;
+    if (!surface) {
+        return;
+    }
+
+    WaylandClient* client = m_waylandClients.value(surface, nullptr);
+    if (!client) {
+        return;
+    }
+
+    TaskBarItem* item = client->dockItem();
+    client->clearDockItem();
+
+    m_waylandClients.remove(surface);
+
+    // If the item was already deleted/removed from our list, don't touch it.
+    if (item && !m_dockItems.contains(item)) {
+        item = nullptr;
+    }
+
+    if (item) {
+        item->removeWaylandClient(client);
+        if (item->shouldDelete()) {
+            unregisterTaskBarItem(item);
+            if (scene() && item->scene() == scene()) {
+                scene()->removeItem(item);
+            }
+            delete item;
+        }
+    }
+    delete client;
+
+    updateLayout();
+    if (scene()) {
+        scene()->update(sceneBoundingRect());
     }
 }
 
@@ -213,6 +275,12 @@ QSize TaskBarApplet::desiredSize()
 
 void TaskBarApplet::updateLayout()
 {
+    // Prevent recursion: if we're already updating layout, don't recurse
+    if (m_updatingLayout) {
+        return;
+    }
+    m_updatingLayout = true;
+    
     // Clean up dock items marked for deletion
     QVector<TaskBarItem*> itemsToDelete;
     for (int i = 0; i < m_dockItems.size(); i++) {
@@ -221,8 +289,24 @@ void TaskBarApplet::updateLayout()
         }
     }
     for (TaskBarItem* item : itemsToDelete) {
-        unregisterTaskBarItem(item);
-        m_dockItems.removeAll(item);
+        // IMPORTANT: Clear back-references from clients before deleting the item
+        // to avoid dangling pointers (Wayland windowClosed can arrive later).
+        if (item) {
+            for (Client* c : item->clients()) {
+                if (c) c->clearDockItem();
+            }
+            for (WaylandClient* wc : item->waylandClients()) {
+                if (wc) wc->clearDockItem();
+            }
+        }
+        // Remove from list and scene, but don't call updateLayout() again (we're already in it)
+        int index = m_dockItems.indexOf(item);
+        if (index >= 0) {
+            m_dockItems.remove(index);
+        }
+        if (scene() && item->scene() == scene()) {
+            scene()->removeItem(item);
+        }
         delete item;
     }
 
@@ -281,6 +365,7 @@ void TaskBarApplet::updateLayout()
         if (count == 0) {
             update();
             if (scene()) scene()->update(sceneBoundingRect());
+            m_updatingLayout = false;
             return;
         }
 
@@ -328,6 +413,8 @@ void TaskBarApplet::updateLayout()
     if (scene()) {
         scene()->update(sceneBoundingRect());
     }
+    
+    m_updatingLayout = false;
 }
 
 void TaskBarApplet::draggingStarted()
@@ -398,8 +485,9 @@ void TaskBarApplet::unregisterTaskBarItem(TaskBarItem* dockItem)
 	if (index >= 0) {
 		m_dockItems.remove(index);
 		
-		// Only update layout if not being destroyed
-		if (!m_destroying) {
+		// Only update layout if not being destroyed AND not already updating layout
+		// (prevents recursion: updateLayout() -> unregisterTaskBarItem() -> updateLayout())
+		if (!m_destroying && !m_updatingLayout) {
 			updateLayout();
 			
 			// Force a complete repaint of the entire dock area
@@ -655,22 +743,47 @@ TaskBarItem* TaskBarApplet::dockItemForWaylandClient(WaylandClient* client)
 		return nullptr;
 	}
 	
-	// Check if we already have a dock item for this wayland client
+	// Already assigned?
 	for (TaskBarItem* item : m_dockItems) {
 		if (item->hasWaylandClient(client)) {
 			return item;
 		}
 	}
-	
-	// Create a new dock item for this wayland client
+
+	const QString appIdLower = client->appId().toLower();
+
+	// If grouping enabled, try to find existing item for the same appId (prefer pinned match)
+	if (m_group_windows && !appIdLower.isEmpty()) {
+		// 1) Pinned item match by desktop file basename
+		for (TaskBarItem* item : m_dockItems) {
+			if (!item || !item->isPinned()) continue;
+			const QString pinnedBase = QFileInfo(item->desktopFile()).completeBaseName().toLower();
+			if (pinnedBase == appIdLower ||
+			    pinnedBase.startsWith(appIdLower + "_") ||
+			    pinnedBase.startsWith(appIdLower + "-") ||
+			    pinnedBase.contains(appIdLower)) {
+				item->addWaylandClient(client);
+				return item;
+			}
+		}
+
+		// 2) Existing non-pinned item by appId
+		for (TaskBarItem* item : m_dockItems) {
+			if (!item || item->isPinned()) continue;
+			const QVector<WaylandClient*>& wcs = item->waylandClients();
+			if (!wcs.isEmpty() && wcs.first() && wcs.first()->appId().toLower() == appIdLower) {
+				item->addWaylandClient(client);
+				return item;
+			}
+		}
+	}
+
+	// No suitable existing item; create a new one
 	TaskBarItem* dockItem = new TaskBarItem(this);
 	dockItem->setButtonColor(m_buttonColor, m_buttonColorTransparency);
 	dockItem->setFocusColor(m_focusColor, m_focusColorTransparency);
-	dockItem->setWaylandClient(client);
-	
-	// Register the dock item immediately
+	dockItem->addWaylandClient(client);
 	registerTaskBarItem(dockItem);
-	
 	return dockItem;
 }
 
@@ -681,18 +794,26 @@ void TaskBarApplet::updateClientList()
         return;
     }
 
-    if (m_waylandSupport) {
-        // Wayland updates are handled by signal/slot connection
-    } else {
+    // Update X11 clients if we're on X11 (regardless of whether WaylandSupport exists)
+#if QT_VERSION >= 0x050000
+    if (qApp->platformName().toLower().contains("xcb")) {
         updateX11ClientList();
     }
+#else
+    // For Qt4, always try X11
+    updateX11ClientList();
+#endif
+    
+    // Wayland updates are handled by signal/slot connection (if m_waylandSupport exists)
 
     // After creating clients, check if any should be matched to pinned items
     // This handles the case where clients were created before matching could happen
     matchClientsToPinnedItems();
 
     // Deduplicate dock items after updating (FIXED implementation below)
-    deduplicateTaskBarItems();
+    if (m_group_windows) {
+        deduplicateTaskBarItems();
+    }
 
     // Update layout after deduplication to recalculate positions
     updateLayout();
@@ -713,81 +834,57 @@ void TaskBarApplet::updateWaylandClientList(const QList<WaylandWindow>& windows)
     if (!m_waylandSupport || m_destroying) {
         return;
     }
-    
-    static int lastWindowCount = -1;
-    if (windows.size() != lastWindowCount) {
-        lastWindowCount = windows.size();
-    }
-    
-    // Create a set of current app IDs for efficient lookup
-    QSet<QString> currentAppIds;
+
+    // Prevent re-entrancy from cascaded updates during item creation/layout.
+    static bool processing = false;
+    if (processing) return;
+    processing = true;
+
+    // Add new clients and update existing ones (keyed by surface/toplevel handle).
     for (const WaylandWindow& window : windows) {
-        currentAppIds.insert(window.appId);
-    }
-    
-    // Remove clients that no longer exist
-    QList<void*> surfacesToRemove;
-    for (auto it = m_waylandClients.begin(); it != m_waylandClients.end(); ++it) {
-        QString clientAppId = it.value()->appId();
-        if (!currentAppIds.contains(clientAppId)) {
-            surfacesToRemove.append(it.key());
-        }
-    }
-    
-    if (!surfacesToRemove.isEmpty()) {
-    }
-    
-    // Remove closed clients safely with deferred deletion
-    for (void* surface : surfacesToRemove) {
-        WaylandClient* client = m_waylandClients.value(surface, nullptr);
+        if (!window.surface) continue;
+
+        WaylandClient* client = m_waylandClients.value(window.surface, nullptr);
         if (client) {
-            // Remove from map first
-            m_waylandClients.remove(surface);
-            // Use QTimer::singleShot to defer deletion to avoid crashes
-            QTimer::singleShot(0, [client]() {
-                delete client;
-            });
+            // If this client lost its dock item during regroup/dedup, reattach now.
+            TaskBarItem* item = client->dockItem();
+            if (!item || !m_dockItems.contains(item)) {
+                client->clearDockItem();
+                TaskBarItem* newItem = dockItemForWaylandClient(client);
+                if (newItem) {
+                    client->setDockItem(newItem);
+                }
+            }
+            client->updateFromWindow(window);
+            continue;
+        }
+
+        // Create and attach a new client + item
+        WaylandClient* waylandClient = new WaylandClient(this, window);
+        m_waylandClients[window.surface] = waylandClient;
+
+        TaskBarItem* item = dockItemForWaylandClient(waylandClient);
+        if (item) {
+            waylandClient->setDockItem(item);
         }
     }
-    
-    // Add new clients and update existing ones
-    for (const WaylandWindow& window : windows) {
-        // Find existing client by app ID
-        WaylandClient* existingClient = nullptr;
-        for (auto it = m_waylandClients.begin(); it != m_waylandClients.end(); ++it) {
-            if (it.value()->appId() == window.appId) {
-                existingClient = it.value();
-                break;
-            }
-        }
-        
-        if (existingClient) {
-            // Update existing client
-            QString oldTitle = existingClient->name();
-            existingClient->updateFromWindow(window);
-        } else {
-            // Create new client
-            try {
-                // Safety check before creating
-                if (!window.surface || window.appId.isEmpty()) {
-                    continue;
-                }
-                
-                WaylandClient* waylandClient = new WaylandClient(this, window);
-                if (waylandClient) {
-                    m_waylandClients[window.surface] = waylandClient;
-                } else {
-                    qDebug() << "Failed to create WaylandClient for" << window.appId;
-                }
-            } catch (const std::exception& e) {
-                qDebug() << "Exception creating WaylandClient:" << e.what();
-                continue;
-            } catch (...) {
-                qDebug() << "Unknown exception creating WaylandClient for" << window.appId;
-                continue;
-            }
-        }
+
+    // Re-layout after updates
+    matchClientsToPinnedItems();
+    // Only deduplicate when grouping is enabled. When grouping is off, multiple items
+    // per app are expected and dedup can incorrectly delete live items.
+    if (m_group_windows) {
+        deduplicateTaskBarItems();
     }
+    updateLayout();
+    for (int i = 0; i < m_dockItems.size(); i++) {
+        m_dockItems[i]->moveInstantly();
+    }
+    if (scene()) {
+        scene()->update(sceneBoundingRect());
+    }
+
+    processing = false;
 }
 
 void TaskBarApplet::updateX11ClientList()
@@ -1056,6 +1153,12 @@ bool TaskBarApplet::readSettings()
 
 void TaskBarApplet::regroupWindows()
 {
+    // Prevent updateLayout() from being called during regrouping (which could cause recursion)
+    if (m_updatingLayout) {
+        return; // Already regrouping/updating
+    }
+    m_updatingLayout = true;
+    
     // Collect all clients from existing items
     QList<Client*> allClients;
     QList<WaylandClient*> allWaylandClients;
@@ -1085,6 +1188,44 @@ void TaskBarApplet::regroupWindows()
             allWaylandClients.append(wc);
         }
     }
+
+    auto findPinnedItemForWaylandAppId = [this](const QString& appIdLower) -> TaskBarItem* {
+        if (appIdLower.isEmpty()) return nullptr;
+        for (TaskBarItem* item : m_dockItems) {
+            if (!item || !item->isPinned()) continue;
+            const QString pinnedBase = QFileInfo(item->desktopFile()).completeBaseName().toLower();
+            if (pinnedBase == appIdLower ||
+                pinnedBase.startsWith(appIdLower + "_") ||
+                pinnedBase.startsWith(appIdLower + "-") ||
+                pinnedBase.contains(appIdLower)) {
+                return item;
+            }
+        }
+        return nullptr;
+    };
+
+    // ----- Wayland regrouping strategy -----
+    //
+    // Key invariant: after regroupWindows(), no WaylandClient may keep a dockItem pointer
+    // to a TaskBarItem that was deleted or no longer contains it.
+    //
+    // To ensure this, we fully detach all Wayland clients from all items, clear their
+    // backrefs, delete non-pinned items, then reattach based on m_group_windows.
+    {
+        // Detach all Wayland clients from all items (including pinned), and clear backrefs.
+        for (TaskBarItem* item : m_dockItems) {
+            if (!item) continue;
+            const QVector<WaylandClient*> wcs = item->waylandClients(); // copy
+            for (WaylandClient* wc : wcs) {
+                if (!wc) continue;
+                item->removeWaylandClient(wc);
+                wc->clearDockItem();
+            }
+        }
+        for (WaylandClient* wc : allWaylandClients) {
+            if (wc) wc->clearDockItem();
+        }
+    }
     
     // When ungrouping, we need to remove clients from pinned items if they have multiple clients
     if (!m_group_windows) {
@@ -1103,7 +1244,7 @@ void TaskBarApplet::regroupWindows()
     // Clear all non-pinned items (they will be recreated)
     QVector<TaskBarItem*> itemsToRemove;
     for (TaskBarItem* item : m_dockItems) {
-        if (!item->isPinned()) {
+        if (item && !item->isPinned()) {
             itemsToRemove.append(item);
         }
     }
@@ -1116,17 +1257,18 @@ void TaskBarApplet::regroupWindows()
             // Clear the client's reference to this item
             client->clearDockItem();
         }
-        
-        // Handle Wayland client if present
-        // We need to find which WaylandClient uses this item
+
+        // IMPORTANT: detach any Wayland clients that currently point at this item.
+        // Otherwise a regroup can delete the item while the WaylandClient still calls
+        // m_dockItem->updateContent() on the next compositor update.
         for (auto it = m_waylandClients.begin(); it != m_waylandClients.end(); ++it) {
             WaylandClient* wc = it.value();
-            if (wc && wc->dockItem() == item) {
-                // WaylandClient manages its own item, so we'll let it handle cleanup
-                // But we need to clear the reference
-                // Actually, WaylandClient creates its item in constructor, so we can't easily clear it
-                // For now, skip Wayland clients in regrouping - they'll be handled by updateWaylandClientList
-                break;
+            if (!wc) continue;
+            if (wc->dockItem() == item || item->hasWaylandClient(wc)) {
+                // Remove from the item (keeps item internal list consistent)
+                item->removeWaylandClient(wc);
+                // Clear client backref; it will be reattached below
+                wc->clearDockItem();
             }
         }
         
@@ -1139,34 +1281,18 @@ void TaskBarApplet::regroupWindows()
     // When ungrouping (m_group_windows == false), each client must get its own item
     // When grouping (m_group_windows == true), clients with same WM_CLASS will share an item
     if (!m_group_windows) {
-        // Ungrouping: create a separate item for each client
-        // But preserve pinned items - only create new items for clients that were removed from pinned items
+        // Ungrouping: use dockItemForClient which will:
+        // - Put the first matching client in a pinned item (if one exists)
+        // - Create separate items for other clients
+        // dockItemForClient already handles the logic: if a pinned item already has a client,
+        // it skips it and creates a new item, so the first client goes to pinned, others get new items
         for (Client* client : allClients) {
-            // Check if this client should stay in a pinned item (only if it's the only client)
-            bool shouldStayInPinned = false;
-            if (clientsInPinnedItems.contains(client)) {
-                TaskBarItem* pinnedItem = clientsInPinnedItems[client];
-                // If the pinned item now has only this client (after we removed others), keep it there
-                if (pinnedItem && pinnedItem->clients().size() == 1 && pinnedItem->hasClient(client)) {
-                    shouldStayInPinned = true;
-                    // Update client's reference
-                    client->setDockItem(pinnedItem);
-                }
-            }
-            
-            if (!shouldStayInPinned) {
-                // Clear any stale reference
-                client->clearDockItem();
-                
-                // Create a new item for this client (bypassing grouping logic)
-                TaskBarItem* dockItem = new TaskBarItem(this);
-                dockItem->setButtonColor(m_buttonColor, m_buttonColorTransparency);
-                dockItem->setFocusColor(m_focusColor, m_focusColorTransparency);
-                dockItem->addClient(client);
-                registerTaskBarItem(dockItem);
-                
-                // Update client's m_dockItem reference
-                client->setDockItem(dockItem);
+            // Clear any stale reference
+            client->clearDockItem();
+            // dockItemForClient will match to pinned item if available and empty, or create new item
+            TaskBarItem* item = dockItemForClient(client);
+            if (item) {
+                client->setDockItem(item);
             }
         }
     } else {
@@ -1178,8 +1304,37 @@ void TaskBarApplet::regroupWindows()
         }
     }
     
-    // Note: Wayland clients manage their own items, so we don't recreate them here
-    // They will be handled by the normal updateWaylandClientList flow
+    // Reattach Wayland clients according to the new grouping setting.
+    if (m_group_windows) {
+        // Group: use standard grouping logic (pinned match + appId grouping).
+        for (WaylandClient* wc : allWaylandClients) {
+            if (!wc) continue;
+            TaskBarItem* item = dockItemForWaylandClient(wc);
+            if (item) wc->setDockItem(item);
+        }
+    } else {
+        // Ungroup: each window gets its own item, but allow a pinned launcher to host
+        // at most ONE window (mirrors the X11 pinned behavior above).
+        QSet<TaskBarItem*> pinnedAlreadyHasWayland;
+        for (WaylandClient* wc : allWaylandClients) {
+            if (!wc) continue;
+            const QString appIdLower = wc->appId().toLower();
+            TaskBarItem* pinned = findPinnedItemForWaylandAppId(appIdLower);
+            if (pinned && !pinnedAlreadyHasWayland.contains(pinned)) {
+                pinned->addWaylandClient(wc);
+                wc->setDockItem(pinned);
+                pinnedAlreadyHasWayland.insert(pinned);
+                continue;
+            }
+            // Create a dedicated item for this Wayland window
+            TaskBarItem* dockItem = new TaskBarItem(this);
+            dockItem->setButtonColor(m_buttonColor, m_buttonColorTransparency);
+            dockItem->setFocusColor(m_focusColor, m_focusColorTransparency);
+            dockItem->addWaylandClient(wc);
+            registerTaskBarItem(dockItem);
+            wc->setDockItem(dockItem);
+        }
+    }
     
     // When ungrouping, we need to ensure deduplication doesn't merge items back together
     // So we skip deduplication when grouping is disabled
@@ -1200,6 +1355,8 @@ void TaskBarApplet::regroupWindows()
     if (scene()) {
         scene()->update(sceneBoundingRect());
     }
+    
+    m_updatingLayout = false;
 }
 
 void TaskBarApplet::deduplicateTaskBarItems()
@@ -1266,6 +1423,37 @@ void TaskBarApplet::deduplicateTaskBarItems()
 
         // Remove from list first
         m_dockItems.removeAll(item);
+
+        // IMPORTANT: detach any clients that currently point at this item,
+        // otherwise the next Wayland/X11 update will call updateContent() on
+        // a deleted TaskBarItem.
+        for (WaylandClient* wc : item->waylandClients()) {
+            if (!wc) continue;
+            if (wc->dockItem() == item) {
+                // Try to re-home to another item that contains this client.
+                TaskBarItem* replacement = nullptr;
+                for (TaskBarItem* other : m_dockItems) {
+                    if (other && other->hasWaylandClient(wc)) {
+                        replacement = other;
+                        break;
+                    }
+                }
+                wc->setDockItem(replacement);
+            }
+        }
+        for (Client* c : item->clients()) {
+            if (!c) continue;
+            if (c->dockItem() == item) {
+                TaskBarItem* replacement = nullptr;
+                for (TaskBarItem* other : m_dockItems) {
+                    if (other && other->hasClient(c)) {
+                        replacement = other;
+                        break;
+                    }
+                }
+                c->setDockItem(replacement);
+            }
+        }
 
         // Remove from scene if present (avoid double-remove during shutdown)
         if (scene() && item->scene() == scene()) {

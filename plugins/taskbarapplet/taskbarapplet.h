@@ -100,6 +100,7 @@ private:
     void updateWaylandClientList(const QList<WaylandWindow>& windows);
     void updateX11ClientList();
     void updateActiveWindow();
+    void onWaylandWindowClosed(const WaylandWindow& window);
     bool readSettings(); // Returns true if grouping setting changed
 	void regroupWindows();
     void deduplicateTaskBarItems();
@@ -120,6 +121,7 @@ private:
     bool m_group_windows;
     bool m_initialized;
     bool m_destroying;
+    bool m_updatingLayout; // Guard to prevent recursion in updateLayout() -> unregisterTaskBarItem() -> updateLayout()
     WaylandSupport* m_waylandSupport;
     
     // Color settings

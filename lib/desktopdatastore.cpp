@@ -914,7 +914,75 @@ DesktopApplication DesktopDataStore::convertToDesktopApplication(const DesktopEn
 void DesktopDataStore::optimizeIndex() { /* TODO */ }
 QList<DesktopEntryData> DesktopDataStore::searchByName(const QString& name, const QString& language) const { return QList<DesktopEntryData>(); }
 QList<DesktopEntryData> DesktopDataStore::searchByIcon(const QString& iconName) const { return QList<DesktopEntryData>(); }
-QList<DesktopEntryData> DesktopDataStore::searchByExecutable(const QString& executable) const { return QList<DesktopEntryData>(); }
+QList<DesktopEntryData> DesktopDataStore::searchByExecutable(const QString& executable) const
+{
+    QMutexLocker lock(&m_mutex);
+    QList<DesktopEntryData> results;
+    const QString needle = normalizeSearchTerm(executable);
+    if (needle.isEmpty()) {
+        return results;
+    }
+
+    // Fast path: index lookup (note: our index currently stores normalized Exec lines,
+    // which may include args/placeholders; still useful).
+    if (m_executableIndex.contains(needle)) {
+        const QStringList files = m_executableIndex.value(needle);
+        results.reserve(files.size());
+        for (const QString& f : files) {
+            if (m_desktopEntries.contains(f)) {
+                results.append(m_desktopEntries.value(f));
+            }
+        }
+        if (!results.isEmpty()) {
+            return results;
+        }
+    }
+
+    // Robust fallback: scan entries and match against:
+    // - desktop file base name (common on Wayland where appId ~= desktop file name)
+    // - Exec binary name (first token)
+    // - StartupWMClass
+    for (auto it = m_desktopEntries.begin(); it != m_desktopEntries.end(); ++it) {
+        const DesktopEntryData& entry = it.value();
+        if (!entry.isValid) continue;
+
+        const QString baseName = normalizeSearchTerm(QFileInfo(entry.desktopFile).completeBaseName());
+        const QString wmClass  = normalizeSearchTerm(entry.startupWMClass);
+
+        // Extract executable "binary" from Exec
+        QString exec = entry.exec.trimmed();
+        if (exec.startsWith('"') && exec.endsWith('"') && exec.size() > 1) {
+            exec = exec.mid(1, exec.size() - 2);
+        }
+        // Remove desktop placeholders like %U, %f etc by cutting at first '%'
+        int pct = exec.indexOf('%');
+        if (pct >= 0) exec = exec.left(pct);
+        exec = exec.trimmed();
+        const QString firstToken = exec.section(' ', 0, 0).trimmed();
+        const QString execBase = normalizeSearchTerm(QFileInfo(firstToken).fileName());
+
+        bool match = false;
+        if (baseName == needle ||
+            baseName.startsWith(needle + "-") ||
+            baseName.startsWith(needle + "_") ||
+            baseName.contains(needle)) {
+            match = true;
+        }
+        if (!match && (execBase == needle || execBase.contains(needle))) {
+            match = true;
+        }
+        if (!match && !wmClass.isEmpty() && (wmClass == needle || wmClass.contains(needle))) {
+            match = true;
+        }
+
+        if (match) {
+            results.append(entry);
+        }
+    }
+
+    return results;
+}
+
 QList<DesktopEntryData> DesktopDataStore::searchByCategory(const QString& category) const { return QList<DesktopEntryData>(); }
 QList<DesktopEntryData> DesktopDataStore::searchByKeywords(const QStringList& keywords) const { return QList<DesktopEntryData>(); }
 QList<DesktopEntryData> DesktopDataStore::searchByMimeType(const QString& mimeType) const { return QList<DesktopEntryData>(); }

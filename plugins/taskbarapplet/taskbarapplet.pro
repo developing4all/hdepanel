@@ -6,6 +6,10 @@ lessThan(QT_MAJOR_VERSION, 6) {
     QT += x11extras
 }
 
+# IMPORTANT: Must match lib build feature flags to avoid ABI mismatch.
+# WaylandSupport's class layout changes based on HDE_HAVE_WAYLAND.
+DEFINES += HDE_HAVE_WAYLAND
+
 DESTDIR         = ../
 
 INCLUDEPATH    += ../../lib/

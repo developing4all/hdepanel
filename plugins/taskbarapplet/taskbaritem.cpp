@@ -123,9 +123,10 @@ TaskBarItem::~TaskBarItem()
 		applet->unregisterTaskBarItem(this);
 	}
 
-	delete m_iconItem;
+	// NOTE: m_iconItem and m_textItem are QGraphicsItem children of this item
+	// (constructed with `this` as parent item). QGraphicsItem will delete its
+	// children automatically, so deleting them manually here causes double-free.
 	m_iconItem = nullptr;
-	delete m_textItem;
 	m_textItem = nullptr;
 	delete m_animationTimer;
 	m_animationTimer = nullptr;
@@ -167,9 +168,13 @@ void TaskBarItem::updateContent()
     if (!m_clients.isEmpty()) {
         displayText = m_clients[0]->name();
         displayIcon = m_clients[0]->icon();
-    } else if (m_waylandClient) {
-        displayText = m_waylandClient->name();
-        displayIcon = m_waylandClient->icon();
+    } else if (!m_waylandClients.isEmpty() || m_waylandClient) {
+        WaylandClient* primary = m_waylandClient ? m_waylandClient
+                                                 : (m_waylandClients.isEmpty() ? nullptr : m_waylandClients.first());
+        if (primary) {
+            displayText = primary->name();
+            displayIcon = primary->icon();
+        }
     } else if (!m_icon.isNull()) {
         displayText = m_waylandText; // fallback text
         displayIcon = m_icon;
@@ -352,19 +357,54 @@ void TaskBarItem::removeClient(Client* client)
 
 void TaskBarItem::setWaylandClient(WaylandClient* waylandClient)
 {
-    if (!waylandClient || !m_textItem || !m_iconItem) {
+    if (!m_textItem || !m_iconItem) {
         return;
     }
-    
+
+    // Allow clearing the wayland client when a window closes.
     m_waylandClient = waylandClient;
-    
-    try {
-        // Store Wayland client text separately
-        m_waylandText = waylandClient->name();
-        
-        updateContent();
-    } catch (...) {
-        // Silently handle any errors
+    m_waylandText = waylandClient ? waylandClient->name() : QString();
+
+    updateContent();
+}
+
+void TaskBarItem::addWaylandClient(WaylandClient* waylandClient)
+{
+    if (!waylandClient) return;
+    if (!m_waylandClients.contains(waylandClient)) {
+        m_waylandClients.append(waylandClient);
+    }
+    if (!m_waylandClient) {
+        m_waylandClient = waylandClient;
+    }
+    updateContent();
+    update();
+    if (scene()) {
+        scene()->update(boundingRect());
+    }
+}
+
+void TaskBarItem::removeWaylandClient(WaylandClient* waylandClient)
+{
+    if (!waylandClient) return;
+    // Remove all occurrences (defensive against accidental duplicates)
+    for (;;) {
+        int idx = m_waylandClients.indexOf(waylandClient);
+        if (idx < 0) break;
+        m_waylandClients.remove(idx);
+    }
+    if (m_waylandClient == waylandClient) {
+        m_waylandClient = m_waylandClients.isEmpty() ? nullptr : m_waylandClients.first();
+    }
+    if (m_waylandClients.isEmpty() && m_clients.isEmpty()) {
+        if (!isPinned()) {
+            m_shouldDelete = true;
+        }
+    }
+    updateContent();
+    update();
+    if (scene()) {
+        scene()->update(boundingRect());
     }
 }
 
@@ -427,6 +467,9 @@ void TaskBarItem::moveInstantly()
 
 void TaskBarItem::startAnimation()
 {
+	// Can be null during teardown (or if construction failed).
+	if (!m_animationTimer || !m_dockApplet || m_dockApplet->isDestroying())
+		return;
 	if(!m_animationTimer->isActive())
 		m_animationTimer->start();
 }
@@ -482,13 +525,18 @@ void TaskBarItem::close()
 	}
 	
 	// Close Wayland windows
-	if (m_waylandClient) {
-		// Get the WaylandSupport instance from the TaskBarApplet
+	if (!m_waylandClients.isEmpty() || m_waylandClient) {
 		WaylandSupport* waylandSupport = m_dockApplet->waylandSupport();
 		if (waylandSupport) {
-			QString appId = m_waylandClient->appId();
-			if (!appId.isEmpty()) {
-				waylandSupport->closeWindow(appId);
+			// Close all wayland toplevels represented by this item
+			for (WaylandClient* wc : m_waylandClients) {
+				if (wc && wc->surface()) {
+					waylandSupport->closeWindow(wc->surface());
+				}
+			}
+			// If we have only primary and list is empty, close primary
+			if (m_waylandClients.isEmpty() && m_waylandClient && m_waylandClient->surface()) {
+				waylandSupport->closeWindow(m_waylandClient->surface());
 			}
 		}
 	}
@@ -538,7 +586,7 @@ void TaskBarItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* optio
     QPointF center(rect.center().x(), rect.bottom() + dp(20));
 
     // Check if this is a pinned item with no running clients
-    bool isPinnedWithoutClients = isPinned() && m_clients.isEmpty() && !m_waylandClient;
+    bool isPinnedWithoutClients = isPinned() && m_clients.isEmpty() && m_waylandClients.isEmpty() && !m_waylandClient;
 
     // Base hover background - skip for pinned items without clients (unless hovering)
     if (!isPinnedWithoutClients || m_highlightIntensity > 0.001) {
@@ -593,7 +641,7 @@ void TaskBarItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* optio
     }
     
     // Draw dots indicator for grouped windows (when more than one window)
-    int windowCount = m_clients.size() + (m_waylandClient ? 1 : 0);
+    int windowCount = m_clients.size() + m_waylandClients.size() + (m_waylandClient && m_waylandClients.isEmpty() ? 1 : 0);
     if (windowCount > 1) {
         const int dotSize = dp(3);
         const int dotSpacing = dp(4);
@@ -655,12 +703,19 @@ void TaskBarItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
                 clickMouseMoveTolerance) {
                 
                 // Handle Wayland clients
-                if (m_waylandClient) {
+                if (!m_waylandClients.isEmpty() || m_waylandClient) {
                     TaskBarApplet* dockApplet = qobject_cast<TaskBarApplet*>(m_dockApplet);
                     if (dockApplet && dockApplet->waylandSupport()) {
-                        QString appId = m_waylandClient->appId();
-                        if (!appId.isEmpty()) {
-                            dockApplet->waylandSupport()->activateWindow(appId);
+                        // Cycle through Wayland windows if grouped
+                        QVector<WaylandClient*> list = m_waylandClients;
+                        if (list.isEmpty() && m_waylandClient) list.append(m_waylandClient);
+                        if (!list.isEmpty()) {
+                            int nextIndex = (m_lastClickedIndex + 1) % list.size();
+                            WaylandClient* next = list[nextIndex];
+                            if (next && next->surface()) {
+                                dockApplet->waylandSupport()->activateWindow(next->surface());
+                                m_lastClickedIndex = nextIndex;
+                            }
                         }
                     }
                 }
@@ -746,18 +801,18 @@ void TaskBarItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 
 void TaskBarItem::wheelEvent(QGraphicsSceneWheelEvent* event)
 {
-    int windowCount = m_clients.size() + (m_waylandClient ? 1 : 0);
+    int windowCount = m_clients.size() + m_waylandClients.size() + (m_waylandClient && m_waylandClients.isEmpty() ? 1 : 0);
     
     // If single window, activate it
     if (windowCount == 1) {
         if (!m_clients.isEmpty()) {
             X11Support::activateWindow(m_clients[0]->handle());
-        } else if (m_waylandClient) {
+        } else if (!m_waylandClients.isEmpty() || m_waylandClient) {
             TaskBarApplet* dockApplet = qobject_cast<TaskBarApplet*>(m_dockApplet);
             if (dockApplet && dockApplet->waylandSupport()) {
-                QString appId = m_waylandClient->appId();
-                if (!appId.isEmpty()) {
-                    dockApplet->waylandSupport()->activateWindow(appId);
+                WaylandClient* wc = !m_waylandClients.isEmpty() ? m_waylandClients.first() : m_waylandClient;
+                if (wc && wc->surface()) {
+                    dockApplet->waylandSupport()->activateWindow(wc->surface());
                 }
             }
         }
@@ -771,14 +826,33 @@ void TaskBarItem::wheelEvent(QGraphicsSceneWheelEvent* event)
         return;
     }
     
+    // Build combined list of all windows (X11 first, then Wayland)
+    QVector<Client*> x11List = m_clients;
+    QVector<WaylandClient*> wlList = m_waylandClients;
+    if (wlList.isEmpty() && m_waylandClient) {
+        wlList.append(m_waylandClient);
+    }
+    
     // Find the currently active window
     unsigned long activeWindow = m_dockApplet->activeWindow();
     int currentIndex = -1;
     
-    for (int i = 0; i < m_clients.size(); i++) {
-        if (m_clients[i]->handle() == activeWindow) {
+    // Check X11 clients first
+    for (int i = 0; i < x11List.size(); i++) {
+        if (x11List[i]->handle() == activeWindow) {
             currentIndex = i;
             break;
+        }
+    }
+    
+    // If not found in X11, check Wayland clients
+    if (currentIndex < 0) {
+        TaskBarApplet* dockApplet = qobject_cast<TaskBarApplet*>(m_dockApplet);
+        if (dockApplet && dockApplet->waylandSupport()) {
+            // Try to find active Wayland window by checking if any surface is focused
+            // (Wayland doesn't have a simple "active window" handle like X11)
+            // For now, we'll use the first window if none are found active
+            currentIndex = x11List.size(); // Start from first Wayland window
         }
     }
     
@@ -790,26 +864,35 @@ void TaskBarItem::wheelEvent(QGraphicsSceneWheelEvent* event)
     // Calculate next window index based on scroll direction
     // QGraphicsSceneWheelEvent uses delta() in both Qt5 and Qt6
     int delta = event->delta();
+    
     int nextIndex = currentIndex;
     
     if (delta > 0) {
         // Scroll up - go to previous window
         nextIndex = (currentIndex - 1 + windowCount) % windowCount;
-    } else {
+    } else if (delta < 0) {
         // Scroll down - go to next window
         nextIndex = (currentIndex + 1) % windowCount;
+    } else {
+        // No scroll, do nothing
+        event->accept();
+        return;
     }
     
     // Activate the next window
-    if (nextIndex < m_clients.size()) {
-        X11Support::activateWindow(m_clients[nextIndex]->handle());
-    } else if (m_waylandClient) {
-        // Handle Wayland client if needed
+    if (nextIndex < x11List.size()) {
+        // X11 window
+        X11Support::activateWindow(x11List[nextIndex]->handle());
+    } else {
+        // Wayland window
         TaskBarApplet* dockApplet = qobject_cast<TaskBarApplet*>(m_dockApplet);
         if (dockApplet && dockApplet->waylandSupport()) {
-            QString appId = m_waylandClient->appId();
-            if (!appId.isEmpty()) {
-                dockApplet->waylandSupport()->activateWindow(appId);
+            int wlIndex = nextIndex - x11List.size();
+            if (wlIndex >= 0 && wlIndex < wlList.size()) {
+                WaylandClient* wc = wlList[wlIndex];
+                if (wc && wc->surface()) {
+                    dockApplet->waylandSupport()->activateWindow(wc->surface());
+                }
             }
         }
     }
@@ -1125,5 +1208,5 @@ bool TaskBarItem::hasClient(Client* client) const
 
 bool TaskBarItem::hasWaylandClient(WaylandClient* client) const
 {
-	return m_waylandClient == client;
+	return client && (m_waylandClient == client || m_waylandClients.contains(client));
 }

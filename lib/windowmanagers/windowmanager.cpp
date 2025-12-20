@@ -83,8 +83,10 @@ WindowManager* WindowManagerFactory::createWindowManager(QObject* parent)
             return nullptr; // TODO: Implement RiverWindowManager
             
         case WindowManager::Type::Wayfire:
-            qDebug() << "WindowManagerFactory: Creating Wayfire window manager";
-            return new WayfireWindowManager(parent);
+            // Wayfire (wlroots) is handled via WaylandSupport's foreign-toplevel protocol.
+            // Avoid using the legacy Wayfire socket/IPC path which has been unstable.
+            qDebug() << "WindowManagerFactory: Wayfire detected - using Wayland foreign-toplevel protocol (no WM backend)";
+            return nullptr;
             
         case WindowManager::Type::Labwc:
             qDebug() << "WindowManagerFactory: Creating Labwc window manager";
@@ -133,37 +135,18 @@ WindowManager::Type WindowManagerFactory::detectWindowManager()
             return WindowManager::Type::Hyprland;
         }
         
-        // Check for standalone compositors
-        QProcess process;
-        process.start("pgrep", QStringList() << "-f" << "hyprland");
-        process.waitForFinished(1000);
-        qDebug() << "WindowManagerFactory: Checking for Hyprland - exit code:" << process.exitCode();
-        if (process.exitCode() == 0) {
-            qDebug() << "WindowManagerFactory: Found Hyprland process";
-            return WindowManager::Type::Hyprland;
-        }
-        
-        process.start("pgrep", QStringList() << "-f" << "river");
-        process.waitForFinished(1000);
-        if (process.exitCode() == 0) {
+        // Avoid QProcess/pgrep probing here: it runs very early during startup and has
+        // proven unstable on some systems. Environment-based detection is sufficient.
+        if (currentDesktop.contains("river")) {
             return WindowManager::Type::River;
         }
-        
-        process.start("pgrep", QStringList() << "-f" << "wayfire");
-        process.waitForFinished(1000);
-        if (process.exitCode() == 0) {
+        if (currentDesktop.contains("wayfire")) {
             return WindowManager::Type::Wayfire;
         }
-        
-        process.start("pgrep", QStringList() << "-f" << "labwc");
-        process.waitForFinished(1000);
-        if (process.exitCode() == 0) {
+        if (currentDesktop.contains("labwc")) {
             return WindowManager::Type::Labwc;
         }
-        
-        process.start("pgrep", QStringList() << "-f" << "weston");
-        process.waitForFinished(1000);
-        if (process.exitCode() == 0) {
+        if (currentDesktop.contains("weston")) {
             return WindowManager::Type::Weston;
         }
         

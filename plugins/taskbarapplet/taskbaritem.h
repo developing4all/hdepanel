@@ -60,8 +60,11 @@ public:
 	void addClient(Client* client);
 	void removeClient(Client* client);
 	void setWaylandClient(WaylandClient* waylandClient);
+	void addWaylandClient(WaylandClient* waylandClient);
+	void removeWaylandClient(WaylandClient* waylandClient);
 	bool hasClient(Client* client) const;
 	bool hasWaylandClient(WaylandClient* client) const;
+	const QVector<WaylandClient*>& waylandClients() const { return m_waylandClients; }
 	void setText(const QString& text);
 	void setIcon(const QIcon& icon);
 	QString text() const;
@@ -113,7 +116,8 @@ private:
 	QGraphicsPixmapItem* m_iconItem;
     QIcon m_icon;
 	QVector<Client*> m_clients;
-	WaylandClient* m_waylandClient;
+	QVector<WaylandClient*> m_waylandClients;
+	WaylandClient* m_waylandClient; // primary
 	QString m_waylandText;  // Store Wayland client text separately
 	QPoint m_position;
 	QPoint m_targetPosition;

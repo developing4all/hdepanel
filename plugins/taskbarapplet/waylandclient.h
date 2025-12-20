@@ -83,6 +83,16 @@ public:
 		return m_dockItem;
 	}
 
+	void setDockItem(TaskBarItem* item)
+	{
+		m_dockItem = item;
+	}
+
+	void clearDockItem()
+	{
+		m_dockItem = nullptr;
+	}
+
 	void updateFromWindow(const WaylandWindow& window);
 
 private:

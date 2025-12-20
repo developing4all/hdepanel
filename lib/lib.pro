@@ -63,16 +63,21 @@ lessThan(QT_MAJOR_VERSION, 6) {
 contains(DEFINES, HDE_HAVE_WAYLAND) {
     # wlroots layer-shell
     WAYLAND_PROTOCOL = $$PWD/protocols/wlr-layer-shell-unstable-v1.xml
+    WLR_FOREIGN_TOPLEVEL_PROTOCOL = $$PWD/protocols/wlr-foreign-toplevel-management-unstable-v1.xml
     XDG_SHELL_PROTOCOL = /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml
 
     system(wayland-scanner client-header $$WAYLAND_PROTOCOL $$OUT_PWD/wlr-layer-shell-unstable-v1-client-protocol.h)
     system(wayland-scanner private-code $$WAYLAND_PROTOCOL $$OUT_PWD/wlr-layer-shell-unstable-v1-protocol.c)
+    system(wayland-scanner client-header $$WLR_FOREIGN_TOPLEVEL_PROTOCOL $$OUT_PWD/wlr-foreign-toplevel-management-unstable-v1-client-protocol.h)
+    system(wayland-scanner private-code $$WLR_FOREIGN_TOPLEVEL_PROTOCOL $$OUT_PWD/wlr-foreign-toplevel-management-unstable-v1-protocol.c)
     system(wayland-scanner client-header $$XDG_SHELL_PROTOCOL $$OUT_PWD/xdg-shell-client-protocol.h)
     system(wayland-scanner private-code $$XDG_SHELL_PROTOCOL $$OUT_PWD/xdg-shell-protocol.c)
 
     SOURCES += $$OUT_PWD/wlr-layer-shell-unstable-v1-protocol.c \
+               $$OUT_PWD/wlr-foreign-toplevel-management-unstable-v1-protocol.c \
                $$OUT_PWD/xdg-shell-protocol.c
     HEADERS += $$OUT_PWD/wlr-layer-shell-unstable-v1-client-protocol.h \
+               $$OUT_PWD/wlr-foreign-toplevel-management-unstable-v1-client-protocol.h \
                $$OUT_PWD/xdg-shell-client-protocol.h
 }
 

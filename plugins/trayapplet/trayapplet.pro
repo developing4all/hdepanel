@@ -13,6 +13,9 @@ INCLUDEPATH    += ../../lib/
 
 HEADERS += \
     trayapplet.h \
+    trayitem.h \
+    snitrayitem.h \
+    trayappletplugin.h \
     ../../lib/applet.h \
     sni.h \
     dbusmenu.h
@@ -20,6 +23,9 @@ HEADERS += \
 
 SOURCES += \
     trayapplet.cpp \
+    trayitem.cpp \
+    snitrayitem.cpp \
+    trayappletplugin.cpp \
     sni.cpp \
     dbusmenu.cpp
 

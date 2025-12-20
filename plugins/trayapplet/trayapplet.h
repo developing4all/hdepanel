@@ -17,7 +17,7 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
-
+ *
  * You should have received a copy of the GNU Lesser General
  * Public License along with this library; if not, write to the
  * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
@@ -30,67 +30,11 @@
 
 #include <QtCore/QVector>
 #include <QtCore/QSize>
-#include <QtGui/QIcon>
 #include "applet.h"
 
-class TrayApplet;
-class SniItemProxy;
-
-class TrayItem: public QObject, public QGraphicsItem
-{
-	Q_OBJECT
-	Q_INTERFACES(QGraphicsItem)
-public:
-	TrayItem(TrayApplet* trayApplet, unsigned long window);
-	~TrayItem();
-
-	void setPosition(const QPoint& position);
-	void setSize(const QSize& size);
-
-	QRectF boundingRect() const;
-	void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget);
-	void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
-
-	unsigned long window() const
-	{
-		return m_window;
-	}
-
-private:
-	QSize m_size;
-	TrayApplet* m_trayApplet;
-	unsigned long m_window;
-};
-
-class SniTrayItem: public QObject, public QGraphicsItem
-{
-	Q_OBJECT
-	Q_INTERFACES(QGraphicsItem)
-public:
-	SniTrayItem(TrayApplet* trayApplet, SniItemProxy* sniItem);
-	~SniTrayItem();
-
-	void setPosition(const QPoint& position);
-	void setSize(const QSize& size);
-
-	QRectF boundingRect() const;
-	void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget);
-	void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
-
-	SniItemProxy* sniItem() const
-	{
-		return m_sniItem;
-	}
-
-private slots:
-	void updateIcon();
-
-private:
-	QSize m_size;
-	TrayApplet* m_trayApplet;
-	SniItemProxy* m_sniItem;
-	QIcon m_cachedIcon;
-};
+class TrayItem;
+class SniTrayItem;
+class SniWatcher;
 
 class TrayApplet: public Applet
 {
@@ -103,7 +47,6 @@ public:
 
 	bool init();
     void startPlugin(){}
-
 
 	QSize desiredSize();
 
@@ -147,18 +90,4 @@ public:
     bool isDestroying() const { return m_destroying; }
 };
 
-
-class TrayAppletPlugin: public QObject, public AppletPlugin
-{
-    Q_OBJECT
-    Q_PLUGIN_METADATA(IID "hde.panel.appletplugin")
-    Q_INTERFACES(AppletPlugin)
-
-public:
-    TrayAppletPlugin(){}
-    ~TrayAppletPlugin(){}
-
-    Applet* createApplet(PanelWindow* panelWindow) {return new TrayApplet(panelWindow);}
-    QString name() const override { return tr("System Tray"); }
-};
-#endif
+#endif // TRAYAPPLET_H

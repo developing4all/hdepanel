@@ -62,7 +62,6 @@ Applet::~Applet()
 
 bool Applet::init()
 {
-	m_panelWindow->updateLayout();
 	return true;
 }
 

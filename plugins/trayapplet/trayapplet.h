@@ -137,6 +137,12 @@ private:
     class SniWatcher* m_sniWatcher; // Wayland: DBus-based tray
     bool m_destroying = false;
 
+    // Cache atoms / ids used in hot-path client message handling
+    unsigned long m_trayOpcodeAtom = 0;
+    unsigned long m_managerAtom = 0;
+    unsigned long m_systemTrayAtom = 0;
+    unsigned long m_trayWindowId = 0;
+
 public:
     bool isDestroying() const { return m_destroying; }
 };

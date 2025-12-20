@@ -409,6 +409,9 @@ void PanelSettings::applyAppletList()
     }
 
     Settings::setValue(m_panel_id, "applets", applets );
+    if (Settings::s_settings) {
+        Settings::s_settings->sync(); // Ensure settings are saved immediately
+    }
     m_panel->resetApplets();
 }
 

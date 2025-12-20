@@ -211,7 +211,10 @@ void SniTrayItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
 {
     if (!m_sniItem) return;
     QPoint globalPos = event->screenPos();
-    qDebug() << "SniTrayItem::mousePressEvent - button:" << event->button() << "pos:" << globalPos;
+    static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
+    if (trayDebug) {
+        qDebug() << "SniTrayItem::mousePressEvent - button:" << event->button() << "pos:" << globalPos;
+    }
     if (event->button() == Qt::LeftButton) {
         // Many Ayatana/indicator items only expose a DBusMenu; show it on left-click if available.
         if (!(m_sniItem->hasMenu() && m_sniItem->popupMenu(globalPos.x(), globalPos.y()))) {
@@ -235,19 +238,30 @@ TrayApplet::TrayApplet(PanelWindow* panelWindow)
     qDBusRegisterMetaType<SniPixmapList>();
 
     setObjectName("Tray");
+    // Cache atoms used in hot-path event processing (avoid repeated XInternAtom).
+    m_trayOpcodeAtom = X11Support::atom("_NET_SYSTEM_TRAY_OPCODE");
+    m_managerAtom = X11Support::atom("MANAGER");
+    m_systemTrayAtom = X11Support::atom("_NET_SYSTEM_TRAY_S" + QString::number(0));
+
     // Initialize SNI watcher on both X11 and Wayland
     // Many modern applications (like Unity Hub) use SNI even on X11
     m_sniWatcher = new SniWatcher(this);
     connect(m_sniWatcher, &SniWatcher::itemAdded, this, [this](SniItemProxy* item){
+        static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
 		if (item) {
-			qDebug() << "SNI item added:" << item->id();
+            if (trayDebug) {
+                qDebug() << "SNI item added:" << item->id();
+            }
 			new SniTrayItem(this, item);
 		}
 		updateLayout();
 		update();
 	});
     connect(m_sniWatcher, &SniWatcher::itemRemoved, this, [this](const QString &id){
-		qDebug() << "SNI item removed:" << id;
+        static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
+        if (trayDebug) {
+            qDebug() << "SNI item removed:" << id;
+        }
 		// Find and remove the corresponding SNI tray item
 		for(int i = 0; i < m_sniTrayItems.size(); i++) {
 			if(m_sniTrayItems[i]->sniItem() && m_sniTrayItems[i]->sniItem()->id() == id) {
@@ -262,7 +276,10 @@ TrayApplet::TrayApplet(PanelWindow* panelWindow)
 	const QMap<QString, SniItemProxy*>& existingItems = m_sniWatcher->items();
 	for(auto it = existingItems.constBegin(); it != existingItems.constEnd(); ++it) {
 		if (it.value()) {
-			qDebug() << "Adding existing SNI item:" << it.value()->id();
+            static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
+            if (trayDebug) {
+                qDebug() << "Adding existing SNI item:" << it.value()->id();
+            }
 			new SniTrayItem(this, it.value());
 		}
 	}
@@ -280,7 +297,6 @@ TrayApplet::TrayApplet(PanelWindow* panelWindow)
 
 TrayApplet::~TrayApplet()
 {
-    qDebug() << "Deleting tray";
     m_destroying = true;
     close();
 }
@@ -292,6 +308,19 @@ void TrayApplet::setPanelWindow(PanelWindow *panelWindow)
 
 void TrayApplet::close()
 {
+    // IMPORTANT: PanelWindow::removeApplets() calls applet->close() before deleting the applet.
+    // If we don't mark ourselves as destroying here, TrayItem/SniTrayItem destructors will call
+    // back into TrayApplet (unregister*) which triggers PanelWindow::updateLayout() during teardown,
+    // causing re-entrancy and potential freezes.
+    m_destroying = true;
+
+    // CRITICAL: Disconnect all signals from SniWatcher BEFORE deleting items.
+    // Otherwise, SniWatcher signals (itemAdded/itemRemoved) can fire during cleanup
+    // and call updateLayout() even though we're destroying, causing freezes.
+    if (m_sniWatcher) {
+        disconnect(m_sniWatcher, nullptr, this, nullptr);
+    }
+
 #if QT_VERSION >= 0x050000
     if(m_initialized && qApp->platformName().toLower().contains("xcb"))
 #else
@@ -299,16 +328,31 @@ void TrayApplet::close()
 #endif
 		X11Support::freeSystemTray();
 
+    // Delete SNI tray items FIRST (before deleting SniWatcher)
+    // This prevents SniTrayItem destructors from accessing deleted SniWatcher
+    while(!m_sniTrayItems.isEmpty()) {
+        SniTrayItem* item = m_sniTrayItems.takeLast();
+        if (item) {
+            // Clear the reference to prevent callbacks during deletion
+            item->setParentItem(nullptr);
+            delete item;
+        }
+    }
+    
     // Delete tray items safely
     while(!m_trayItems.isEmpty()) {
         TrayItem* item = m_trayItems.takeLast();
-        if (item) delete item;
+        if (item) {
+            item->setParentItem(nullptr);
+            delete item;
+        }
     }
     
-    // Delete SNI tray items safely
-    while(!m_sniTrayItems.isEmpty()) {
-        SniTrayItem* item = m_sniTrayItems.takeLast();
-        if (item) delete item;
+    // Delete SniWatcher last (it's a child, but explicit deletion ensures cleanup order)
+    // Since we disconnected signals above, no callbacks will fire during deletion
+    if (m_sniWatcher) {
+        delete m_sniWatcher;
+        m_sniWatcher = nullptr;
     }
 }
 
@@ -337,6 +381,9 @@ bool TrayApplet::init()
 	// Note: ClientMessage events are always delivered, but we register for other events too
 	X11Support::registerForWindowPropertyChanges(m_panelWindow->winId());
 	X11Support::registerForWindowStructureNotify(m_panelWindow->winId());
+
+    // Cache ids we compare against in the client-message hot path
+    m_trayWindowId = m_panelWindow->winId();
 	
 	// Also register for events on root window to catch MANAGER messages
 	X11Support::registerForWindowStructureNotify(X11Support::rootWindow());
@@ -405,7 +452,9 @@ QSize TrayApplet::desiredSize()
 void TrayApplet::registerTrayItem(TrayItem* trayItem)
 {
 	m_trayItems.append(trayItem);
-	m_panelWindow->updateLayout();
+	if (!m_destroying && m_panelWindow) {
+		m_panelWindow->updateLayout();
+	}
 }
 
 void TrayApplet::unregisterTrayItem(TrayItem* trayItem)
@@ -414,13 +463,18 @@ void TrayApplet::unregisterTrayItem(TrayItem* trayItem)
     if (idx >= 0 && idx < m_trayItems.size()) {
         m_trayItems.removeAt(idx);
     }
-	m_panelWindow->updateLayout();
+	// Don't call updateLayout() during destruction - it's already blocked by PanelWindow guards
+	if (!m_destroying && m_panelWindow) {
+		m_panelWindow->updateLayout();
+	}
 }
 
 void TrayApplet::registerSniTrayItem(SniTrayItem* trayItem)
 {
 	m_sniTrayItems.append(trayItem);
-	m_panelWindow->updateLayout();
+	if (!m_destroying && m_panelWindow) {
+		m_panelWindow->updateLayout();
+	}
 }
 
 void TrayApplet::unregisterSniTrayItem(SniTrayItem* trayItem)
@@ -429,7 +483,10 @@ void TrayApplet::unregisterSniTrayItem(SniTrayItem* trayItem)
     if (idx >= 0 && idx < m_sniTrayItems.size()) {
         m_sniTrayItems.removeAt(idx);
     }
-	m_panelWindow->updateLayout();
+	// Don't call updateLayout() during destruction - it's already blocked by PanelWindow guards
+	if (!m_destroying && m_panelWindow) {
+		m_panelWindow->updateLayout();
+	}
 }
 
 void TrayApplet::layoutChanged()
@@ -439,29 +496,44 @@ void TrayApplet::layoutChanged()
 
 void TrayApplet::clientMessageReceived(unsigned long window, unsigned long atom, void* data)
 {
-    unsigned long trayOpcodeAtom = X11Support::atom("_NET_SYSTEM_TRAY_OPCODE");
-    unsigned long managerAtom = X11Support::atom("MANAGER");
-    unsigned long trayWindow = m_panelWindow->winId();
+    static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
+    const unsigned long trayOpcodeAtom = m_trayOpcodeAtom ? m_trayOpcodeAtom : X11Support::atom("_NET_SYSTEM_TRAY_OPCODE");
+    const unsigned long managerAtom = m_managerAtom ? m_managerAtom : X11Support::atom("MANAGER");
+    const unsigned long trayWindow = m_trayWindowId ? m_trayWindowId : (m_panelWindow ? m_panelWindow->winId() : 0);
+
+    // Fast path: ignore irrelevant client messages completely.
+    // Some desktops send a *lot* of ClientMessage traffic; we only care about tray-related atoms.
+    if (atom != trayOpcodeAtom && atom != managerAtom) {
+        return;
+    }
     
     u_int32_t *l = reinterpret_cast<u_int32_t *>(data);
     
     // Check if this is a tray opcode message (sent directly to tray window)
     if(atom == trayOpcodeAtom && window == trayWindow)
     {
-        qDebug() << "Received _NET_SYSTEM_TRAY_OPCODE message on tray window";
-        qDebug() << "  Data[0]:" << l[0] << "Opcode:" << l[1] << "Window:" << l[2];
+        if (trayDebug) {
+            qDebug() << "Received _NET_SYSTEM_TRAY_OPCODE message on tray window";
+            qDebug() << "  Data[0]:" << l[0] << "Opcode:" << l[1] << "Window:" << l[2];
+        }
         
         if(l[1] == 0) // TRAY_REQUEST_DOCK
         {
-            qDebug() << "TRAY_REQUEST_DOCK for window" << l[2];
+            if (trayDebug) {
+                qDebug() << "TRAY_REQUEST_DOCK for window" << l[2];
+            }
             for(int i = 0; i < m_trayItems.size(); i++)
 			{
                 if(m_trayItems[i]->window() == l[2]) {
-                    qDebug() << "Window already added, skipping";
+                    if (trayDebug) {
+                        qDebug() << "Window already added, skipping";
+                    }
                     return; // Already added.
                 }
 			}
-            qDebug() << "Creating new TrayItem for window" << l[2];
+            if (trayDebug) {
+                qDebug() << "Creating new TrayItem for window" << l[2];
+            }
             new TrayItem(this, l[2]);
         }
         return;
@@ -470,26 +542,19 @@ void TrayApplet::clientMessageReceived(unsigned long window, unsigned long atom,
     // Check for MANAGER messages on root window (for applications discovering the tray)
     if(atom == managerAtom && window == X11Support::rootWindow())
     {
-        qDebug() << "Received MANAGER message on root window";
-        unsigned long systemTrayAtom = X11Support::atom("_NET_SYSTEM_TRAY_S" + QString::number(0));
-        qDebug() << "  Manager data[0]:" << l[0] << "data[1]:" << l[1] << "systemTrayAtom:" << systemTrayAtom << "data[2]:" << l[2];
+        if (trayDebug) {
+            qDebug() << "Received MANAGER message on root window";
+        }
+        const unsigned long systemTrayAtom = m_systemTrayAtom ? m_systemTrayAtom : X11Support::atom("_NET_SYSTEM_TRAY_S" + QString::number(0));
+        if (trayDebug) {
+            qDebug() << "  Manager data[0]:" << l[0] << "data[1]:" << l[1] << "systemTrayAtom:" << systemTrayAtom << "data[2]:" << l[2];
+        }
         if(l[1] == systemTrayAtom) {
-            qDebug() << "Manager message for system tray - tray window:" << l[2];
+            if (trayDebug) {
+                qDebug() << "Manager message for system tray - tray window:" << l[2];
+            }
         }
         return;
-    }
-    
-    // For messages sent to other windows, check if they might be tray-related
-    // Some applications might send messages in unexpected ways
-    if(window != trayWindow && window != X11Support::rootWindow()) {
-        // Check if this might be a dock request with wrong atom but correct format
-        // Some apps might use a different atom name
-        if(l[1] == 0 && l[2] != 0) {
-            // This looks like it might be a dock request (opcode 0, window ID in l[2])
-            qDebug() << "Possible dock request on window" << window << "atom" << atom 
-                     << "- checking if window" << l[2] << "wants to dock";
-            // Don't auto-add, but log for debugging
-        }
     }
 }
 

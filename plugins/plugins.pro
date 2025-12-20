@@ -2,9 +2,10 @@
 
 TEMPLATE    = subdirs
 SUBDIRS     = testapplet  \
-              applicationsmenuapplet \
+          applicationsmenuapplet \
 	      taskbarapplet \
 	      trayapplet \
 	      clockapplet \
-              startapplet \
-	      keyboardapplet
+          startapplet \
+	      keyboardapplet \
+	      batteryapplet

@@ -253,8 +253,13 @@ QImage UnifiedIconService::loadApplicationIconAsImage(const DesktopApplication& 
 
 QIcon UnifiedIconService::loadApplicationIcon(const QString& appId, const QString& wmClass, int size)
 {
-    QMutexLocker lock(&m_mutex);
-    
+    // IMPORTANT: Do NOT hold m_mutex while calling into DesktopDataStore.
+    // DesktopDataStore::convertToDesktopApplication() calls back into UnifiedIconService
+    // (loadIconAsImage / loadApplicationIcon*), which would deadlock on this same mutex.
+    //
+    // This function intentionally avoids locking at the top; lower-level icon loaders
+    // (`loadIcon*`) do their own locking.
+
     // Try to find matching desktop application
     DesktopDataStore* dataStore = DesktopDataStore::instance();
     if (dataStore) {
@@ -286,10 +291,9 @@ QIcon UnifiedIconService::loadApplicationIcon(const QString& appId, const QStrin
     }
     
     for (const QString& name : namesToTry) {
-        QImage image = loadIconInternal(name, size, "application-x-executable");
-        if (!image.isNull()) {
-            return QIcon(QPixmap::fromImage(image));
-        }
+        // loadIcon() never returns null (it falls back), so just return the first candidate.
+        // This preserves existing behavior while avoiding the mutex recursion deadlock.
+        return loadIcon(name, size, "application-x-executable");
     }
     
     // Final fallback
@@ -298,8 +302,10 @@ QIcon UnifiedIconService::loadApplicationIcon(const QString& appId, const QStrin
 
 QImage UnifiedIconService::loadApplicationIconAsImage(const QString& appId, const QString& wmClass, int size)
 {
-    QMutexLocker lock(&m_mutex);
-    
+    // IMPORTANT: Do NOT hold m_mutex while calling into DesktopDataStore.
+    // DesktopDataStore::convertToDesktopApplication() calls back into UnifiedIconService.
+    // Lower-level icon loaders (`loadIconAsImage`) do their own locking.
+
     // Try to find matching desktop application
     DesktopDataStore* dataStore = DesktopDataStore::instance();
     if (dataStore) {
@@ -331,10 +337,7 @@ QImage UnifiedIconService::loadApplicationIconAsImage(const QString& appId, cons
     }
     
     for (const QString& name : namesToTry) {
-        QImage image = loadIconInternal(name, size, "application-x-executable");
-        if (!image.isNull()) {
-            return image;
-        }
+        return loadIconAsImage(name, size, "application-x-executable");
     }
     
     // Final fallback

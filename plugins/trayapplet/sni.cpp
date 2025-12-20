@@ -35,13 +35,8 @@ static const char* SNI_ITEM_IFACE = "org.kde.StatusNotifierItem";
 
 static QString getNameOwnerOrSelf(const QString& service, const QDBusConnection& bus)
 {
-    if (service.isEmpty() || service.startsWith(QLatin1Char(':')))
-        return service;
-
-    QDBusInterface dbus("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", bus);
-    QDBusReply<QString> reply = dbus.call("GetNameOwner", service);
-    if (reply.isValid() && !reply.value().isEmpty())
-        return reply.value();
+    Q_UNUSED(bus)
+    // Avoid synchronous GetNameOwner() calls (they can block the UI during panel resets).
     return service;
 }
 
@@ -71,9 +66,12 @@ void SniItemProxy::onPropertiesChanged(const QString &iface, const QVariantMap &
 
 QIcon SniItemProxy::icon() const
 {
+    static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
     if (!m_iface || !m_iface->isValid()) {
         if (!m_ifaceFd || !m_ifaceFd->isValid()) {
-            qDebug() << "SniItemProxy::icon - No valid interface for" << m_service;
+            if (trayDebug) {
+                qDebug() << "SniItemProxy::icon - No valid interface for" << m_service;
+            }
             return QIcon::fromTheme("image-missing");
         }
     }
@@ -188,13 +186,18 @@ QIcon SniItemProxy::icon() const
         }
     }
 
-    qDebug() << "SniItemProxy::icon - Failed to find icon for" << m_service << "path" << m_path;
+    if (trayDebug) {
+        qDebug() << "SniItemProxy::icon - Failed to find icon for" << m_service << "path" << m_path;
+    }
     return QIcon::fromTheme("image-missing");
 }
 
 void SniItemProxy::activate(int x, int y)
 {
-    qDebug() << "SniItemProxy::activate - service:" << m_service << "path:" << m_path << "x:" << x << "y:" << y;
+    static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
+    if (trayDebug) {
+        qDebug() << "SniItemProxy::activate - service:" << m_service << "path:" << m_path << "x:" << x << "y:" << y;
+    }
     if (m_iface && m_iface->isValid()) {
         m_iface->call(QDBus::NoBlock, "Activate", x, y);
     }
@@ -205,7 +208,10 @@ void SniItemProxy::activate(int x, int y)
 
 void SniItemProxy::secondaryActivate(int x, int y)
 {
-    qDebug() << "SniItemProxy::secondaryActivate - service:" << m_service << "path:" << m_path << "x:" << x << "y:" << y;
+    static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
+    if (trayDebug) {
+        qDebug() << "SniItemProxy::secondaryActivate - service:" << m_service << "path:" << m_path << "x:" << x << "y:" << y;
+    }
     if (m_iface && m_iface->isValid()) {
         m_iface->call(QDBus::NoBlock, "SecondaryActivate", x, y);
     }
@@ -216,7 +222,10 @@ void SniItemProxy::secondaryActivate(int x, int y)
 
 void SniItemProxy::contextMenu(int x, int y)
 {
-    qDebug() << "SniItemProxy::contextMenu - service:" << m_service << "path:" << m_path << "x:" << x << "y:" << y;
+    static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
+    if (trayDebug) {
+        qDebug() << "SniItemProxy::contextMenu - service:" << m_service << "path:" << m_path << "x:" << x << "y:" << y;
+    }
     if (m_iface && m_iface->isValid()) {
         m_iface->call(QDBus::NoBlock, "ContextMenu", x, y);
     }
@@ -285,17 +294,32 @@ SniWatcher::SniWatcher(QObject *parent)
                   this, SLOT(onServiceOwnerChanged(QString,QString,QString)));
 }
 
+SniWatcher::~SniWatcher()
+{
+    // Critical for panel reset/reorder: release DBus object/service so the next watcher can register.
+    m_bus.unregisterObject("/StatusNotifierWatcher");
+    m_bus.unregisterService(SNI_WATCHER);
+
+    m_items.clear();
+    m_registeredServices.clear();
+}
+
 void SniWatcher::registerWatcher()
 {
+    static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
     // Register the object first so it's available as soon as the service is registered
     if (!m_bus.registerObject("/StatusNotifierWatcher", "org.kde.StatusNotifierWatcher", this,
                          QDBusConnection::ExportAllSlots | QDBusConnection::ExportAllProperties)) {
-        qDebug() << "Failed to register SNI watcher object";
+        if (trayDebug) {
+            qDebug() << "Failed to register SNI watcher object";
+        }
     }
 
     // Announce as SNI watcher to encourage apps to register
     if (!m_bus.registerService(SNI_WATCHER)) {
-        qDebug() << "Failed to register SNI watcher service, another watcher may be active";
+        if (trayDebug) {
+            qDebug() << "Failed to register SNI watcher service, another watcher may be active";
+        }
     }
     
     // Query for existing items that may have registered before we started.
@@ -332,9 +356,12 @@ QStringList SniWatcher::registeredItems() const
     return m_registeredServices;
 }
 
-void SniWatcher::RegisterStatusNotifierItem(const QString &service)
+void SniWatcher::registerStatusNotifierItemInternal(const QString &service, const QString &senderService)
 {
-    qDebug() << "RegisterStatusNotifierItem called with service:" << service;
+    static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
+    if (trayDebug) {
+        qDebug() << "registerStatusNotifierItemInternal called with service:" << service << "senderService:" << senderService;
+    }
     
     // Add to registered services list
     if (!m_registeredServices.contains(service)) {
@@ -353,53 +380,96 @@ void SniWatcher::RegisterStatusNotifierItem(const QString &service)
     
     if (service.startsWith('/')) {
         // If it starts with '/', it's an object path on the caller's bus
-        serviceName = message().service();
+        if (!senderService.isEmpty()) {
+            serviceName = senderService;
+        } else {
+            if (trayDebug) {
+                qDebug() << "Service starts with / but no senderService provided, skipping";
+            }
+            return;
+        }
         path = service;
     } else {
         // Check for @ separator (used by some implementations)
-    int atPos = service.indexOf('@');
-    if (atPos > 0) {
-        serviceName = service.left(atPos);
-        QString afterAt = service.mid(atPos + 1);
-        if (!afterAt.isEmpty() && afterAt.startsWith('/')) {
-            path = afterAt;
-        }
-    } else {
+        int atPos = service.indexOf('@');
+        if (atPos > 0) {
+            serviceName = service.left(atPos);
+            QString afterAt = service.mid(atPos + 1);
+            if (!afterAt.isEmpty() && afterAt.startsWith('/')) {
+                path = afterAt;
+            }
+        } else {
             // Check for / separator (service/path)
-        int slashPos = service.indexOf('/');
-        if (slashPos > 0) {
-            serviceName = service.left(slashPos);
-            path = service.mid(slashPos);
+            int slashPos = service.indexOf('/');
+            if (slashPos > 0) {
+                serviceName = service.left(slashPos);
+                path = service.mid(slashPos);
             }
         }
     }
     
     // Final validation: Ensure serviceName is NOT a path (doesn't start with /)
     if (serviceName.isEmpty() || serviceName.startsWith('/')) {
-        qDebug() << "Invalid service name:" << serviceName << "using message sender instead";
-        serviceName = message().service();
+        if (trayDebug) {
+            qDebug() << "Invalid service name:" << serviceName;
+        }
+        if (!senderService.isEmpty()) {
+            serviceName = senderService;
+        } else {
+            if (trayDebug) {
+                qDebug() << "No senderService available, skipping";
+            }
+            return;
+        }
     }
     
     if (serviceName.isEmpty()) {
-        qDebug() << "Failed to determine service name, skipping";
+        if (trayDebug) {
+            qDebug() << "Failed to determine service name, skipping";
+        }
         return;
     }
 
-    // Normalize to a unique bus name to avoid duplicates (well-known name + unique owner)
-    serviceName = getNameOwnerOrSelf(serviceName, m_bus);
+    // Prefer unique sender name (avoids blocking GetNameOwner during resets)
+    if (!serviceName.startsWith(QLatin1Char(':')) && !senderService.isEmpty()) {
+        serviceName = senderService;
+    }
     
-    qDebug() << "Adding SNI item - service:" << serviceName << "path:" << path;
+    if (trayDebug) {
+        qDebug() << "Adding SNI item - service:" << serviceName << "path:" << path;
+    }
     addItem(serviceName, path);
+}
+
+void SniWatcher::RegisterStatusNotifierItem(const QString &service)
+{
+    static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
+    if (trayDebug) {
+        qDebug() << "RegisterStatusNotifierItem called with service:" << service;
+    }
+    
+    // Safely get sender service from D-Bus message context (if available)
+    QString senderService;
+    QDBusMessage msg = message();
+    if (msg.type() != QDBusMessage::InvalidMessage) {
+        senderService = msg.service();
+    }
+    
+    registerStatusNotifierItemInternal(service, senderService);
 }
 
 void SniWatcher::RegisterStatusNotifierHost(const QString &service)
 {
-    qDebug() << "RegisterStatusNotifierHost called with service:" << service;
+    static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
+    if (trayDebug) {
+        qDebug() << "RegisterStatusNotifierHost called with service:" << service;
+    }
     emit StatusNotifierHostRegistered();
 }
 
 void SniWatcher::queryRegisteredItems()
 {
+    static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
     // Check if there's another StatusNotifierWatcher that has registered items
     // Some applications might have registered with a previous watcher
     QDBusInterface watcherInterface(SNI_WATCHER, "/StatusNotifierWatcher", 
@@ -408,11 +478,16 @@ void SniWatcher::queryRegisteredItems()
         QVariant prop = watcherInterface.property("RegisteredStatusNotifierItems");
         if (prop.isValid()) {
             QStringList registered = prop.toStringList();
-            qDebug() << "Found" << registered.size() << "registered SNI items from watcher";
+            if (trayDebug) {
+                qDebug() << "Found" << registered.size() << "registered SNI items from watcher";
+            }
             for (const QString &service : registered) {
                 if (!m_registeredServices.contains(service)) {
-                    qDebug() << "Processing registered SNI item:" << service;
-                    RegisterStatusNotifierItem(service);
+                    if (trayDebug) {
+                        qDebug() << "Processing registered SNI item:" << service;
+                    }
+                    // Call internal helper directly (no D-Bus message context available)
+                    registerStatusNotifierItemInternal(service, QString());
                 }
             }
         }
@@ -440,14 +515,19 @@ static bool hasTrayIconProperties(const QString &service, const QString &path, c
 
 void SniWatcher::queryExistingItems()
 {
+    static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
     // Only query services that have explicitly registered via RegisterStatusNotifierItem
     // This avoids checking all system services
     if (m_registeredServices.isEmpty()) {
-        qDebug() << "No registered SNI services to query";
+        if (trayDebug) {
+            qDebug() << "No registered SNI services to query";
+        }
         return;
     }
     
-    qDebug() << "Querying" << m_registeredServices.size() << "registered SNI services";
+    if (trayDebug) {
+        qDebug() << "Querying" << m_registeredServices.size() << "registered SNI services";
+    }
     
     for (const QString &servicePath : m_registeredServices) {
         // Extract service name and path (same logic as RegisterStatusNotifierItem)
@@ -476,13 +556,16 @@ void SniWatcher::queryExistingItems()
             continue;
         }
         
+        // Avoid blocking owner-resolution; prefer service name as-is.
         serviceName = getNameOwnerOrSelf(serviceName, m_bus);
         
         // Check if it has tray icon properties
         if (hasTrayIconProperties(serviceName, path, m_bus)) {
             QString key = serviceName + path;
             if (!m_items.contains(key)) {
-                qDebug() << "Found registered SNI item:" << serviceName << "at path" << path;
+                if (trayDebug) {
+                    qDebug() << "Found registered SNI item:" << serviceName << "at path" << path;
+                }
                 addItem(serviceName, path);
             }
         }
@@ -492,6 +575,7 @@ void SniWatcher::queryExistingItems()
 void SniWatcher::onServiceOwnerChanged(const QString &name, const QString &oldOwner, const QString &newOwner)
 {
     Q_UNUSED(oldOwner)
+    static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
     
     if (newOwner.isEmpty()) {
         // Service disappeared. Remove all items associated with this service name.
@@ -503,7 +587,9 @@ void SniWatcher::onServiceOwnerChanged(const QString &name, const QString &oldOw
         }
         
         if (!toRemove.isEmpty()) {
-            qDebug() << "Service" << name << "disappeared, removing" << toRemove.size() << "SNI items";
+            if (trayDebug) {
+                qDebug() << "Service" << name << "disappeared, removing" << toRemove.size() << "SNI items";
+            }
             for (const QString &id : toRemove) {
                 removeItem(id);
             }
@@ -527,7 +613,8 @@ void SniWatcher::onServiceOwnerChanged(const QString &name, const QString &oldOw
         // Probe for the standard path
             QDBusInterface iface(name, "/StatusNotifierItem", SNI_ITEM_IFACE, QDBusConnection::sessionBus());
             if (iface.isValid()) {
-            addItem(getNameOwnerOrSelf(name, m_bus), "/StatusNotifierItem");
+            // Prefer the unique owner (newOwner) to avoid extra DBus lookups.
+            addItem(!newOwner.isEmpty() ? newOwner : getNameOwnerOrSelf(name, m_bus), "/StatusNotifierItem");
         }
     }
 }

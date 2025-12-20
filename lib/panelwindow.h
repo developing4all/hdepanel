@@ -150,6 +150,7 @@ class QGraphicsScene;
 	 QElapsedTimer m_lastStrutApply;             // used to suppress WM workarea events caused by us
 	 QAbstractNativeEventFilter* m_x11RootEventFilter = nullptr; // owned by this; installed on qApp when X11
 	 bool          m_updatingLayout = false;     // guard to prevent infinite loops
+     bool          m_resettingApplets = false;   // guard to prevent re-entrant reset/remove/layout during applet rebuild
  
 	 // Wayland helpers
 	 QTimer*       m_waylandRepositionTimer = nullptr;

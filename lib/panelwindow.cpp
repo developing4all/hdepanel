@@ -308,6 +308,9 @@ PanelWindow::PanelWindow(QString id)
     
     setApplets();
     init();
+    // Update layout after all applets are initialized
+    updateLayout();
+    updatePosition();
  
     // Debounce strut applying
     m_strutDebounce.setSingleShot(true);
@@ -549,9 +552,14 @@ QRect PanelWindow::usableScreenRectX11() const
 }
 void PanelWindow::resizeEvent(QResizeEvent* ev)
 {
-    qDebug() << "PanelWindow::resizeEvent - new size:" << ev->size()
-             << "isVisible:" << isVisible() << "isHidden:" << isHidden()
-             << "m_updatingLayout:" << m_updatingLayout;
+    // WARNING: resizeEvent can fire in tight loops (especially during applet reset/reorder).
+    // Unconditional qDebug() here can block and make the UI appear frozen if stdout/stderr is slow.
+    static const bool panelDebug = qEnvironmentVariableIsSet("HDE_PANEL_DEBUG");
+    if (panelDebug) {
+        qDebug() << "PanelWindow::resizeEvent - new size:" << ev->size()
+                 << "isVisible:" << isVisible() << "isHidden:" << isHidden()
+                 << "m_updatingLayout:" << m_updatingLayout;
+    }
 
     // Prevent the panel from being resized to an incorrect size
     // Horizontal panels: fixed height
@@ -590,7 +598,9 @@ void PanelWindow::resizeEvent(QResizeEvent* ev)
     // Only schedule struts if the panel moved, not on every resize
     scheduleApplyStrutsIfMoved();
 
-    qDebug() << "PanelWindow::resizeEvent - done; geom:" << geometry();
+    if (panelDebug) {
+        qDebug() << "PanelWindow::resizeEvent - done; geom:" << geometry();
+    }
 }
  
 // ---------------------- Settings & Applets ----------------------
@@ -718,6 +728,10 @@ void PanelWindow::updateColors()
  
 bool PanelWindow::init()
 {
+    // Block layout updates during initialization to prevent freezes when resetting applets
+    const bool prevUpdating = m_updatingLayout;
+    m_updatingLayout = true;
+    
     for (int i = 0; i < m_applets.size();) {
         m_applets[i]->setPanelWindow(this);
         if (!m_applets[i]->init())
@@ -725,6 +739,9 @@ bool PanelWindow::init()
         else
             ++i;
     }
+    
+    // Restore layout update flag
+    m_updatingLayout = prevUpdating;
     return true;
 }
  
@@ -769,6 +786,7 @@ void PanelWindow::loadApplet(QString applet_id, QDir &plugDir)
 void PanelWindow::loadAppletTranslation(const QString& name, const QString& plugDir)
 {
     static QSet<QString> loadedTranslators;
+    static const bool panelDebug = qEnvironmentVariableIsSet("HDE_PANEL_DEBUG");
     QString locale = QLocale::system().name();
     QString lang = locale.split('_').first();
     
@@ -785,7 +803,9 @@ void PanelWindow::loadAppletTranslation(const QString& name, const QString& plug
         translator->load(baseName + "_" + lang, plugDir)) {
         qApp->installTranslator(translator);
         loadedTranslators.insert(key);
-        qDebug() << "✓ Loaded applet translation for" << name << "(" << locale << ") from" << plugDir;
+        if (panelDebug) {
+            qDebug() << "✓ Loaded applet translation for" << name << "(" << locale << ") from" << plugDir;
+        }
     } else {
         // Also try standard system path if plugDir wasn't it
         QString systemPath = "/usr/share/hdepanel/translations";
@@ -794,28 +814,49 @@ void PanelWindow::loadAppletTranslation(const QString& name, const QString& plug
                 translator->load(baseName + "_" + lang, systemPath)) {
                 qApp->installTranslator(translator);
                 loadedTranslators.insert(key);
-                qDebug() << "✓ Loaded applet translation for" << name << "(" << locale << ") from" << systemPath;
+                if (panelDebug) {
+                    qDebug() << "✓ Loaded applet translation for" << name << "(" << locale << ") from" << systemPath;
+                }
                 return;
             }
         }
         delete translator;
-        qDebug() << "✗ No translation found for applet" << name << "in" << plugDir;
+        if (panelDebug) {
+            qDebug() << "✗ No translation found for applet" << name << "in" << plugDir;
+        }
     }
 }
  
 void PanelWindow::removeApplets()
 {
-    qDebug() << "removing apllets";
+    static const bool panelDebug = qEnvironmentVariableIsSet("HDE_PANEL_DEBUG");
+    if (panelDebug) {
+        qDebug() << "removing apllets";
+    }
+
+    // During applet teardown, some applets (notably TrayApplet) may delete child items
+    // that call back into the panel (e.g. updateLayout). Guard against re-entrancy.
+    if (m_resettingApplets) {
+        // Already removing/resetting; avoid recursion.
+        return;
+    }
+    m_resettingApplets = true;
+    const bool prevUpdating = m_updatingLayout;
+    m_updatingLayout = true; // temporarily block updateLayout() calls during teardown
     
-    // Disconnect all applets from the scene first
+    // Disconnect all applets from the scene first (before calling close())
+    // This prevents scene events from triggering during applet cleanup
     for (Applet* applet : m_applets) {
         if (applet && m_scene) {
+            // Remove from scene without triggering layout updates
             m_scene->removeItem(applet);
         }
     }
     
     // Call applet close to ensure internal resources are released
     // and disconnect any signal connections
+    // IMPORTANT: close() is called BEFORE delete to allow applets to clean up
+    // their resources (timers, D-Bus connections, etc.) in a controlled way
     for (Applet* applet : m_applets) {
         if (applet) {
             applet->close();
@@ -823,11 +864,18 @@ void PanelWindow::removeApplets()
     }
 
     // Then delete them (don't call close() again - it was already called above)
+    // Delete in reverse order to minimize cascading effects
     while (!m_applets.isEmpty()) {
         if (Applet* a = m_applets.takeLast()) {
+            // Set parent to null to prevent Qt from trying to remove from scene again
+            a->setParentItem(nullptr);
             delete a;
         }
     }
+
+    // Restore guards
+    m_updatingLayout = prevUpdating;
+    m_resettingApplets = false;
 }
  
 // ---------------------- Public setters -> schedule geometry work ----------------------
@@ -1664,6 +1712,7 @@ void PanelWindow::forceWaylandPosition()
 {
     static int callCount = 0;
     callCount++;
+    static const bool panelDebug = qEnvironmentVariableIsSet("HDE_PANEL_DEBUG");
     
 #if QT_VERSION < 0x060000
     const bool isX11 = QX11Info::isPlatformX11();
@@ -1671,11 +1720,15 @@ void PanelWindow::forceWaylandPosition()
     const bool isX11 = qApp->platformName().toLower().contains("xcb");
 #endif
     if (isX11) {
-        if (callCount == 1) qDebug() << "PanelWindow::forceWaylandPosition - X11 detected, stopping timer";
+        if (panelDebug && callCount == 1) {
+            qDebug() << "PanelWindow::forceWaylandPosition - X11 detected, stopping timer";
+        }
         return;
     }
     if (!isVisible()) {
-        if (callCount % 100 == 1) qDebug() << "PanelWindow::forceWaylandPosition - call #" << callCount << " - panel not visible";
+        if (panelDebug && callCount % 100 == 1) {
+            qDebug() << "PanelWindow::forceWaylandPosition - call #" << callCount << " - panel not visible";
+        }
         return;
     }
 
@@ -1712,15 +1765,19 @@ void PanelWindow::forceWaylandPosition()
             break;
     }
 
-    qDebug() << "PanelWindow::forceWaylandPosition - screen:" << screen << "available:" << available 
-             << "anchor:" << anchor << "position:" << m_position 
-             << "current pos:" << geometry().topLeft() << "target pos:" << QPoint(x,y)
-             << "current size:" << size() << "target size:" << QSize(panelWidth, panelHeight);
+    if (panelDebug) {
+        qDebug() << "PanelWindow::forceWaylandPosition - screen:" << screen << "available:" << available
+                 << "anchor:" << anchor << "position:" << m_position
+                 << "current pos:" << geometry().topLeft() << "target pos:" << QPoint(x,y)
+                 << "current size:" << size() << "target size:" << QSize(panelWidth, panelHeight);
+    }
 
     // Resize and move the panel
     QRect targetGeometry(x, y, panelWidth, panelHeight);
     if (geometry() != targetGeometry) {
-        qDebug() << "PanelWindow::forceWaylandPosition - resizing and moving panel to:" << targetGeometry;
+        if (panelDebug) {
+            qDebug() << "PanelWindow::forceWaylandPosition - resizing and moving panel to:" << targetGeometry;
+        }
         setGeometry(targetGeometry);
         
         // Force the panel to maintain its size and position
@@ -1921,13 +1978,64 @@ QPoint PanelWindow::calculateTooltipPosition(const QPoint& itemGlobalPos, const 
 
 void PanelWindow::resetApplets()
 {
-    removeApplets();
+    if (m_resettingApplets) {
+        return;
+    }
+
+    // Block intermediate layout churn while we rebuild the list.
+    m_resettingApplets = true;
+    const bool prevUpdating = m_updatingLayout;
+    m_updatingLayout = true;
+
+    // Remove all existing applets (inline the removal logic since we're managing guards)
+    static const bool panelDebug = qEnvironmentVariableIsSet("HDE_PANEL_DEBUG");
+    if (panelDebug) {
+        qDebug() << "removing apllets";
+    }
+    
+    // Disconnect all applets from the scene first (before calling close())
+    // This prevents scene events from triggering during applet cleanup
+    for (Applet* applet : m_applets) {
+        if (applet && m_scene) {
+            // Remove from scene without triggering layout updates
+            m_scene->removeItem(applet);
+        }
+    }
+    
+    // Call applet close to ensure internal resources are released
+    // and disconnect any signal connections
+    // IMPORTANT: close() is called BEFORE delete to allow applets to clean up
+    // their resources (timers, D-Bus connections, etc.) in a controlled way
+    for (Applet* applet : m_applets) {
+        if (applet) {
+            applet->close();
+        }
+    }
+
+    // Then delete them (don't call close() again - it was already called above)
+    // Delete in reverse order to minimize cascading effects
+    while (!m_applets.isEmpty()) {
+        if (Applet* a = m_applets.takeLast()) {
+            // Set parent to null to prevent Qt from trying to remove from scene again
+            a->setParentItem(nullptr);
+            delete a;
+        }
+    }
 
     // Reload applet list from settings
     m_appletnames = Settings::value(m_id, "applets", QStringList()).toStringList();
 
     setApplets();
-    init();  // re-initialize all applets
+
+    // CRITICAL: Keep m_updatingLayout = true during init() because Applet::init() 
+    // calls updateLayout(). We don't want layout updates during initialization.
+    init();  // re-initialize all applets (may request layout, but it's blocked)
+
+    // Now that all applets are initialized, allow layout to run
+    m_updatingLayout = prevUpdating;
+    m_resettingApplets = false;
+
+    // Perform final layout update now that guards are cleared
     updateLayout();
     updatePosition();
 }

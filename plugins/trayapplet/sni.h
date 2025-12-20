@@ -64,6 +64,7 @@ class SniWatcher : public QObject, protected QDBusContext {
     Q_PROPERTY(int ProtocolVersion READ protocolVersion)
 public:
     explicit SniWatcher(QObject *parent = nullptr);
+    ~SniWatcher() override;
     const QMap<QString, SniItemProxy*> &items() const { return m_items; }
     QStringList registeredItems() const;
     bool isHostRegistered() const { return true; }
@@ -90,6 +91,8 @@ private:
     void removeItem(const QString &id);
     void queryExistingItems();
     void queryRegisteredItems();
+    // Internal helper that doesn't require D-Bus message context
+    void registerStatusNotifierItemInternal(const QString &service, const QString &senderService = QString());
 
     QDBusConnection m_bus;
     QMap<QString, SniItemProxy*> m_items; // key: unique id

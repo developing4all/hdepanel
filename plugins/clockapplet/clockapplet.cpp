@@ -49,6 +49,7 @@
 #endif
 #include "textgraphicsitem.h"
 #include "panelwindow.h"
+#include "../../lib/dpisupport.h"
 #include <QDebug>
 
 #include <QApplication>
@@ -219,16 +220,51 @@ void ClockApplet::layoutChanged()
     const QRectF br = m_textItem->boundingRect();
 
     if (!verticalPanel) {
-        // Horizontal: classic baseline positioning
+        // Horizontal: center vertically within applet height
+        qreal appletHeight = static_cast<qreal>(m_size.height());
+        if (appletHeight <= 0) {
+            appletHeight = static_cast<qreal>(m_panelWindow->panelHeight());
+        }
+        
+        const qreal textHeight = br.height();
+        const qreal textTop = br.top();
+        
         qreal x = (m_size.width() - br.width()) / 2.0;
         if (x < innerPad) x = innerPad;
-        m_textItem->setPos(x, m_panelWindow->textBaseLine());
+        
+        // Center the text block vertically, accounting for font ascent
+        qreal y = (appletHeight - textHeight) / 2.0 - textTop;
+        if (y < 0) y = 0;
+        
+        m_textItem->setPos(x, y);
     } else {
         // Vertical: center the multi-line block inside the tile
-        qreal x = (m_size.width()  - br.width())  / 2.0;
-        qreal y = (m_size.height() - br.height()) / 2.0;
+        // Use actual allocated size for centering, with fallback
+        qreal appletHeight = static_cast<qreal>(m_size.height());
+        if (appletHeight <= 0) {
+            // Fallback if size not set yet
+            appletHeight = static_cast<qreal>(m_panelWindow->panelWidth());
+        }
+        
+        const qreal textHeight = br.height();
+        const qreal textTop = br.top(); // May be negative due to font ascent
+        
+        qreal x = (m_size.width() > 0 ? m_size.width() : availW) - br.width();
+        x = x / 2.0;
+        
+        // Center the text block: we want the visual center of the text bounding rect
+        // to align with the center of the applet
+        // The bounding rect's visual center is at: br.top() + br.height() / 2
+        // We want: y + br.top() + br.height() / 2 = appletHeight / 2
+        // So: y = appletHeight / 2 - br.top() - br.height() / 2
+        // Which simplifies to: y = (appletHeight - br.height()) / 2 - br.top()
+        qreal y = (appletHeight - textHeight) / 2.0 - textTop;
+        
+        // Only apply horizontal padding constraint, vertical should be truly centered
         if (x < innerPad) x = innerPad;
-        if (y < innerPad) y = innerPad;
+        // Ensure y is non-negative (text baseline can't be above 0)
+        if (y < 0) y = 0;
+        
         m_textItem->setPos(x, y);
     }
 }
@@ -274,17 +310,17 @@ QSize ClockApplet::desiredSize()
     }
 
     // Vertical panel:
-    // Width is enforced by PanelWindow; here we return a *tile height* that does NOT scale with panel width.
+    // Width is enforced by PanelWindow; here we return a *tile height* based on text content.
     const int w = qMax(10, m_panelWindow->panelWidth());
     int lines = 3;
     if (w >= 90) lines = 1;
     else if (w >= 55) lines = 2;
 
-    const int baseTileH = qMax(10, m_panelWindow->panelHeight());     // e.g. 48
     const int textH     = lines * fm.height();
     const int paddingV  = 12;
-
-    const int h = qMax(baseTileH, textH + paddingV);
+    // Use text height + padding, with a reasonable minimum (don't use panelHeight which is for horizontal panels)
+    const int minHeight = adjustHardcodedPixelSize(24);
+    const int h = qMax(minHeight, textH + paddingV);
     return QSize(-1, h);
 }
 

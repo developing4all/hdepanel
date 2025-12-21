@@ -190,6 +190,13 @@ void BatteryApplet::layoutChanged()
         }
     } else {
         // Vertical layout: icon on top, text below (or centered)
+        // Use actual allocated size for centering, with fallback
+        int appletHeight = m_size.height();
+        if (appletHeight <= 0) {
+            // Fallback if size not set yet
+            appletHeight = m_panelWindow->panelWidth();
+        }
+        
         int contentHeight = 0;
         if (m_showIcon) {
             contentHeight += iconSize;
@@ -198,18 +205,25 @@ void BatteryApplet::layoutChanged()
             contentHeight += fm.height() + 4;
         }
         
-        int startY = (availH - contentHeight) / 2;
-        if (startY < innerPad) startY = innerPad;
+        // Center content vertically within the allocated applet height
+        int startY = (appletHeight - contentHeight) / 2;
+        // Ensure non-negative
+        if (startY < 0) startY = 0;
         
         if (m_showIcon) {
             iconX = (availW - iconSize) / 2;
             iconY = startY;
-            startY += iconSize + 4;
+            if (m_showPercentage && m_batteryPresent && !m_text.isEmpty()) {
+                // Add spacing between icon and text (use adjustHardcodedPixelSize for DPI scaling)
+                startY += iconSize + adjustHardcodedPixelSize(6);
+            }
         }
         
         if (m_showPercentage && m_batteryPresent && !m_text.isEmpty()) {
             textX = (availW - fm.horizontalAdvance(m_text)) / 2;
-            textY = startY + fm.ascent();
+            // Position text baseline at startY, accounting for font ascent
+            // This centers the text visually within its allocated space
+            textY = startY + (fm.height() - fm.ascent()) / 2;
         }
     }
     

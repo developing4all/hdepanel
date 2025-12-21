@@ -8,4 +8,5 @@ SUBDIRS     = testapplet  \
 	      clockapplet \
           startapplet \
 	      keyboardapplet \
-	      batteryapplet
+	      batteryapplet \
+	      networkmanagerapplet

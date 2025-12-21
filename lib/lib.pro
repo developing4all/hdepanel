@@ -108,7 +108,8 @@ HEADERS += animationutils.h \
            windowmanagers/windowmanager.h \
            windowmanagers/gnomewindowmanager.h \
            windowmanagers/hyprlandwindowmanager.h \
-           windowmanagers/wayfirewindowmanager.h
+           windowmanagers/wayfirewindowmanager.h \
+           hdepaneldbus.h
 
 FORMS += panelsettings.ui \
          appletslistdialog.ui
@@ -135,7 +136,8 @@ SOURCES += applet.cpp \
            windowmanagers/windowmanager.cpp \
            windowmanagers/gnomewindowmanager.cpp \
            windowmanagers/hyprlandwindowmanager.cpp \
-           windowmanagers/wayfirewindowmanager.cpp
+           windowmanagers/wayfirewindowmanager.cpp \
+           hdepaneldbus.cpp
 
 ######################################################################
 # Qxt for global shortcuts (Qt5)

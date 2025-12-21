@@ -28,6 +28,7 @@
 #include "settings.h"
 #include "unifiediconservice.h"
 #include "desktopdatastore.h"
+#include "hdepaneldbus.h"
 
 #include <QAction>
 #include <QDateTime>
@@ -58,6 +59,7 @@ PanelApplication::PanelApplication(int& argc, char** argv)
 
 	m_iconLoader = new IconLoader();
 	m_x11support = nullptr;
+	m_dbusService = nullptr;
 #if QT_VERSION >= 0x050000
     // Only initialize X11 support on X11 platform
 #if QT_VERSION < 0x060000
@@ -80,6 +82,9 @@ PanelApplication::~PanelApplication()
 {
     deletePanels();
 
+    if (m_dbusService) {
+        delete m_dbusService;
+    }
     if (m_x11support)
         delete m_x11support;
     delete m_iconLoader;
@@ -211,6 +216,12 @@ void PanelApplication::init()
     panelTimer.start();
     foreach (const QString &panel_id, panels) {
         showPanel(panel_id);
+    }
+
+    // Register D-Bus service for external keybinding support
+    m_dbusService = new HDEPanelDBus(this, this);
+    if (!m_dbusService->registerService()) {
+        qWarning() << "Failed to register HDEPanel D-Bus service";
     }
 }
 

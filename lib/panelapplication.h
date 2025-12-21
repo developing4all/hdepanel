@@ -49,6 +49,7 @@
 
 class IconLoader;
 class X11Support;
+class HDEPanelDBus;
 
 #if QT_VERSION >= 0x050000
 class MyXcbEventFilter : public QAbstractNativeEventFilter
@@ -104,6 +105,12 @@ public:
 		return m_panelFont;
 	}
 
+	// Access panels for D-Bus interface
+	QVector<PanelWindow*> panelWindows() const
+	{
+		return m_panelWindows;
+	}
+
 signals:
     void iconThemeChanged(const QString& themeName);
 
@@ -119,6 +126,7 @@ private:
 	static PanelApplication* m_instance;
 	IconLoader* m_iconLoader;
 	X11Support* m_x11support;
+	HDEPanelDBus* m_dbusService;
 
 	QString m_fontName;
 	QString m_iconThemeName;

@@ -79,6 +79,11 @@ class QGraphicsScene;
 	 inline int panelWidth() const { return m_panelWidth; }
 	 Applet* getAppletById(const QString& appletId) const;
 	 static QString getAppletPluginName(const QString& appletName);
+	 // Access applets for D-Bus interface
+	 QVector<Applet*> applets() const
+	 {
+		 return m_applets;
+	 }
  	 // Context menu / settings UI
 	 void showPanelContextMenu(const QPoint& point);
 	 bool init();

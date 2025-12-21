@@ -342,32 +342,95 @@ void ClockApplet::clicked()
 {
     if (!m_calendar || !m_panelWindow) return;
     
-    // Show calender widget
-    //int x = localToScreen(QPoint(0, m_size.height())).x();
-    int x = localToScreen(QPoint(0, m_size.height())).x() - m_calendar->width() + m_size.width();
-    int y = localToScreen(QPoint(0, m_size.height())).y();
-
-    //qDebug() << "orig x: " << x;
-    {
-        const QList<QScreen*> screens = QGuiApplication::screens();
-        const int sidx = m_panelWindow->screen();
-        const QScreen* screen = (sidx >= 0 && sidx < screens.size()) ? screens[sidx] : QGuiApplication::primaryScreen();
-        const QRect screenGeometry = screen ? screen->geometry() : QRect(0,0,1920,1080);
-
-    if(y >= screenGeometry.height() )
-    {
-        y = y - m_calendar->height() - m_size.height();
+    // Ensure calendar has proper size
+    m_calendar->adjustSize();
+    
+    // Get screen geometry
+    const QList<QScreen*> screens = QGuiApplication::screens();
+    const int sidx = m_panelWindow->screen();
+    const QScreen* screen = (sidx >= 0 && sidx < screens.size()) ? screens[sidx] : QGuiApplication::primaryScreen();
+    const QRect screenGeometry = screen ? screen->geometry() : QRect(0,0,1920,1080);
+    
+    // Get panel position
+    PanelWindow::Position panelPos = m_panelWindow->position();
+    
+    // Get applet position on screen
+    QPoint appletTopLeft = localToScreen(QPoint(0, 0));
+    QPoint appletBottomRight = localToScreen(QPoint(m_size.width(), m_size.height()));
+    
+    // Calculate calendar position based on panel position
+    int x = 0;
+    int y = 0;
+    const int calendarWidth = m_calendar->width();
+    const int calendarHeight = m_calendar->height();
+    const int spacing = 2; // Small spacing between applet and calendar
+    
+    switch (panelPos) {
+        case PanelWindow::Top:
+            // Position calendar below the applet, right-aligned
+            x = appletBottomRight.x() - calendarWidth;
+            y = appletBottomRight.y() + spacing;
+            break;
+            
+        case PanelWindow::Bottom:
+            // Position calendar above the applet, right-aligned
+            x = appletBottomRight.x() - calendarWidth;
+            y = appletTopLeft.y() - calendarHeight - spacing;
+            break;
+            
+        case PanelWindow::Left:
+            // Position calendar to the right of the applet, top-aligned
+            x = appletBottomRight.x() + spacing;
+            y = appletTopLeft.y();
+            break;
+            
+        case PanelWindow::Right:
+            // Position calendar to the left of the applet, top-aligned
+            x = appletTopLeft.x() - calendarWidth - spacing;
+            y = appletTopLeft.y();
+            break;
     }
-
-    if((x) < screenGeometry.x())
-    {
-        //qDebug() << "SIZE Error";
-        x = screenGeometry.x() + m_position.x() ;
+    
+    // Ensure calendar doesn't go off-screen
+    // Check horizontal bounds
+    if (x < screenGeometry.left()) {
+        x = screenGeometry.left();
+    } else if (x + calendarWidth > screenGeometry.right()) {
+        x = screenGeometry.right() - calendarWidth;
     }
-    m_calendar->move(x,y);
+    
+    // Check vertical bounds
+    if (y < screenGeometry.top()) {
+        y = screenGeometry.top();
+    } else if (y + calendarHeight > screenGeometry.bottom()) {
+        y = screenGeometry.bottom() - calendarHeight;
+    }
+    
+    // For bottom panel, if calendar would go above screen, position it below instead
+    if (panelPos == PanelWindow::Bottom && y < screenGeometry.top()) {
+        y = appletBottomRight.y() + spacing;
+    }
+    
+    // For top panel, if calendar would go below screen, position it above instead
+    if (panelPos == PanelWindow::Top && y + calendarHeight > screenGeometry.bottom()) {
+        y = appletTopLeft.y() - calendarHeight - spacing;
+    }
+    
+    // For right panel, if calendar would go left of screen, position it to the right instead
+    if (panelPos == PanelWindow::Right && x < screenGeometry.left()) {
+        x = appletBottomRight.x() + spacing;
+    }
+    
+    // For left panel, if calendar would go right of screen, position it to the left instead
+    if (panelPos == PanelWindow::Left && x + calendarWidth > screenGeometry.right()) {
+        x = appletTopLeft.x() - calendarWidth - spacing;
+    }
+    
+    m_calendar->move(x, y);
     m_calendar->show();
+    m_calendar->raise();
+    m_calendar->activateWindow();
     m_calendar->setFocused();
-}
 }
 
 void ClockApplet::readSettings()

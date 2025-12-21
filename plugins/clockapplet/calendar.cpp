@@ -9,7 +9,8 @@ Calendar::Calendar(QWidget *parent) :
     ui(new Ui::Calendar)
 {
     ui->setupUi(this);
-    setWindowFlags(Qt::Widget | Qt::FramelessWindowHint);
+    setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
+    setAttribute(Qt::WA_ShowWithoutActivating, false);
 }
 
 Calendar::~Calendar()

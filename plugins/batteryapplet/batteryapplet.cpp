@@ -211,11 +211,11 @@ void BatteryApplet::layoutChanged()
         if (startY < 0) startY = 0;
         
         if (m_showIcon) {
-            iconX = (availW - iconSize) / 2;
+            iconX = (availW - iconSize) / 2 - adjustHardcodedPixelSize(4);
             iconY = startY;
             if (m_showPercentage && m_batteryPresent && !m_text.isEmpty()) {
                 // Add spacing between icon and text (use adjustHardcodedPixelSize for DPI scaling)
-                startY += iconSize + adjustHardcodedPixelSize(6);
+                startY += iconSize + adjustHardcodedPixelSize(16);
             }
         }
         
@@ -332,10 +332,9 @@ QSize BatteryApplet::desiredSize()
         height += adjustHardcodedPixelSize(24);
     }
     if (m_showPercentage && m_batteryPresent) {
-        height += fm.height() + 4;
+        height += fm.height() + adjustHardcodedPixelSize(4);
     }
     if (height == 0) height = 30; // Minimum height
-    height += 12; // Padding
     
     return QSize(-1, height);
 }

@@ -9,4 +9,5 @@ SUBDIRS     = testapplet  \
           startapplet \
 	      keyboardapplet \
 	      batteryapplet \
-	      networkmanagerapplet
+	      networkmanagerapplet \
+	      notificationapplet

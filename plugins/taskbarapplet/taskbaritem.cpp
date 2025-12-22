@@ -42,6 +42,7 @@
 #include "../../lib/settings.h"
 #include "../../lib/desktopapplications.h"
 #include "../../lib/desktopdatastore.h"
+#include "../../lib/unifiediconservice.h"
 #include <QtCore/QTimer>
 #include <QtCore/QDateTime>
 #include <QtCore/QDebug>
@@ -168,12 +169,54 @@ void TaskBarItem::updateContent()
     if (!m_clients.isEmpty()) {
         displayText = m_clients[0]->name();
         displayIcon = m_clients[0]->icon();
+        
+        // Always try to load from desktop file if available (more reliable than window icon)
+        // Only use window icon if desktop file is not found
+        QString desktopFile = findDesktopFile();
+        if (!desktopFile.isEmpty()) {
+            DesktopDataStore* dataStore = DesktopDataStore::instance();
+            if (dataStore) {
+                DesktopEntryData entry = dataStore->getDesktopEntry(desktopFile);
+                if (!entry.isValid) {
+                    entry = dataStore->parseDesktopFile(desktopFile);
+                }
+                if (entry.isValid && !entry.icon.isEmpty()) {
+                    // Use loadIcon to load by icon name (like the menu does)
+                    QIcon desktopIcon = UnifiedIconService::instance()->loadIcon(entry.icon, 32);
+                    if (!desktopIcon.isNull() && !desktopIcon.availableSizes().isEmpty()) {
+                        displayIcon = desktopIcon;
+                    }
+                }
+            }
+        } else {
+            // Debug: check if we can find desktop file at all
+            QString wmClass = m_clients[0]->wmClass();
+        }
     } else if (!m_waylandClients.isEmpty() || m_waylandClient) {
         WaylandClient* primary = m_waylandClient ? m_waylandClient
                                                  : (m_waylandClients.isEmpty() ? nullptr : m_waylandClients.first());
         if (primary) {
             displayText = primary->name();
             displayIcon = primary->icon();
+            
+            // Always try to load from desktop file if available (more reliable than wayland icon)
+            QString desktopFile = findDesktopFile();
+            if (!desktopFile.isEmpty()) {
+                DesktopDataStore* dataStore = DesktopDataStore::instance();
+                if (dataStore) {
+                    DesktopEntryData entry = dataStore->getDesktopEntry(desktopFile);
+                    if (!entry.isValid) {
+                        entry = dataStore->parseDesktopFile(desktopFile);
+                    }
+                    if (entry.isValid && !entry.icon.isEmpty()) {
+                        // Use loadIcon to load by icon name (like the menu does)
+                        QIcon desktopIcon = UnifiedIconService::instance()->loadIcon(entry.icon, 32);
+                        if (!desktopIcon.isNull() && !desktopIcon.availableSizes().isEmpty()) {
+                            displayIcon = desktopIcon;
+                        }
+                    }
+                }
+            }
         }
     } else if (!m_icon.isNull()) {
         displayText = m_waylandText; // fallback text

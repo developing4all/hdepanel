@@ -759,7 +759,7 @@ void NetworkManagerApplet::updateContent()
         // Center icon in available space
         int x = (availW - iconW) / 2;
         int y = (availH - iconH) / 2;
-        m_iconItem->setPos(x, y);
+        m_iconItem->setPos(x, y - adjustHardcodedPixelSize(4));
     }
     
     update();

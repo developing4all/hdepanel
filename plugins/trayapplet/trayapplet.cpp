@@ -35,6 +35,9 @@
 #include "sni.h"
 #include <QTimer>
 #include <QDBusMetaType>
+#include <QFile>
+#include <QFileInfo>
+#include <QDir>
 
 TrayApplet::TrayApplet(PanelWindow* panelWindow)
 	: Applet(panelWindow), m_initialized(false), m_iconSize(adjustHardcodedPixelSize(24)), m_spacing(adjustHardcodedPixelSize(4))
@@ -55,9 +58,87 @@ TrayApplet::TrayApplet(PanelWindow* panelWindow)
         static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
 		if (item) {
             if (trayDebug) {
-                qDebug() << "SNI item added:" << item->id();
+                qDebug() << "SNI item added:" << item->id() << "service:" << item->service() << "appId:" << item->appId();
             }
-			new SniTrayItem(this, item);
+            
+            // Check for duplicates
+            QString itemUniqueId = item->id(); // service+path key
+            QString sniAppId = getSniTrayItemAppId(item); // stable app id (best-effort)
+            bool skipAdd = false;
+            
+            // First check SNI duplicates
+            const QString normalizedNew = normalizeAppId(sniAppId);
+            const QString newKey = normalizedNew.isEmpty() ? QString() : (normalizedNew + "|" + item->path());
+            
+            for(int i = m_sniTrayItems.size() - 1; i >= 0; i--) {
+                if(m_sniTrayItems[i]->sniItem()) {
+                    // Check if same ID (exact duplicate)
+                    if(m_sniTrayItems[i]->sniItem()->id() == itemUniqueId) {
+                        if (trayDebug) {
+                            qDebug() << "Duplicate SNI item found by unique id, skipping add:" << itemUniqueId;
+                        }
+                        skipAdd = true;
+                        break;
+                    }
+                    
+                    // Generic de-duplication: same normalized app id + same object path
+                    if (!newKey.isEmpty()) {
+                        SniItemProxy* existing = m_sniTrayItems[i]->sniItem();
+                        const QString existingAppId = getSniTrayItemAppId(existing);
+                        const QString normalizedExisting = normalizeAppId(existingAppId);
+                        const QString existingKey = normalizedExisting.isEmpty() ? QString() : (normalizedExisting + "|" + existing->path());
+                        if (existingKey == newKey) {
+                        if (trayDebug) {
+                            qDebug() << "Duplicate SNI item found by appId+path for" << sniAppId << "vs" << existingAppId << ", removing old one";
+                        }
+                        delete m_sniTrayItems[i];
+                            // Don't break - continue to remove all duplicates
+                        }
+                    }
+                }
+            }
+            
+            // Check if there's an X11 tray item for the same app
+            // Only remove X11 item if SNI item has a valid icon (avoid generic placeholders)
+            if (!skipAdd) {
+                QIcon sniIcon = item->icon();
+                bool hasValidIcon = !sniIcon.isNull() && !sniIcon.availableSizes().isEmpty();
+                
+                if (hasValidIcon) {
+                    for(int i = 0; i < m_trayItems.size(); i++) {
+                        QString x11AppId = getX11TrayItemAppId(m_trayItems[i]->window());
+                        if (!x11AppId.isEmpty() && isSameApp(x11AppId, sniAppId)) {
+                            if (trayDebug) {
+                                qDebug() << "SNI item matches existing X11 tray item for" << x11AppId << ", removing X11 item (preferring SNI)";
+                            }
+                            delete m_trayItems[i];
+                            break;
+                        }
+                    }
+                } else if (trayDebug) {
+                    qDebug() << "SNI item" << itemUniqueId << "has no valid icon yet, keeping X11 item if present";
+                }
+
+                // Re-check on property changes (fix startup races where IconName arrives later)
+                connect(item, &SniItemProxy::changed, this, [this, item](){
+                    if (!item) return;
+                    QString sniAppId = getSniTrayItemAppId(item);
+                    QIcon sniIcon = item->icon();
+                    bool hasValidIcon = !sniIcon.isNull() && !sniIcon.availableSizes().isEmpty();
+                    if (!hasValidIcon) return;
+                    for(int i = 0; i < m_trayItems.size(); i++) {
+                        QString x11AppId = getX11TrayItemAppId(m_trayItems[i]->window());
+                        if (!x11AppId.isEmpty() && isSameApp(x11AppId, sniAppId)) {
+                            delete m_trayItems[i];
+                            break;
+                        }
+                    }
+                });
+            }
+            
+            if (!skipAdd) {
+                new SniTrayItem(this, item);
+            }
 		}
 		updateLayout();
 		update();
@@ -82,10 +163,66 @@ TrayApplet::TrayApplet(PanelWindow* panelWindow)
 	for(auto it = existingItems.constBegin(); it != existingItems.constEnd(); ++it) {
 		if (it.value()) {
             static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
-            if (trayDebug) {
-                qDebug() << "Adding existing SNI item:" << it.value()->id();
+            SniItemProxy* item = it.value();
+            QString itemUniqueId = item->id();
+            QString sniAppId = getSniTrayItemAppId(item);
+            bool skipAdd = false;
+            
+            // Check for duplicates
+            const QString normalizedNew = normalizeAppId(sniAppId);
+            const QString newKey = normalizedNew.isEmpty() ? QString() : (normalizedNew + "|" + item->path());
+            
+            for(int i = m_sniTrayItems.size() - 1; i >= 0; i--) {
+                if(m_sniTrayItems[i]->sniItem()) {
+                    if(m_sniTrayItems[i]->sniItem()->id() == itemUniqueId) {
+                        if (trayDebug) {
+                            qDebug() << "Skipping duplicate existing SNI item by unique id:" << itemUniqueId;
+                        }
+                        skipAdd = true;
+                        break;
+                    }
+                    if (!newKey.isEmpty()) {
+                        SniItemProxy* existing = m_sniTrayItems[i]->sniItem();
+                        const QString existingAppId = getSniTrayItemAppId(existing);
+                        const QString normalizedExisting = normalizeAppId(existingAppId);
+                        const QString existingKey = normalizedExisting.isEmpty() ? QString() : (normalizedExisting + "|" + existing->path());
+                        if (existingKey == newKey) {
+                            if (trayDebug) {
+                                qDebug() << "Skipping duplicate existing SNI item by appId+path:" << sniAppId << "vs" << existingAppId << ", removing old one";
+                            }
+                            delete m_sniTrayItems[i];
+                            // Don't break - continue to remove all duplicates
+                        }
+                    }
+                }
             }
-			new SniTrayItem(this, it.value());
+            
+            // Check if there's an X11 tray item for the same app
+            // Only remove X11 item if SNI item has a valid icon (avoid generic placeholders)
+            if (!skipAdd) {
+                QIcon sniIcon = item->icon();
+                bool hasValidIcon = !sniIcon.isNull() && !sniIcon.availableSizes().isEmpty();
+                
+                if (hasValidIcon) {
+                    for(int i = 0; i < m_trayItems.size(); i++) {
+                        QString x11AppId = getX11TrayItemAppId(m_trayItems[i]->window());
+                        if (!x11AppId.isEmpty() && isSameApp(x11AppId, sniAppId)) {
+                            if (trayDebug) {
+                                qDebug() << "Existing SNI item matches X11 tray item for" << x11AppId << ", removing X11 item (preferring SNI)";
+                            }
+                            delete m_trayItems[i];
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (!skipAdd) {
+                if (trayDebug) {
+                    qDebug() << "Adding existing SNI item:" << itemUniqueId << "appId:" << sniAppId;
+                }
+                new SniTrayItem(this, item);
+            }
 		}
 	}
 	
@@ -202,10 +339,77 @@ bool TrayApplet::init()
 	
 	// Give applications time to respond to the MANAGER message and re-send dock requests
 	// Some applications might need a moment to process the tray availability notification
+	// Also check for duplicates between X11 and SNI items after both have had time to register
 	QTimer::singleShot(500, this, [this]() {
-		qDebug() << "Checking for tray icons that may have registered during startup";
+		static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
+		if (trayDebug) {
+			qDebug() << "Checking for tray icons that may have registered during startup";
+		}
 		// The MANAGER message should have triggered applications to send TRAY_REQUEST_DOCK
 		// If they haven't by now, they might not support re-registration
+		
+		// Check for duplicates between X11 and SNI items
+		// Remove X11 items that match SNI items (prefer SNI)
+		for(int i = m_trayItems.size() - 1; i >= 0; i--) {
+			QString x11AppId = getX11TrayItemAppId(m_trayItems[i]->window());
+			if (x11AppId.isEmpty()) continue;
+			
+			for(int j = 0; j < m_sniTrayItems.size(); j++) {
+				if(m_sniTrayItems[j]->sniItem()) {
+                    QString sniAppId = getSniTrayItemAppId(m_sniTrayItems[j]->sniItem());
+					QIcon sniIcon = m_sniTrayItems[j]->sniItem()->icon();
+					bool hasValidIcon = !sniIcon.isNull() && !sniIcon.availableSizes().isEmpty();
+					
+                    if (hasValidIcon && isSameApp(x11AppId, sniAppId)) {
+						if (trayDebug) {
+							qDebug() << "Delayed check: Removing X11 tray item for" << x11AppId << "in favor of SNI item" << sniAppId;
+						}
+						delete m_trayItems[i];
+						break;
+					}
+				}
+			}
+		}
+		
+		// Also check for SNI duplicates that might have been added by queryRegisteredItems/queryExistingItems
+        // Generic SNI duplicate removal based on stable app id + object path
+		for(int i = m_sniTrayItems.size() - 1; i >= 0; i--) {
+			if(!m_sniTrayItems[i]->sniItem()) continue;
+			
+			QString itemUniqueId = m_sniTrayItems[i]->sniItem()->id();
+			QString sniAppId = getSniTrayItemAppId(m_sniTrayItems[i]->sniItem());
+            QString normalizedNew = normalizeAppId(sniAppId);
+            const QString newKey = normalizedNew.isEmpty() ? QString() : (normalizedNew + "|" + m_sniTrayItems[i]->sniItem()->path());
+			
+			// Check for duplicates by ID
+			for(int j = i - 1; j >= 0; j--) {
+				if(m_sniTrayItems[j]->sniItem()) {
+					if(m_sniTrayItems[j]->sniItem()->id() == itemUniqueId) {
+						if (trayDebug) {
+							qDebug() << "Delayed check: Removing duplicate SNI item by unique id:" << itemUniqueId;
+						}
+						delete m_sniTrayItems[i];
+						break;
+					}
+					
+                    if (!newKey.isEmpty()) {
+                        const QString existingAppId = getSniTrayItemAppId(m_sniTrayItems[j]->sniItem());
+                        const QString normalizedExisting = normalizeAppId(existingAppId);
+                        const QString existingKey = normalizedExisting.isEmpty() ? QString() : (normalizedExisting + "|" + m_sniTrayItems[j]->sniItem()->path());
+                        if (existingKey == newKey) {
+                            if (trayDebug) {
+                                qDebug() << "Delayed check: Removing duplicate SNI item by appId+path:" << sniAppId << "vs" << existingAppId;
+                            }
+                            delete m_sniTrayItems[i];
+                            break;
+                        }
+                    }
+				}
+			}
+		}
+		
+		updateLayout();
+		update();
 	});
 	
 	return true;
@@ -276,6 +480,43 @@ void TrayApplet::unregisterTrayItem(TrayItem* trayItem)
 
 void TrayApplet::registerSniTrayItem(SniTrayItem* trayItem)
 {
+    // Additional duplicate check at registration time
+    if (trayItem && trayItem->sniItem()) {
+        QString itemUniqueId = trayItem->sniItem()->id();
+        QString sniAppId = getSniTrayItemAppId(trayItem->sniItem());
+        const QString normalizedNew = normalizeAppId(sniAppId);
+        const QString newKey = normalizedNew.isEmpty() ? QString() : (normalizedNew + "|" + trayItem->sniItem()->path());
+        
+        for(int i = 0; i < m_sniTrayItems.size(); i++) {
+            if(m_sniTrayItems[i] != trayItem && m_sniTrayItems[i]->sniItem()) {
+                // Check for exact ID match
+                if(m_sniTrayItems[i]->sniItem()->id() == itemUniqueId) {
+                    static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
+                    if (trayDebug) {
+                        qDebug() << "Duplicate SNI item detected at registration (unique id), removing old one:" << itemUniqueId;
+                    }
+                    delete m_sniTrayItems[i];
+                    break;
+                }
+                // Generic de-duplication: same normalized app id + same object path
+                if (!newKey.isEmpty()) {
+                    SniItemProxy* existing = m_sniTrayItems[i]->sniItem();
+                    const QString existingAppId = getSniTrayItemAppId(existing);
+                    const QString normalizedExisting = normalizeAppId(existingAppId);
+                    const QString existingKey = normalizedExisting.isEmpty() ? QString() : (normalizedExisting + "|" + existing->path());
+                    if (existingKey == newKey) {
+                        static const bool trayDebug = qEnvironmentVariableIsSet("HDE_TRAY_DEBUG");
+                        if (trayDebug) {
+                            qDebug() << "Duplicate SNI item detected by appId+path at registration, removing old one:" << sniAppId << "vs" << existingAppId;
+                        }
+                        delete m_sniTrayItems[i];
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
 	m_sniTrayItems.append(trayItem);
 	if (!m_destroying && m_panelWindow) {
 		m_panelWindow->updateLayout();
@@ -336,10 +577,39 @@ void TrayApplet::clientMessageReceived(unsigned long window, unsigned long atom,
                     return; // Already added.
                 }
 			}
-            if (trayDebug) {
-                qDebug() << "Creating new TrayItem for window" << l[2];
+            // Check if there's already an SNI item for the same app
+            // Only skip X11 item if SNI item has a valid icon
+            QString x11AppId = getX11TrayItemAppId(l[2]);
+            bool foundSNIDuplicate = false;
+            
+            if (!x11AppId.isEmpty()) {
+                for(int i = 0; i < m_sniTrayItems.size(); i++) {
+                    if(m_sniTrayItems[i]->sniItem()) {
+                        QString sniAppId = getSniTrayItemAppId(m_sniTrayItems[i]->sniItem());
+                        if (isSameApp(x11AppId, sniAppId)) {
+                            QIcon sniIcon = m_sniTrayItems[i]->sniItem()->icon();
+                            bool hasValidIcon = !sniIcon.isNull() && !sniIcon.availableSizes().isEmpty();
+                            
+                            if (hasValidIcon) {
+                                if (trayDebug) {
+                                    qDebug() << "X11 tray item matches existing SNI item for" << x11AppId << ", skipping X11 item (preferring SNI)";
+                                }
+                                foundSNIDuplicate = true;
+                                break;
+                            } else if (trayDebug) {
+                                qDebug() << "X11 tray item matches SNI item but SNI has no valid icon, keeping X11 item";
+                            }
+                        }
+                    }
+                }
             }
-            new TrayItem(this, l[2]);
+            
+            if (!foundSNIDuplicate) {
+                if (trayDebug) {
+                    qDebug() << "Creating new TrayItem for window" << l[2];
+                }
+                new TrayItem(this, l[2]);
+            }
         }
         return;
     }
@@ -476,4 +746,115 @@ void TrayApplet::updateLayout()
     }
 
     update();
+}
+
+QString TrayApplet::getX11TrayItemAppId(unsigned long window)
+{
+    // Get WM_CLASS from the X11 window
+    QString wmClass = X11Support::getWindowWMClass(window);
+    if (!wmClass.isEmpty()) {
+        return wmClass.toLower();
+    }
+
+    // Fallback: try _NET_WM_PID -> /proc/<pid> (more reliable for tray icons that don't set WM_CLASS)
+    const unsigned long pid = X11Support::getWindowPropertyCardinal(window, "_NET_WM_PID");
+    if (pid > 0) {
+        const QString procComm = QString("/proc/%1/comm").arg(pid);
+        QFile commFile(procComm);
+        if (commFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            const QString comm = QString::fromUtf8(commFile.readAll()).trimmed();
+            if (!comm.isEmpty()) {
+                return comm.toLower();
+            }
+        }
+
+        // If comm is not available (or is empty), fall back to argv0 from cmdline.
+        const QString procCmdline = QString("/proc/%1/cmdline").arg(pid);
+        QFile cmdFile(procCmdline);
+        if (cmdFile.open(QIODevice::ReadOnly)) {
+            const QByteArray raw = cmdFile.readAll();
+            const QList<QByteArray> parts = raw.split('\0');
+            if (!parts.isEmpty() && !parts[0].isEmpty()) {
+                const QString argv0 = QString::fromUtf8(parts[0]);
+                const QString base = QFileInfo(argv0).fileName();
+                if (!base.isEmpty()) {
+                    return base.toLower();
+                }
+            }
+        }
+    }
+    
+    // Fallback: try to get window name and extract app name
+    QString windowName = X11Support::getWindowName(window);
+    if (!windowName.isEmpty()) {
+        // Try to extract app name from window name (e.g., "appname" from "appname - Tray")
+        QString nameLower = windowName.toLower();
+        // Common patterns: "appname", "appname - something", etc.
+        int dashPos = nameLower.indexOf(" - ");
+        if (dashPos > 0) {
+            return nameLower.left(dashPos).trimmed();
+        }
+        return nameLower;
+    }
+    
+    return QString();
+}
+
+QString TrayApplet::getSniTrayItemAppId(SniItemProxy* item) const
+{
+    if (!item) return QString();
+
+    // Prefer stable SNI "Id" property when available.
+    const QString appId = item->appId();
+    if (!appId.isEmpty()) {
+        return appId;
+    }
+
+    // Fall back to well-known service name if available.
+    const QString service = item->service();
+    if (!service.isEmpty() && !service.startsWith(':')) {
+        return service;
+    }
+
+    // Last resort: service (may be :1.xx) – not stable for de-duplication, but avoids empty.
+    return service;
+}
+
+QString TrayApplet::normalizeAppId(const QString& id)
+{
+    // Normalize app identifiers for comparison
+    QString normalized = id.toLower();
+    // Remove common prefixes/suffixes
+    normalized.remove("org.");
+    normalized.remove(".desktop");
+    // Remove common suffixes like "-applet", "-tray", etc.
+    if (normalized.endsWith("-applet")) {
+        normalized.chop(7);
+    }
+    if (normalized.endsWith("-tray")) {
+        normalized.chop(5);
+    }
+    return normalized.trimmed();
+}
+
+bool TrayApplet::isSameApp(const QString& x11AppId, const QString& sniAppId)
+{
+    QString normalizedX11 = normalizeAppId(x11AppId);
+    QString normalizedSNI = normalizeAppId(sniAppId);
+
+    if (normalizedX11.isEmpty() || normalizedSNI.isEmpty()) {
+        return false;
+    }
+    
+    // Direct match
+    if (normalizedX11 == normalizedSNI) {
+        return true;
+    }
+    
+    // Check if one contains the other (handles IDs like "org.example.StatusNotifierItem")
+    if (normalizedX11.contains(normalizedSNI) || normalizedSNI.contains(normalizedX11)) {
+        return true;
+    }
+    
+    return false;
 }

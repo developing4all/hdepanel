@@ -40,12 +40,29 @@ static QString getNameOwnerOrSelf(const QString& service, const QDBusConnection&
     return service;
 }
 
+static QString dbusVariantToString(const QVariant& v)
+{
+    if (!v.isValid()) return QString();
+    if (v.canConvert<QDBusVariant>()) {
+        return qvariant_cast<QDBusVariant>(v).variant().toString();
+    }
+    return v.toString();
+}
+
 SniItemProxy::SniItemProxy(const QString &service, const QString &path, QObject *parent)
     : QObject(parent), m_service(service), m_path(path)
 {
+    // Unique key used by SniWatcher (must remain service+path)
     m_id = service + path;
     m_iface = new QDBusInterface(m_service, m_path, SNI_ITEM_IFACE, QDBusConnection::sessionBus(), this);
     m_ifaceFd = new QDBusInterface(m_service, m_path, "org.freedesktop.StatusNotifierItem", QDBusConnection::sessionBus(), this);
+
+    // Read stable app id (SNI "Id" property) for de-duplication.
+    // This is a property read, so it should be fast and is already consistent with other synchronous reads (icon(), hasMenu(), etc).
+    QDBusInterface *iface = (m_iface && m_iface->isValid()) ? m_iface : m_ifaceFd;
+    if (iface && iface->isValid()) {
+        m_appId = dbusVariantToString(iface->property("Id"));
+    }
     
     // Monitor property changes to update the icon/status dynamically
     QDBusConnection::sessionBus().connect(m_service, m_path, "org.freedesktop.DBus.Properties", "PropertiesChanged",

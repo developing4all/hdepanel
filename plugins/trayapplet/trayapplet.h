@@ -71,6 +71,10 @@ private slots:
 
 private:
 	void updateLayout();
+	QString getX11TrayItemAppId(unsigned long window);
+    QString getSniTrayItemAppId(class SniItemProxy* item) const;
+	QString normalizeAppId(const QString& id);
+	bool isSameApp(const QString& x11AppId, const QString& sniAppId);
 
 	bool m_initialized;
 	QVector<TrayItem*> m_trayItems;

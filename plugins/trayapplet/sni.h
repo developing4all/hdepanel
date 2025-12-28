@@ -31,7 +31,10 @@ public:
     explicit SniItemProxy(const QString &service, const QString &path, QObject *parent = nullptr);
     ~SniItemProxy();
 
+    // Unique key (service+path). Used by SniWatcher for tracking/removal.
     QString id() const { return m_id; }
+    // Stable application id (SNI "Id" property) when available. Used for de-duplication.
+    QString appId() const { return m_appId; }
     QString service() const { return m_service; }
     QString path() const { return m_path; }
 
@@ -52,6 +55,7 @@ private:
     QString m_service;
     QString m_path;
     QString m_id;
+    QString m_appId;
     class QDBusInterface* m_iface;
     class QDBusInterface* m_ifaceFd;
 };

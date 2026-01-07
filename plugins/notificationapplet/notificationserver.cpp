@@ -29,6 +29,7 @@
 #include <QDBusConnectionInterface>
 #include <QDBusError>
 #include <QDBusVariant>
+#include <QDBusArgument>
 #include <QDebug>
 #include <QImage>
 #include <QPixmap>
@@ -107,20 +108,143 @@ void NotificationServer::unregisterService()
     m_registered = false;
 }
 
+// Helper function to extract image from QDBusArgument immediately
+// This MUST be called while the D-Bus message is still being processed
+static QImage extractImageFromDBusArgument(const QDBusArgument& arg)
+{
+    static const bool debugIcons = qEnvironmentVariableIsSet("HDE_NOTIFICATION_ICON_DEBUG");
+    
+    if (arg.currentType() != QDBusArgument::StructureType) {
+        if (debugIcons) qDebug() << "NotificationServer: image arg is not a structure";
+        return QImage();
+    }
+    
+    qint32 width = 0, height = 0, rowstride = 0;
+    bool hasAlpha = false;
+    qint32 bitsPerSample = 8, channels = 4;
+    QByteArray data;
+    
+    arg.beginStructure();
+    arg >> width >> height >> rowstride >> hasAlpha >> bitsPerSample >> channels;
+    
+    // Extract byte array
+    arg.beginArray();
+    data.reserve(height * rowstride);
+    while (!arg.atEnd()) {
+        uchar byte;
+        arg >> byte;
+        data.append(static_cast<char>(byte));
+    }
+    arg.endArray();
+    arg.endStructure();
+    
+    if (debugIcons) {
+        qDebug() << "NotificationServer: extracted image data - width:" << width 
+                 << "height:" << height << "rowstride:" << rowstride 
+                 << "hasAlpha:" << hasAlpha << "channels:" << channels 
+                 << "dataSize:" << data.size();
+    }
+    
+    if (width <= 0 || height <= 0 || data.isEmpty() || channels < 3) {
+        return QImage();
+    }
+    
+    // Create QImage
+    QImage::Format format = hasAlpha ? QImage::Format_ARGB32 : QImage::Format_RGB32;
+    QImage image(width, height, format);
+    
+    if (image.isNull()) {
+        return QImage();
+    }
+    
+    int expectedDataSize = height * rowstride;
+    if (data.size() < expectedDataSize || rowstride <= 0) {
+        if (debugIcons) qDebug() << "NotificationServer: data size mismatch";
+        return QImage();
+    }
+    
+    const uchar* src = reinterpret_cast<const uchar*>(data.constData());
+    
+    for (int y = 0; y < height; ++y) {
+        QRgb* destLine = reinterpret_cast<QRgb*>(image.scanLine(y));
+        const uchar* row = src + y * rowstride;
+        
+        if (channels == 4 && bitsPerSample == 8) {
+            // RGBA format from D-Bus (R, G, B, A bytes in order)
+            for (int x = 0; x < width; ++x) {
+                int offset = x * 4;
+                uchar r = row[offset + 0];
+                uchar g = row[offset + 1];
+                uchar b = row[offset + 2];
+                uchar a = row[offset + 3];
+                destLine[x] = qRgba(r, g, b, a);
+            }
+        } else if (channels == 3 && bitsPerSample == 8) {
+            // RGB format (no alpha)
+            for (int x = 0; x < width; ++x) {
+                int offset = x * 3;
+                uchar r = row[offset + 0];
+                uchar g = row[offset + 1];
+                uchar b = row[offset + 2];
+                destLine[x] = qRgb(r, g, b);
+            }
+        }
+    }
+    
+    if (debugIcons && !image.isNull()) {
+        qDebug() << "NotificationServer: successfully created image" << image.size();
+    }
+    
+    return image;
+}
+
 uint NotificationServer::Notify(const QString &app_name, uint replaces_id, const QString &app_icon,
                                  const QString &summary, const QString &body, const QStringList &actions,
                                  const QVariantMap &hints, int timeout)
 {
     Q_UNUSED(app_icon)
+    static const bool debugIcons = qEnvironmentVariableIsSet("HDE_NOTIFICATION_ICON_DEBUG");
     
     uint id = replaces_id;
     if (id == 0) {
         id = m_nextId++;
     }
 
-    // Forward to applet
+    // Create a modified hints map where we extract image data immediately
+    // QDBusArgument MUST be read while the D-Bus message is still being processed
+    QVariantMap processedHints = hints;
+    
+    // Extract image-data (hyphen version)
+    if (hints.contains("image-data")) {
+        QVariant imageVar = hints.value("image-data");
+        if (imageVar.canConvert<QDBusArgument>()) {
+            QDBusArgument arg = imageVar.value<QDBusArgument>();
+            QImage image = extractImageFromDBusArgument(arg);
+            if (!image.isNull()) {
+                processedHints["_extracted_image"] = image;
+                processedHints.remove("image-data");
+                if (debugIcons) qDebug() << "NotificationServer: extracted image-data successfully";
+            }
+        }
+    }
+    
+    // Extract image_data (underscore version) - KDE Connect uses this
+    if (hints.contains("image_data") && !processedHints.contains("_extracted_image")) {
+        QVariant imageVar = hints.value("image_data");
+        if (imageVar.canConvert<QDBusArgument>()) {
+            QDBusArgument arg = imageVar.value<QDBusArgument>();
+            QImage image = extractImageFromDBusArgument(arg);
+            if (!image.isNull()) {
+                processedHints["_extracted_image"] = image;
+                processedHints.remove("image_data");
+                if (debugIcons) qDebug() << "NotificationServer: extracted image_data successfully";
+            }
+        }
+    }
+
+    // Forward to applet with processed hints
     if (m_applet) {
-        m_applet->onNotificationReceived(id, app_name, summary, body, actions, hints, timeout);
+        m_applet->onNotificationReceived(id, app_name, summary, body, actions, processedHints, timeout);
     }
 
     // Store the reply message if we need to send it later

@@ -34,6 +34,7 @@
 #include <QDateTime>
 #include <QIcon>
 #include <QVariantMap>
+#include <QMap>
 
 class QTimer;
 class TextGraphicsItem;
@@ -94,6 +95,7 @@ private:
     void updateIcon();
     void removeNotification(uint id);
     QPoint calculateNotificationPosition(const QSize &notificationSize);
+    QIcon extractIconFromHints(const QVariantMap &hints, const QString &appName);
     
     // Called by NotificationServer
     friend class NotificationServer;
@@ -111,6 +113,11 @@ private:
     int m_notificationPosition; // 0=TopLeft, 1=TopRight, 2=BottomLeft, 3=BottomRight, 4=Center, 5=AtApplet
     bool m_showCount;
     int m_iconSize;
+    uint m_nextNotificationId; // For generating unique IDs for new notifications
+    
+    // Cache icons by sender (app + summary combination) to reuse for notifications without image_data
+    QMap<QString, QIcon> m_senderIconCache;
+    QString getSenderKey(const QString& appName, const QString& summary) const;
 };
 
 class NotificationAppletPlugin: public QObject, public AppletPlugin

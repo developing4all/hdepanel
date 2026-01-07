@@ -281,18 +281,18 @@ void NetworkManagerApplet::onGetDevicesFinished(QDBusPendingCallWatcher* watcher
             uint deviceType = deviceTypeReply.value().toUInt();
             
             if (deviceType == 2) {
-                // Found WiFi device
-                m_wifiDevicePath = devicePath.path();
-                
+            // Found WiFi device
+            m_wifiDevicePath = devicePath.path();
+            
                 // Get device state and enabled status
-                QDBusReply<QVariant> stateReply = deviceInterface.call("Get",
+            QDBusReply<QVariant> stateReply = deviceInterface.call("Get",
                                                                        "org.freedesktop.NetworkManager.Device",
                                                                        "State");
                 QDBusReply<QVariant> enabledReply = deviceInterface.call("Get",
-                                                                         "org.freedesktop.NetworkManager.Device",
-                                                                         "State");
-                if (stateReply.isValid()) {
-                    uint state = stateReply.value().toUInt();
+                                                                   "org.freedesktop.NetworkManager.Device",
+                                                                   "State");
+            if (stateReply.isValid()) {
+                uint state = stateReply.value().toUInt();
                     // State 30-100 = activated/connected states
                     // State 20 = NM_DEVICE_STATE_DISCONNECTED (but device is enabled)
                     // State 10 = NM_DEVICE_STATE_UNAVAILABLE (device disabled)
@@ -309,26 +309,26 @@ void NetworkManagerApplet::onGetDevicesFinished(QDBusPendingCallWatcher* watcher
                                                                                "WirelessEnabled");
                 if (wirelessEnabledReply.isValid()) {
                     m_wifiEnabled = wirelessEnabledReply.value().toBool();
-                }
-                
-                // Create device interface for signal monitoring
-                if (m_deviceInterface) {
-                    delete m_deviceInterface;
-                }
-                m_deviceInterface = new QDBusInterface("org.freedesktop.NetworkManager",
-                                                       m_wifiDevicePath,
-                                                       "org.freedesktop.NetworkManager.Device.Wireless",
-                                                       QDBusConnection::systemBus(), this);
-                
-                // Monitor property changes
-                QDBusConnection::systemBus().connect("org.freedesktop.NetworkManager",
-                                                     m_wifiDevicePath,
-                                                     "org.freedesktop.DBus.Properties",
-                                                     "PropertiesChanged",
-                                                     this, SLOT(onPropertiesChanged(QString,QVariantMap,QStringList)));
-                
-                // Get active connection
-                getActiveConnection();
+            }
+            
+            // Create device interface for signal monitoring
+            if (m_deviceInterface) {
+                delete m_deviceInterface;
+            }
+            m_deviceInterface = new QDBusInterface("org.freedesktop.NetworkManager",
+                                                   m_wifiDevicePath,
+                                                   "org.freedesktop.NetworkManager.Device.Wireless",
+                                                   QDBusConnection::systemBus(), this);
+            
+            // Monitor property changes
+            QDBusConnection::systemBus().connect("org.freedesktop.NetworkManager",
+                                                 m_wifiDevicePath,
+                                                 "org.freedesktop.DBus.Properties",
+                                                 "PropertiesChanged",
+                                                 this, SLOT(onPropertiesChanged(QString,QVariantMap,QStringList)));
+            
+            // Get active connection
+            getActiveConnection();
             } else if (deviceType == 1) {
                 // Found Ethernet/LAN device
                 m_lanDevicePath = devicePath.path();
@@ -545,16 +545,16 @@ void NetworkManagerApplet::getConnectionInfo(const QString& connectionPath)
                 
                 // Only proceed if we have a valid access point path (not "/")
                 if (apPath.path() != "/") {
-                    QDBusInterface apInterface("org.freedesktop.NetworkManager",
-                                              apPath.path(),
-                                              "org.freedesktop.DBus.Properties",
-                                              QDBusConnection::systemBus(), this);
-                    
+                QDBusInterface apInterface("org.freedesktop.NetworkManager",
+                                          apPath.path(),
+                                          "org.freedesktop.DBus.Properties",
+                                          QDBusConnection::systemBus(), this);
+                
                     // Get SSID from access point (most reliable when connected)
-                    QDBusReply<QVariant> ssidReply = apInterface.call("Get",
-                                                                     "org.freedesktop.NetworkManager.AccessPoint",
-                                                                     "Ssid");
-                    if (ssidReply.isValid()) {
+                QDBusReply<QVariant> ssidReply = apInterface.call("Get",
+                                                                  "org.freedesktop.NetworkManager.AccessPoint",
+                                                                  "Ssid");
+                if (ssidReply.isValid()) {
                         const QString ssid = decodeSsidFromDbusVariant(ssidReply.value());
                         if (!ssid.isEmpty()) {
                             m_ssid = ssid;
@@ -562,11 +562,11 @@ void NetworkManagerApplet::getConnectionInfo(const QString& connectionPath)
                     }
                     
                     // Get signal strength (NetworkManager returns 0-100 directly)
-                    QDBusReply<QVariant> strengthReply = apInterface.call("Get",
-                                                                         "org.freedesktop.NetworkManager.AccessPoint",
-                                                                         "Strength");
-                    if (strengthReply.isValid()) {
-                        uint strength = strengthReply.value().toUInt();
+                QDBusReply<QVariant> strengthReply = apInterface.call("Get",
+                                                                     "org.freedesktop.NetworkManager.AccessPoint",
+                                                                     "Strength");
+                if (strengthReply.isValid()) {
+                    uint strength = strengthReply.value().toUInt();
                         m_signalStrength = qBound(0, static_cast<int>(strength), 100); // Already 0-100, just clamp
                     }
                 } else {
@@ -697,7 +697,7 @@ void NetworkManagerApplet::updateContent()
     if (m_wifiConnected) {
         if (!m_ssid.isEmpty()) {
             tooltipText = m_ssid;
-            if (m_showSignalStrength) {
+        if (m_showSignalStrength) {
                 tooltipText += QString(" (%1%)").arg(m_signalStrength);
             }
         } else {

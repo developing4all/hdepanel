@@ -45,6 +45,13 @@
 #include <QDBusMetaType>
 #include <QDebug>
 #include <QScreen>
+#include <QImage>
+#include <QDBusArgument>
+#include <QDir>
+#include <QFile>
+#include <QSettings>
+#include <cstring>
+#include <stdexcept>
 #include "../../lib/dpisupport.h"
 #include "../../lib/unifiediconservice.h"
 
@@ -59,6 +66,7 @@ NotificationApplet::NotificationApplet(PanelWindow* panelWindow)
     , m_notificationPosition(5) // Default: AtApplet
     , m_showCount(true)
     , m_iconSize(22)
+    , m_nextNotificationId(1000000) // Start from high number to avoid conflicts with D-Bus IDs
 {
     setObjectName("Notifications");
     
@@ -420,46 +428,101 @@ void NotificationApplet::onNotificationReceived(uint id, const QString &appName,
                                                  const QVariantMap &hints, int timeout)
 {
     // Check if this notification replaces an existing one
+    // For messaging apps, we want each message to be a separate notification
+    // So we only replace if the content is exactly the same
     bool replaces = false;
     for (int i = 0; i < m_notifications.size(); ++i) {
         if (m_notifications[i].id == id) {
-            m_notifications[i].appName = appName;
-            m_notifications[i].summary = summary;
-            m_notifications[i].body = body;
-            m_notifications[i].actions = actions;
-            m_notifications[i].hints = hints;
-            m_notifications[i].timeout = timeout;
-            m_notifications[i].timestamp = QDateTime::currentDateTime();
-            m_notifications[i].isRead = false; // Reset read status when updated
-            replaces = true;
+            // Check if content is the same - if different, treat as new notification
+            bool contentSame = (m_notifications[i].summary == summary && 
+                              m_notifications[i].body == body &&
+                              m_notifications[i].appName == appName);
             
-            // Update icon from hints
-            if (hints.contains("image-data") || hints.contains("image_path")) {
-                // Handle icon extraction
-                m_notifications[i].icon = QIcon::fromTheme(appName.toLower());
-            } else if (!hints.value("image_data").isNull()) {
-                // Handle image_data variant
-                m_notifications[i].icon = QIcon::fromTheme(appName.toLower());
-            } else {
-                QString iconName = hints.value("image_path").toString();
-                if (iconName.isEmpty()) {
-                    iconName = hints.value("icon-name").toString();
+            // For messaging apps (WhatsApp, Telegram, etc.), always create new notification
+            // even if ID matches, unless content is exactly the same
+            bool isMessagingApp = appName.contains("WhatsApp", Qt::CaseInsensitive) ||
+                                 appName.contains("Telegram", Qt::CaseInsensitive) ||
+                                 appName.contains("Discord", Qt::CaseInsensitive) ||
+                                 appName.contains("Signal", Qt::CaseInsensitive) ||
+                                 appName.contains("KDE Connect", Qt::CaseInsensitive) ||
+                                 summary.contains("WhatsApp", Qt::CaseInsensitive) ||
+                                 summary.contains("Telegram", Qt::CaseInsensitive);
+            
+            if (isMessagingApp && !contentSame) {
+                // For messaging apps with different content, create new notification
+                // Generate a new unique ID by appending timestamp
+                id = m_nextNotificationId++;
+                replaces = false;
+                break;
+            }
+            
+            if (contentSame) {
+                // Same content - update existing notification
+                m_notifications[i].appName = appName;
+                m_notifications[i].summary = summary;
+                m_notifications[i].body = body;
+                m_notifications[i].actions = actions;
+                m_notifications[i].hints = hints;
+                m_notifications[i].timeout = timeout;
+                m_notifications[i].timestamp = QDateTime::currentDateTime();
+                m_notifications[i].isRead = false; // Reset read status when updated
+                replaces = true;
+                
+                // Update icon from hints
+                // For KDE Connect notifications, try to infer app name from summary/body
+                QString iconAppName = appName;
+                if (appName.contains("KDE Connect", Qt::CaseInsensitive)) {
+                    QString searchText = summary + " " + body;
+                    if (searchText.contains("YouTube", Qt::CaseInsensitive) || searchText.contains("Revanced", Qt::CaseInsensitive)) {
+                        iconAppName = "youtube";
+                    } else if (searchText.contains("LinkedIn", Qt::CaseInsensitive)) {
+                        iconAppName = "linkedin";
+                    } else if (searchText.contains("WhatsApp", Qt::CaseInsensitive)) {
+                        iconAppName = "whatsapp";
+                    } else if (searchText.contains("Telegram", Qt::CaseInsensitive)) {
+                        iconAppName = "telegram";
+                    } else if (searchText.contains("Discord", Qt::CaseInsensitive)) {
+                        iconAppName = "discord";
+                    } else if (searchText.contains("Twitter", Qt::CaseInsensitive) || searchText.contains("X ", Qt::CaseInsensitive)) {
+                        iconAppName = "twitter";
+                    } else if (searchText.contains("Facebook", Qt::CaseInsensitive)) {
+                        iconAppName = "facebook";
+                    } else if (searchText.contains("Instagram", Qt::CaseInsensitive)) {
+                        iconAppName = "instagram";
+                    }
                 }
-                if (!iconName.isEmpty()) {
-                    m_notifications[i].icon = QIcon::fromTheme(iconName, QIcon::fromTheme("dialog-information"));
+                // Try to get icon from cache first (for cases where image_data is not sent)
+                QString senderKey = getSenderKey(iconAppName, summary);
+                bool hasExtractedImage = hints.contains("_extracted_image");
+                
+                if (hasExtractedImage) {
+                    // We have a real image - extract it and cache it
+                    m_notifications[i].icon = extractIconFromHints(hints, iconAppName);
+                    if (!m_notifications[i].icon.isNull()) {
+                        m_senderIconCache[senderKey] = m_notifications[i].icon;
+                    }
+                } else if (m_senderIconCache.contains(senderKey)) {
+                    // Use cached icon for this sender
+                    m_notifications[i].icon = m_senderIconCache[senderKey];
                 } else {
-                    m_notifications[i].icon = QIcon::fromTheme(appName.toLower(), QIcon::fromTheme("dialog-information"));
+                    // Fall back to app icon
+                    m_notifications[i].icon = extractIconFromHints(hints, iconAppName);
                 }
+                
+                // Update list if visible
+                if (m_notificationList && m_notificationList->isVisible()) {
+                    m_notificationList->removeNotification(id);
+                    m_notificationList->addNotification(m_notifications[i]);
+                }
+                
+                updateContent();
+                return;
+            } else {
+                // Different content with same ID - create new notification
+                id = m_nextNotificationId++;
+                replaces = false;
+                break;
             }
-            
-            // Update list if visible
-            if (m_notificationList && m_notificationList->isVisible()) {
-                m_notificationList->removeNotification(id);
-                m_notificationList->addNotification(m_notifications[i]);
-            }
-            
-            updateContent();
-            return;
         }
     }
     
@@ -479,22 +542,49 @@ void NotificationApplet::onNotificationReceived(uint id, const QString &appName,
     notification.timestamp = QDateTime::currentDateTime();
     notification.isRead = false;
 
-    // Try to extract icon from hints
-    if (hints.contains("image-data") || hints.contains("image_path")) {
-        // Handle icon extraction (simplified for now)
-        notification.icon = QIcon::fromTheme(appName.toLower());
-    } else if (!hints.value("image_data").isNull()) {
-        // Handle image_data variant
-        notification.icon = QIcon::fromTheme(appName.toLower());
-    } else {
-        QString iconName = hints.value("image_path").toString();
-        if (iconName.isEmpty()) {
-            iconName = hints.value("icon-name").toString();
+    // Extract icon from hints
+    // For KDE Connect notifications, try to infer app name from summary/body
+    QString iconAppName = appName;
+    if (appName.contains("KDE Connect", Qt::CaseInsensitive)) {
+        // Try to extract app name from summary/body (e.g., "YouTube" from "YouTube: New video")
+        QString searchText = summary + " " + body;
+        // Common app patterns
+        if (searchText.contains("YouTube", Qt::CaseInsensitive) || searchText.contains("Revanced", Qt::CaseInsensitive)) {
+            iconAppName = "youtube";
+        } else if (searchText.contains("LinkedIn", Qt::CaseInsensitive)) {
+            iconAppName = "linkedin";
+        } else if (searchText.contains("WhatsApp", Qt::CaseInsensitive)) {
+            iconAppName = "whatsapp";
+        } else if (searchText.contains("Telegram", Qt::CaseInsensitive)) {
+            iconAppName = "telegram";
+        } else if (searchText.contains("Discord", Qt::CaseInsensitive)) {
+            iconAppName = "discord";
+        } else if (searchText.contains("Twitter", Qt::CaseInsensitive) || searchText.contains("X ", Qt::CaseInsensitive)) {
+            iconAppName = "twitter";
+        } else if (searchText.contains("Facebook", Qt::CaseInsensitive)) {
+            iconAppName = "facebook";
+        } else if (searchText.contains("Instagram", Qt::CaseInsensitive)) {
+            iconAppName = "instagram";
         }
-        if (!iconName.isEmpty()) {
-            notification.icon = QIcon::fromTheme(iconName, QIcon::fromTheme("dialog-information"));
+        // Add more patterns as needed
+    }
+    // Try to get icon from cache first (for cases where image_data is not sent)
+    QString senderKey = getSenderKey(iconAppName, summary);
+    bool hasExtractedImage = hints.contains("_extracted_image");
+    
+    if (hasExtractedImage) {
+        // We have a real image - extract it and cache it
+        notification.icon = extractIconFromHints(hints, iconAppName);
+        if (!notification.icon.isNull()) {
+            m_senderIconCache[senderKey] = notification.icon;
+        }
+    } else {
+        // No image_data - try to use cached icon for this sender
+        if (m_senderIconCache.contains(senderKey)) {
+            notification.icon = m_senderIconCache[senderKey];
         } else {
-            notification.icon = QIcon::fromTheme(appName.toLower(), QIcon::fromTheme("dialog-information"));
+            // Fall back to app icon
+            notification.icon = extractIconFromHints(hints, iconAppName);
         }
     }
 
@@ -542,6 +632,15 @@ void NotificationApplet::removeNotification(uint id)
 
 void NotificationApplet::showNotificationPopup(const Notification &notification)
 {
+    // Dismiss any existing popups (only show one at a time)
+    for (NotificationPopup* existingPopup : m_activePopups) {
+        if (existingPopup) {
+            existingPopup->hide();
+            existingPopup->deleteLater();
+        }
+    }
+    m_activePopups.clear();
+    
     // Create popup
     NotificationPopup* popup = new NotificationPopup();
     
@@ -558,8 +657,8 @@ void NotificationApplet::showNotificationPopup(const Notification &notification)
         clicked();
     });
     
-    // Show notification
-    popup->showNotification(notification);
+    // Show notification with 2.5 second timeout
+    popup->showNotification(notification, 2500);
     
     // Position the popup
     if (m_panelWindow) {
@@ -604,6 +703,26 @@ void NotificationApplet::refreshNotificationList()
     }
 }
 
+QString NotificationApplet::getSenderKey(const QString& appName, const QString& summary) const
+{
+    // Create a key that identifies a sender (e.g., "WhatsApp:John Doe")
+    // For messaging apps, the summary often contains the sender name
+    QString key = appName;
+    
+    // Extract sender from summary (usually "Sender: message" or just "Sender")
+    if (!summary.isEmpty()) {
+        QString sender = summary;
+        // Remove common suffixes like "sent a message", "sent a photo", etc.
+        int colonPos = sender.indexOf(':');
+        if (colonPos > 0 && colonPos < 50) {
+            sender = sender.left(colonPos).trimmed();
+        }
+        key += ":" + sender;
+    }
+    
+    return key.toLower();
+}
+
 void NotificationApplet::fontChanged()
 {
     if (m_countItem && m_panelWindow) {
@@ -619,6 +738,153 @@ void NotificationApplet::showConfigurationDialog()
         readSettings();
         updateContent();
     }
+}
+
+QIcon NotificationApplet::extractIconFromHints(const QVariantMap &hints, const QString &appName)
+{
+    static const bool debugIcons = qEnvironmentVariableIsSet("HDE_NOTIFICATION_ICON_DEBUG");
+    
+    if (debugIcons) {
+        qDebug() << "extractIconFromHints - appName:" << appName;
+        qDebug() << "extractIconFromHints - hints keys:" << hints.keys();
+        foreach (const QString& key, hints.keys()) {
+            qDebug() << "  " << key << ":" << hints.value(key);
+        }
+    }
+    
+    // Check for pre-extracted image (extracted by NotificationServer immediately when D-Bus message arrived)
+    // This is the only reliable way to get image data since QDBusArgument becomes invalid after message processing
+    if (hints.contains("_extracted_image")) {
+        QVariant imageVar = hints.value("_extracted_image");
+        if (imageVar.canConvert<QImage>()) {
+            QImage image = imageVar.value<QImage>();
+            if (!image.isNull()) {
+                QIcon icon = QIcon(QPixmap::fromImage(image));
+                if (!icon.isNull()) {
+                    if (debugIcons) qDebug() << "extractIconFromHints - Found pre-extracted image, size:" << image.size();
+                    return icon;
+                }
+            }
+        }
+    }
+    
+    QIcon icon;
+    
+    // Try image_path (file path)
+    QString imagePath = hints.value("image_path").toString();
+    if (!imagePath.isEmpty()) {
+        QPixmap pixmap(imagePath);
+        if (!pixmap.isNull()) {
+            return QIcon(pixmap);
+        }
+    }
+    
+    // Try icon-name (theme icon name)
+    QString iconName = hints.value("icon-name").toString();
+    if (!iconName.isEmpty()) {
+        QIcon icon = QIcon::fromTheme(iconName);
+        if (!icon.isNull() && !icon.availableSizes().isEmpty()) {
+            if (debugIcons) qDebug() << "extractIconFromHints - Found icon from icon-name:" << iconName;
+            return icon;
+        }
+    }
+    
+    // Try UnifiedIconService with app name BEFORE falling back to desktop-entry
+    // This is especially important for KDE Connect notifications where we infer the app name
+    UnifiedIconService* iconService = UnifiedIconService::instance();
+    if (iconService) {
+        QIcon icon = iconService->loadApplicationIcon(appName, "", 48);
+        if (!icon.isNull() && !icon.availableSizes().isEmpty()) {
+            if (debugIcons) qDebug() << "extractIconFromHints - Found icon from UnifiedIconService for appName:" << appName;
+            return icon;
+        }
+    }
+    
+    // Try common app name variations
+    QStringList nameVariations;
+    nameVariations << appName.toLower();
+    nameVariations << appName.toLower().replace(" ", "-");
+    nameVariations << appName.toLower().replace(" ", "");
+    
+    for (const QString& name : nameVariations) {
+        QIcon icon = QIcon::fromTheme(name);
+        if (!icon.isNull() && !icon.availableSizes().isEmpty()) {
+            if (debugIcons) qDebug() << "extractIconFromHints - Found icon from theme variation:" << name;
+            return icon;
+        }
+    }
+    
+    // Try desktop-entry hint (common in KDE Connect notifications)
+    // Only use this as LAST fallback if we don't have image_data/image-data
+    // This will give us KDE Connect icon, which is better than nothing
+    QString desktopEntry = hints.value("desktop-entry").toString();
+    if (desktopEntry.isEmpty()) {
+        desktopEntry = hints.value("desktop-entry-name").toString();
+    }
+    if (!desktopEntry.isEmpty()) {
+        // Try to find desktop file
+        QStringList desktopPaths = {
+            QDir::homePath() + "/.local/share/applications",
+            "/usr/share/applications",
+            "/usr/local/share/applications"
+        };
+        
+        QString desktopFile = desktopEntry;
+        if (!desktopFile.endsWith(".desktop")) {
+            desktopFile += ".desktop";
+        }
+        
+        for (const QString& path : desktopPaths) {
+            QString fullPath = path + "/" + desktopFile;
+            if (QFile::exists(fullPath)) {
+                // Load desktop file and get icon
+                QSettings desktopFileSettings(fullPath, QSettings::IniFormat);
+                desktopFileSettings.beginGroup("Desktop Entry");
+                QString iconFromDesktop = desktopFileSettings.value("Icon", "").toString();
+                desktopFileSettings.endGroup();
+                
+                if (!iconFromDesktop.isEmpty()) {
+                    QIcon icon = QIcon::fromTheme(iconFromDesktop);
+                    if (!icon.isNull() && !icon.availableSizes().isEmpty()) {
+                        if (debugIcons) qDebug() << "extractIconFromHints - Found icon from desktop-entry (fallback):" << iconFromDesktop;
+                        return icon;
+                    }
+                    
+                    // Try as file path
+                    if (QFile::exists(iconFromDesktop)) {
+                        QIcon icon = QIcon(iconFromDesktop);
+                        if (!icon.isNull() && !icon.availableSizes().isEmpty()) {
+                            if (debugIcons) qDebug() << "extractIconFromHints - Found icon from desktop-entry file path (fallback):" << iconFromDesktop;
+                            return icon;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Try using UnifiedIconService with desktop entry name (only as last resort)
+        if (iconService) {
+            QIcon icon = iconService->loadApplicationIcon(desktopEntry, "", 48);
+            if (!icon.isNull() && !icon.availableSizes().isEmpty()) {
+                if (debugIcons) qDebug() << "extractIconFromHints - Found icon from UnifiedIconService for desktop-entry (fallback):" << desktopEntry;
+                return icon;
+            }
+        }
+    }
+    
+    // Try alternative hint keys (some apps use different names)
+    QString altIconName = hints.value("app_icon").toString();
+    if (!altIconName.isEmpty()) {
+        QIcon icon = QIcon::fromTheme(altIconName);
+        if (!icon.isNull() && !icon.availableSizes().isEmpty()) {
+            if (debugIcons) qDebug() << "extractIconFromHints - Found icon from alternative hint:" << altIconName;
+            return icon;
+        }
+    }
+    
+    // Final fallback
+    if (debugIcons) qDebug() << "extractIconFromHints - Using fallback icon";
+    return QIcon::fromTheme("dialog-information");
 }
 
 void NotificationApplet::contextMenuEvent(QGraphicsSceneContextMenuEvent *event)

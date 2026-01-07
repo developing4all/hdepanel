@@ -40,7 +40,7 @@ public:
     explicit NotificationPopup(QWidget *parent = nullptr);
     ~NotificationPopup();
 
-    void showNotification(const Notification &notification);
+    void showNotification(const Notification &notification, int timeoutMs = 5000);
     qreal opacity() const { return m_opacity; }
     void setOpacity(qreal opacity);
 

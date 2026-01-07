@@ -33,6 +33,7 @@
 #include <QMouseEvent>
 #include <QGraphicsDropShadowEffect>
 #include <QPropertyAnimation>
+#include <QEasingCurve>
 #include <QTimer>
 #include <QDebug>
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -54,8 +55,8 @@ NotificationPopup::NotificationPopup(QWidget *parent)
     setAttribute(Qt::WA_TranslucentBackground, true);
     setAttribute(Qt::WA_ShowWithoutActivating, false);
     
-    setMinimumWidth(300);
-    setMaximumWidth(400);
+    setMinimumWidth(340);
+    setMaximumWidth(420);
     setMinimumHeight(80);
     
     m_timer = new QTimer(this);
@@ -63,17 +64,11 @@ NotificationPopup::NotificationPopup(QWidget *parent)
     connect(m_timer, &QTimer::timeout, this, &NotificationPopup::onTimeout);
     
     m_fadeAnimation = new QPropertyAnimation(this, "opacity", this);
-    m_fadeAnimation->setDuration(300);
+    m_fadeAnimation->setDuration(200);
     m_fadeAnimation->setStartValue(1.0);
     m_fadeAnimation->setEndValue(0.0);
+    m_fadeAnimation->setEasingCurve(QEasingCurve::OutCubic);
     connect(m_fadeAnimation, &QPropertyAnimation::finished, this, &NotificationPopup::onFadeOutFinished);
-    
-    setStyleSheet(
-        "QWidget { background-color: rgba(40, 40, 40, 240); border: 1px solid rgba(100, 100, 100, 200); border-radius: 8px; }"
-        "QLabel { color: white; }"
-        "QPushButton { color: white; background: transparent; border: none; font-size: 16px; font-weight: bold; }"
-        "QPushButton:hover { background-color: rgba(255, 255, 255, 30); border-radius: 10px; }"
-    );
 }
 
 NotificationPopup::~NotificationPopup()
@@ -92,7 +87,7 @@ void NotificationPopup::setOpacity(qreal opacity)
     update();
 }
 
-void NotificationPopup::showNotification(const Notification &notification)
+void NotificationPopup::showNotification(const Notification &notification, int timeoutMs)
 {
     // Delete old notification if exists
     if (m_notification) {
@@ -116,34 +111,52 @@ void NotificationPopup::showNotification(const Notification &notification)
     // Create new layout
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(12, 12, 12, 12);
-    mainLayout->setSpacing(8);
+    mainLayout->setSpacing(0);
     
-    // Header with app name and close button
-    QHBoxLayout* headerLayout = new QHBoxLayout();
-    headerLayout->setContentsMargins(0, 0, 0, 0);
-    headerLayout->setSpacing(8);
+    // Content layout (icon + text)
+    QHBoxLayout* contentLayout = new QHBoxLayout();
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+    contentLayout->setSpacing(12);
     
-    QLabel* appLabel = new QLabel(m_notification->appName, this);
-    QFont appFont = appLabel->font();
-    appFont.setBold(true);
-    appFont.setPointSize(appFont.pointSize() + 1);
-    appLabel->setFont(appFont);
+    // Icon (48px)
+    QLabel* iconLabel = new QLabel(this);
+    iconLabel->setFixedSize(48, 48);
+    iconLabel->setScaledContents(true);
+    iconLabel->setAlignment(Qt::AlignCenter);
     
-    QPushButton* closeButton = new QPushButton("×", this);
-    closeButton->setFixedSize(20, 20);
-    closeButton->setFlat(true);
-    connect(closeButton, &QPushButton::clicked, this, &NotificationPopup::dismissed);
+    if (!m_notification->icon.isNull()) {
+        QPixmap iconPixmap = m_notification->icon.pixmap(48, 48, QIcon::Normal, QIcon::On);
+        if (iconPixmap.isNull()) {
+            iconPixmap = m_notification->icon.pixmap(48, 48);
+        }
+        if (!iconPixmap.isNull()) {
+            iconLabel->setPixmap(iconPixmap);
+        } else {
+            // Fallback icon
+            iconLabel->setText("");
+            iconLabel->setStyleSheet("background-color: rgba(150, 150, 150, 0.2); border-radius: 8px;");
+        }
+    } else {
+        iconLabel->setText("");
+        iconLabel->setStyleSheet("background-color: rgba(150, 150, 150, 0.2); border-radius: 8px;");
+    }
     
-    headerLayout->addWidget(appLabel);
-    headerLayout->addStretch();
-    headerLayout->addWidget(closeButton);
+    // Text content layout
+    QVBoxLayout* textLayout = new QVBoxLayout();
+    textLayout->setContentsMargins(0, 0, 0, 0);
+    textLayout->setSpacing(4);
     
-    // Summary
+    // Summary (main text - larger, bold)
     QLabel* summaryLabel = new QLabel(m_notification->summary, this);
     summaryLabel->setWordWrap(true);
     summaryLabel->setTextFormat(Qt::PlainText);
+    QFont summaryFont = summaryLabel->font();
+    summaryFont.setPointSize(summaryFont.pointSize());
+    summaryFont.setWeight(QFont::Medium);
+    summaryLabel->setFont(summaryFont);
+    summaryLabel->setStyleSheet("color: rgba(0, 0, 0, 0.87);");
     
-    // Body (if present)
+    // Body (if present) - smaller, lighter
     QLabel* bodyLabel = nullptr;
     if (!m_notification->body.isEmpty()) {
         bodyLabel = new QLabel(m_notification->body, this);
@@ -152,48 +165,33 @@ void NotificationPopup::showNotification(const Notification &notification)
         QFont bodyFont = bodyLabel->font();
         bodyFont.setPointSize(bodyFont.pointSize() - 1);
         bodyLabel->setFont(bodyFont);
-        bodyLabel->setStyleSheet("color: #cccccc;");
+        bodyLabel->setStyleSheet("color: rgba(0, 0, 0, 0.6);");
     }
     
-    // Icon and content layout
-    QHBoxLayout* contentLayout = new QHBoxLayout();
-    contentLayout->setContentsMargins(0, 0, 0, 0);
-    contentLayout->setSpacing(12);
+    // App name (smaller, at bottom)
+    QLabel* appLabel = new QLabel(m_notification->appName, this);
+    QFont appFont = appLabel->font();
+    appFont.setPointSize(appFont.pointSize() - 2);
+    appFont.setWeight(QFont::Normal);
+    appLabel->setFont(appFont);
+    appLabel->setStyleSheet("color: rgba(0, 0, 0, 0.5);");
     
-    // Icon
-    QLabel* iconLabel = new QLabel(this);
-    if (!m_notification->icon.isNull()) {
-        QPixmap iconPixmap = m_notification->icon.pixmap(48, 48);
-        iconLabel->setPixmap(iconPixmap);
-    } else {
-        iconLabel->setText("📢");
-        iconLabel->setStyleSheet("font-size: 32px;");
-    }
-    iconLabel->setFixedSize(48, 48);
-    iconLabel->setScaledContents(true);
-    
-    // Text content
-    QVBoxLayout* textLayout = new QVBoxLayout();
-    textLayout->setContentsMargins(0, 0, 0, 0);
-    textLayout->setSpacing(4);
     textLayout->addWidget(summaryLabel);
     if (bodyLabel) {
         textLayout->addWidget(bodyLabel);
     }
+    textLayout->addWidget(appLabel);
+    textLayout->addStretch();
     
     contentLayout->addWidget(iconLabel);
     contentLayout->addLayout(textLayout, 1);
     
-    mainLayout->addLayout(headerLayout);
     mainLayout->addLayout(contentLayout);
     
     adjustSize();
     
-    // Set timeout
-    int timeout = m_notification->timeout;
-    if (timeout <= 0) {
-        timeout = 5000; // Default 5 seconds
-    }
+    // Use provided timeout or default to 1 second
+    int timeout = timeoutMs > 0 ? timeoutMs : 1000;
     m_timer->start(timeout);
     
     // Reset opacity and show
@@ -210,14 +208,36 @@ void NotificationPopup::paintEvent(QPaintEvent *event)
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
     
-    // Draw background with opacity
-    QColor bgColor(40, 40, 40, static_cast<int>(240 * m_opacity));
-    QColor borderColor(100, 100, 100, static_cast<int>(200 * m_opacity));
-    
     QRect rect = this->rect();
+    
+    // Light background with subtle shadow
+    // Background color (light gray/white with transparency)
+    QColor bgColor(242, 242, 242, static_cast<int>(255 * m_opacity));
+    
+    // Draw shadow (subtle, multiple layers for depth)
+    if (m_opacity > 0.3) {
+        // Outer shadow
+        QColor shadowColor1(0, 0, 0, static_cast<int>(40 * m_opacity));
+        painter.setBrush(shadowColor1);
+        painter.setPen(Qt::NoPen);
+        painter.drawRoundedRect(rect.adjusted(0, 2, 0, 4), 16, 16);
+        
+        // Inner shadow
+        QColor shadowColor2(0, 0, 0, static_cast<int>(20 * m_opacity));
+        painter.setBrush(shadowColor2);
+        painter.drawRoundedRect(rect.adjusted(0, 1, 0, 2), 16, 16);
+    }
+    
+    // Draw background (light with rounded corners)
     painter.setBrush(bgColor);
+    painter.setPen(Qt::NoPen);
+    painter.drawRoundedRect(rect.adjusted(0, 0, 0, -2), 16, 16);
+    
+    // Subtle border (very light)
+    QColor borderColor(0, 0, 0, static_cast<int>(10 * m_opacity));
     painter.setPen(QPen(borderColor, 1));
-    painter.drawRoundedRect(rect.adjusted(0, 0, -1, -1), 8, 8);
+    painter.setBrush(Qt::NoBrush);
+    painter.drawRoundedRect(rect.adjusted(0, 0, -1, -3), 16, 16);
 }
 
 void NotificationPopup::mousePressEvent(QMouseEvent *event)

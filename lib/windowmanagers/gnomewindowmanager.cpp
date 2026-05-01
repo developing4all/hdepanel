@@ -77,6 +77,20 @@ bool GNOMEWindowManager::initialize()
         return false;
     }
 
+    // Connect to WindowClosed signal from extension if available
+    if (m_extensionInterface && m_extensionInterface->isValid()) {
+        if (!QDBusConnection::sessionBus().connect("org.hdepanel.WindowList",
+                "/org/hdepanel/WindowList",
+                "org.hdepanel.WindowList",
+                "WindowClosed",
+                this,
+                SLOT(onWindowClosedSignal(quint64,QString,QString)))) {
+            qDebug() << "GNOMEWindowManager: Failed to connect to WindowClosed signal";
+        } else {
+            qDebug() << "GNOMEWindowManager: Connected to WindowClosed signal";
+        }
+    }
+
     m_initialized = true;
     qDebug() << "GNOMEWindowManager: Initialized successfully";
     return true;
@@ -384,6 +398,82 @@ bool GNOMEWindowManager::closeWindow(const QString& appId)
     return executeWindowAction(appId, "close");
 }
 
+bool GNOMEWindowManager::activateWindowById(quint64 id)
+{
+    if (!m_initialized) {
+        return false;
+    }
+
+    if (m_extensionInterface && m_extensionInterface->isValid()) {
+        QDBusReply<bool> reply = m_extensionInterface->call("ActivateWindowById", id);
+        if (reply.isValid()) {
+            return reply.value();
+        }
+        qDebug() << "GNOMEWindowManager: ActivateWindowById failed:" << reply.error().message();
+    }
+
+    // Fallback: use unsafe Eval if the extension is not available.
+    if (m_shellInterface && m_shellInterface->isValid()) {
+        const QString script = QString(R"(
+            (function() {
+                const id = %1;
+                for (const a of global.get_window_actors()) {
+                    const w = a.get_meta_window && a.get_meta_window();
+                    if (!w) continue;
+                    if (w.get_id && w.get_id() === id) {
+                        const ws = w.get_workspace && w.get_workspace();
+                        if (ws && typeof ws.activate === 'function' &&
+                            ws !== global.workspace_manager.get_active_workspace()) {
+                            ws.activate(global.get_current_time());
+                        }
+                        w.activate(global.get_current_time());
+                        return true;
+                    }
+                }
+                return false;
+            })()
+        )").arg(id);
+        return callShellMethod("Eval", script);
+    }
+
+    return false;
+}
+
+bool GNOMEWindowManager::closeWindowById(quint64 id)
+{
+    if (!m_initialized) {
+        return false;
+    }
+
+    if (m_extensionInterface && m_extensionInterface->isValid()) {
+        QDBusReply<bool> reply = m_extensionInterface->call("CloseWindowById", id);
+        if (reply.isValid()) {
+            return reply.value();
+        }
+        qDebug() << "GNOMEWindowManager: CloseWindowById failed:" << reply.error().message();
+    }
+
+    if (m_shellInterface && m_shellInterface->isValid()) {
+        const QString script = QString(R"(
+            (function() {
+                const id = %1;
+                for (const a of global.get_window_actors()) {
+                    const w = a.get_meta_window && a.get_meta_window();
+                    if (!w) continue;
+                    if (w.get_id && w.get_id() === id) {
+                        w.delete(global.get_current_time());
+                        return true;
+                    }
+                }
+                return false;
+            })()
+        )").arg(id);
+        return callShellMethod("Eval", script);
+    }
+
+    return false;
+}
+
 bool GNOMEWindowManager::minimizeWindow(const QString& appId)
 {
     return executeWindowAction(appId, "minimize");
@@ -632,4 +722,23 @@ void GNOMEWindowManager::updateWindows()
         QList<WaylandWindow> windows = getAllWindows();
         emitWindowsUpdated(windows);
     }
+}
+
+void GNOMEWindowManager::onWindowClosedSignal(quint64 id, const QString& title, const QString& appId)
+{
+    // Build a minimal WaylandWindow for the closed window
+    WaylandWindow window;
+    window.title = title;
+    window.appId = appId;
+    window.wmClass = appId; // Use appId as wmClass for matching
+    window.surface = reinterpret_cast<void*>(static_cast<quintptr>(id));
+    window.visible = false;
+    window.focused = false;
+    window.minimized = false;
+    window.maximized = false;
+    window.isWayland = true;
+    window.isX11 = false;
+    
+    emit windowClosed(window);
+    qDebug() << "GNOMEWindowManager: windowClosed emitted for" << title << "(" << appId << ") id:" << id;
 }

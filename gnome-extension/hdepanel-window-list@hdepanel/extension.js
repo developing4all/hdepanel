@@ -4,6 +4,7 @@
  */
 
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -21,11 +22,24 @@ const DBUS_XML = `
       <arg type="s" direction="in" name="appId"/>
       <arg type="b" direction="out" name="success"/>
     </method>
+    <method name="ActivateWindowById">
+      <arg type="t" direction="in" name="id"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
     <method name="CloseWindow">
       <arg type="s" direction="in" name="appId"/>
       <arg type="b" direction="out" name="success"/>
     </method>
+    <method name="CloseWindowById">
+      <arg type="t" direction="in" name="id"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
     <signal name="WindowsChanged"/>
+    <signal name="WindowClosed">
+      <arg type="t" direction="out" name="id"/>
+      <arg type="s" direction="out" name="title"/>
+      <arg type="s" direction="out" name="appId"/>
+    </signal>
   </interface>
 </node>`;
 
@@ -54,6 +68,7 @@ export default class HDEPanelWindowListExtension extends Extension {
             // 3️⃣ Connect GNOME Shell signals
             const display = global.display;
             this._signalIds.push(display.connect('window-created', this._onWindowsChanged.bind(this)));
+            this._signalIds.push(display.connect('window-destroyed', this._onWindowDestroyed.bind(this)));
             this._signalIds.push(display.connect('restacked', this._onWindowsChanged.bind(this)));
             this._signalIds.push(display.connect('window-demands-attention', this._onWindowsChanged.bind(this)));
 
@@ -98,6 +113,28 @@ export default class HDEPanelWindowListExtension extends Extension {
             this._dbusImpl.emit_signal('WindowsChanged', null);
         } catch (e) {
             logError(e, '[HDEPanel] Failed to emit WindowsChanged');
+        }
+    }
+
+    _onWindowDestroyed(display, metaWindow) {
+        // Emit generic WindowsChanged for list updates
+        this._onWindowsChanged();
+
+        // Emit specific WindowClosed signal so WaylandSupport can emit windowClosed
+        if (!this._dbusImpl || !metaWindow)
+            return;
+
+        try {
+            const app = this._windowTracker.get_window_app(metaWindow);
+            const appId = app ? app.get_id().replace('.desktop', '') : '';
+            const title = metaWindow.get_title() || '';
+            const id = metaWindow.get_id();
+
+            this._dbusImpl.emit_signal('WindowClosed',
+                new GLib.Variant('(tss)', [id, title, appId]));
+            log(`[HDEPanel] WindowClosed signal: ${title} (${appId}) id:${id}`);
+        } catch (e) {
+            logError(e, '[HDEPanel] Failed to emit WindowClosed');
         }
     }
 
@@ -290,6 +327,43 @@ export default class HDEPanelWindowListExtension extends Extension {
         }
 
         log(`[HDEPanel] No window found for appId: ${appId}`);
+        return false;
+    }
+
+    ActivateWindowById(id) {
+        for (const actor of global.get_window_actors()) {
+            const w = actor.get_meta_window();
+            if (!w)
+                continue;
+
+            if (w.get_id() !== id)
+                continue;
+
+            // Move to the window's workspace if not current, then activate
+            const ws = w.get_workspace();
+            if (ws && ws !== global.workspace_manager.get_active_workspace()) {
+                ws.activate(global.get_current_time());
+            }
+            w.activate(global.get_current_time());
+            log(`[HDEPanel] Activated window by id: ${id} (${w.get_title()})`);
+            return true;
+        }
+        log(`[HDEPanel] No window found for id: ${id}`);
+        return false;
+    }
+
+    CloseWindowById(id) {
+        for (const actor of global.get_window_actors()) {
+            const w = actor.get_meta_window();
+            if (!w)
+                continue;
+            if (w.get_id() !== id)
+                continue;
+            w.delete(global.get_current_time());
+            log(`[HDEPanel] Closed window by id: ${id} (${w.get_title()})`);
+            return true;
+        }
+        log(`[HDEPanel] No window found to close for id: ${id}`);
         return false;
     }
 

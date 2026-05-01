@@ -49,6 +49,8 @@ public:
     QList<WaylandWindow> getAllWindows() override;
     bool activateWindow(const QString& appId) override;
     bool closeWindow(const QString& appId) override;
+    bool activateWindowById(quint64 id) override;
+    bool closeWindowById(quint64 id) override;
     bool minimizeWindow(const QString& appId) override;
     bool maximizeWindow(const QString& appId) override;
     bool unmaximizeWindow(const QString& appId) override;
@@ -69,6 +71,7 @@ public:
 
 private slots:
     void updateWindows();
+    void onWindowClosedSignal(quint64 id, const QString& title, const QString& appId);
 
 private:
     // D-Bus interfaces

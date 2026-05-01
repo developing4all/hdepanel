@@ -1156,7 +1156,10 @@ xdg_surface_get_popup(struct xdg_surface *xdg_surface, struct xdg_surface *paren
  * The window geometry of a surface is its "visible bounds" from the
  * user's perspective. Client-side decorations often have invisible
  * portions like drop-shadows which should be ignored for the
- * purposes of aligning, placing and constraining windows.
+ * purposes of aligning, placing and constraining windows. Note that
+ * in some situations, compositors may clip rendering to the window
+ * geometry, so the client should avoid putting functional elements
+ * outside of it.
  *
  * The window geometry is double-buffered state, see wl_surface.commit.
  *
@@ -1421,7 +1424,7 @@ enum xdg_toplevel_state {
 	 */
 	XDG_TOPLEVEL_STATE_CONSTRAINED_TOP = 12,
 	/**
-	 * the surface’s bottom edge is tiled
+	 * the surface’s bottom edge is constrained
 	 *
 	 * The bottom edge of the window is currently constrained,
 	 * meaning it shouldn't attempt to resize from that edge. It can

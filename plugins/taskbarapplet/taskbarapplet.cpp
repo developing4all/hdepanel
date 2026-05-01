@@ -28,6 +28,7 @@
 #include <QtCore/QDateTime>
 #include <QtCore/QTimer>
 #include <QtCore/QCoreApplication>
+#include <QtCore/QSet>
 #include <QtGui/QPainter>
 #include <QtGui/QFontMetrics>
 #if QT_VERSION >= 0x050000
@@ -839,6 +840,47 @@ void TaskBarApplet::updateWaylandClientList(const QList<WaylandWindow>& windows)
     static bool processing = false;
     if (processing) return;
     processing = true;
+
+    // Build a set of current surfaces for fast lookup.
+    QSet<void*> currentSurfaces;
+    for (const WaylandWindow& window : windows) {
+        if (window.surface) {
+            currentSurfaces.insert(window.surface);
+        }
+    }
+
+    // Remove stale clients: any tracked surface that is no longer in the new list.
+    // Some compositors (e.g. Mutter on GNOME Wayland) don't deliver per-window
+    // close events, so we must reconcile against the latest snapshot.
+    QList<void*> staleSurfaces;
+    for (auto it = m_waylandClients.constBegin(); it != m_waylandClients.constEnd(); ++it) {
+        if (!currentSurfaces.contains(it.key())) {
+            staleSurfaces.append(it.key());
+        }
+    }
+    for (void* surface : staleSurfaces) {
+        WaylandClient* client = m_waylandClients.value(surface, nullptr);
+        if (!client) continue;
+
+        TaskBarItem* item = client->dockItem();
+        client->clearDockItem();
+        m_waylandClients.remove(surface);
+
+        if (item && !m_dockItems.contains(item)) {
+            item = nullptr;
+        }
+        if (item) {
+            item->removeWaylandClient(client);
+            if (item->shouldDelete()) {
+                unregisterTaskBarItem(item);
+                if (scene() && item->scene() == scene()) {
+                    scene()->removeItem(item);
+                }
+                delete item;
+            }
+        }
+        delete client;
+    }
 
     // Add new clients and update existing ones (keyed by surface/toplevel handle).
     for (const WaylandWindow& window : windows) {

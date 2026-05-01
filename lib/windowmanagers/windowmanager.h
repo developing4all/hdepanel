@@ -68,6 +68,13 @@ public:
     virtual QList<WaylandWindow> getAllWindows() = 0;
     virtual bool activateWindow(const QString& appId) = 0;
     virtual bool closeWindow(const QString& appId) = 0;
+
+    // Per-window activation/close by an opaque numeric id (e.g. Mutter window id).
+    // Default implementation returns false; backends that can address a specific
+    // window by id should override these. Required for cycling between multiple
+    // windows of the same application from the taskbar.
+    virtual bool activateWindowById(quint64 id) { Q_UNUSED(id); return false; }
+    virtual bool closeWindowById(quint64 id) { Q_UNUSED(id); return false; }
     virtual bool minimizeWindow(const QString& appId) = 0;
     virtual bool maximizeWindow(const QString& appId) = 0;
     virtual bool unmaximizeWindow(const QString& appId) = 0;

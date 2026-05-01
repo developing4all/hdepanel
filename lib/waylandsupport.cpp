@@ -438,6 +438,15 @@ bool WaylandSupport::activateWindow(void* surface)
         }
     }
 #endif
+    // Compositors without wlr-foreign-toplevel (e.g. Mutter on GNOME Wayland)
+    // encode an opaque window id in the surface pointer. Route to the
+    // window manager backend so it can address the specific window.
+    if (m_useWindowManager && m_windowManager && surface) {
+        const quint64 id = static_cast<quint64>(reinterpret_cast<quintptr>(surface));
+        if (m_windowManager->activateWindowById(id)) {
+            return true;
+        }
+    }
     return false;
 }
 
@@ -454,6 +463,12 @@ bool WaylandSupport::closeWindow(void* surface)
         }
     }
 #endif
+    if (m_useWindowManager && m_windowManager && surface) {
+        const quint64 id = static_cast<quint64>(reinterpret_cast<quintptr>(surface));
+        if (m_windowManager->closeWindowById(id)) {
+            return true;
+        }
+    }
     return false;
 }
 
